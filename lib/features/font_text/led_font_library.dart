@@ -19,7 +19,6 @@
 part 'fonts/font_matrixtype.dart';
 part 'fonts/font_minecraftia.dart';
 part 'fonts/font_pixelero.dart';
-part 'fonts/font_monodrawn.dart';
 part 'fonts/font_psygen.dart';
 part 'fonts/font_pixelquest.dart';
 part 'fonts/font_groutpix.dart';
@@ -46,14 +45,12 @@ enum LedFontId {
   /// Smooth pixel serif. Elegant proportions for display text.
   pixelero,
   /// Hand-drawn monospace. Friendly, casual vibe.
-  monodrawn,
-  /// Geometric sci-fi. Angular, futuristic lettering.
   psygen,
   /// RPG adventure pixel font. Bold and characterful.
   pixelquest,
   /// Wide bitmap font. 8px cap — fits fewer chars per row, very legible.
   groutpix,
-  /// Tall pixel font. 8px cap — strong presence on the matrix.
+  /// Tall pixel font. strong presence on the matrix.
   pixerator,
   /// Decorative pixel font. 8px cap — playful, expressive style.
   rainyhearts,
@@ -160,17 +157,6 @@ class LedFontLibrary {
       glyphs:      _pixeleroGlyphs,
     ),
     LedFont._(
-      id:          LedFontId.monodrawn,
-      name:        'monodrawn',
-      description: 'Hand-drawn monospace. Friendly, casual vibe.',
-      charHeight:  7,
-      charGap:     1,
-      lineHeight:  8,
-      maxLines:    4,
-      rowY:        [1, 9, 17, 25],
-      glyphs:      _monodrawnGlyphs,
-    ),
-    LedFont._(
       id:          LedFontId.psygen,
       name:        'psygen',
       description: 'Geometric sci-fi. Angular, futuristic lettering.',
@@ -206,23 +192,23 @@ class LedFontLibrary {
     LedFont._(
       id:          LedFontId.pixerator,
       name:        'pixerator',
-      description: 'Tall pixel font. 8px cap — strong presence on the matrix.',
+      description: 'Tall pixel font. strong presence on the matrix.',
       charHeight:  7,
       charGap:     1,
       lineHeight:  8,
       maxLines:    4,
-      rowY:        [1, 19, 17, 25],
+      rowY:        [1, 9, 17, 25],
       glyphs:      _pixeratorGlyphs,
     ),
     LedFont._(
       id:          LedFontId.rainyhearts,
       name:        'rainyhearts',
-      description: 'Decorative pixel font. 8px cap — playful, expressive style.',
-      charHeight:  8,
+      description: 'Decorative pixel font. playful, expressive style.',
+      charHeight:  7,
       charGap:     1,
-      lineHeight:  9,
-      maxLines:    3,
-      rowY:        [1, 10, 19],
+      lineHeight:  8,
+      maxLines:    4,
+      rowY:        [1, 9, 17, 25],
       glyphs:      _rainyheartsGlyphs,
     ),
   ];
