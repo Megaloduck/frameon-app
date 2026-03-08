@@ -21,7 +21,6 @@ part 'fonts/font_minecraftia.dart';
 part 'fonts/font_pixelero.dart';
 part 'fonts/font_psygen.dart';
 part 'fonts/font_pixelquest.dart';
-part 'fonts/font_groutpix.dart';
 part 'fonts/font_pixerator.dart';
 part 'fonts/font_rainyhearts.dart';
 
@@ -177,17 +176,6 @@ class LedFontLibrary {
       maxLines:    4,
       rowY:        [1, 9, 17, 25],
       glyphs:      _pixelquestGlyphs,
-    ),
-    LedFont._(
-      id:          LedFontId.groutpix,
-      name:        'groutpix',
-      description: 'Wide bitmap font. 8px cap — fits fewer chars per row, very legible.',
-      charHeight:  8,
-      charGap:     1,
-      lineHeight:  9,
-      maxLines:    3,
-      rowY:        [1, 10, 19],
-      glyphs:      _groutpixGlyphs,
     ),
     LedFont._(
       id:          LedFontId.pixerator,
