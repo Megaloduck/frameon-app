@@ -48,8 +48,6 @@ enum LedFontId {
   /// RPG adventure pixel font. Bold and characterful.
   pixelquest,
   /// Wide bitmap font. 8px cap — fits fewer chars per row, very legible.
-  groutpix,
-  /// Tall pixel font. strong presence on the matrix.
   pixerator,
   /// Decorative pixel font. 8px cap — playful, expressive style.
   rainyhearts,
