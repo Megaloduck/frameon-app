@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import '../services/device_api_service.dart';
 import '../services/web_serial_service.dart';
 import '../services/spotify_service.dart';
