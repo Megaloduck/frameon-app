@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/app_theme.dart';
-import 'core/theme_provider.dart';
-import 'features/ui/home_screen.dart';
+import 'package:frameon/screens/shell_screen.dart';
+import 'package:frameon/theme/app_theme.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +47,8 @@ class FrameonApp extends ConsumerWidget {
       title: 'Frameon',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      home: const HomeScreen(),
+      theme: AppTheme.dark,
+      home: const ShellScreen(),
     );
   }
 }
