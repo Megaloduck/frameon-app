@@ -50,6 +50,8 @@ dependencies:
   # Shared preferences (device settings, brightness, mode)
   shared_preferences: ^2.3.5
 
+  google_fonts: ^8.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
