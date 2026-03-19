@@ -13,11 +13,11 @@ class SetupScreen extends ConsumerStatefulWidget {
 }
 
 class _SetupScreenState extends ConsumerState<SetupScreen> {
-  final _ssidController = TextEditingController();
+  final _ssidController     = TextEditingController();
   final _passwordController = TextEditingController();
-  final _ipController = TextEditingController();
-  bool _obscurePassword = true;
-  bool _isProvisioning = false;
+  final _ipController       = TextEditingController();
+  bool    _obscurePassword  = true;
+  bool    _isProvisioning   = false;
   String? _statusMessage;
 
   @override
@@ -30,8 +30,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final serial = ref.watch(webSerialServiceProvider);
-    final api = ref.watch(deviceApiServiceProvider);
+    final serial      = ref.watch(webSerialServiceProvider);
+    final api         = ref.watch(deviceApiServiceProvider);
     final deviceState = ref.watch(deviceStateProvider);
 
     return Scaffold(
@@ -77,7 +77,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 const Gap(32),
 
-                // ── Option 1: USB / WebSerial ──────────────────────────────
+                // ── Option 1: USB / WebSerial ──────────────────────────────────
                 _OptionCard(
                   index: '01',
                   title: 'USB provisioning',
@@ -102,7 +102,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: _isProvisioning ? null : () => _provision(serial, api),
+                            onPressed:
+                                _isProvisioning ? null : () => _provision(serial, api),
                             child: _isProvisioning
                                 ? const SizedBox(
                                     width: 16,
@@ -169,7 +170,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 const Gap(16),
 
-                // ── Option 2: Direct IP ────────────────────────────────────
+                // ── Option 2: Direct IP ────────────────────────────────────────
                 _OptionCard(
                   index: '02',
                   title: 'Direct IP connection',
@@ -183,7 +184,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         controller: _ipController,
                         decoration: const InputDecoration(
                           hintText: '192.168.1.xxx',
-                          prefixIcon: Icon(Icons.wifi, size: 18, color: AppColors.textMuted),
+                          prefixIcon:
+                              Icon(Icons.wifi, size: 18, color: AppColors.textMuted),
                           labelText: 'Device IP address',
                         ),
                         keyboardType: TextInputType.url,
@@ -206,7 +208,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 const Gap(40),
 
-                // ── Firmware hint ─────────────────────────────────────────
+                // ── Firmware hint ──────────────────────────────────────────────
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -244,30 +246,62 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     );
   }
 
+  /// Send Wi-Fi credentials and then retry connecting until the API server
+  /// comes up. The ESP32 needs a few seconds after WiFi connects to start
+  /// the AsyncWebServer — we poll with a short backoff rather than timing out
+  /// immediately.
   Future<void> _provision(WebSerialService serial, dynamic api) async {
     if (_ssidController.text.isEmpty) return;
     setState(() {
-      _isProvisioning = true;
-      _statusMessage = null;
+      _isProvisioning  = true;
+      _statusMessage   = null;
     });
 
-    await serial.sendWifiCredentials(_ssidController.text, _passwordController.text);
+    // Step 1: send credentials over serial
+    await serial.sendWifiCredentials(
+        _ssidController.text, _passwordController.text);
+
+    // Step 2: wait for "IP:x.x.x.x" response (firmware connects to WiFi)
     final ip = await serial.requestDeviceIp();
 
-    if (ip != null && mounted) {
-      final connected = await api.connect(ip);
+    if (ip == null || !mounted) {
       setState(() {
         _isProvisioning = false;
-        _statusMessage = connected
-            ? '✓ Connected to device at $ip'
-            : '✗ Device found at $ip but API not responding';
+        _statusMessage  = '✗ No IP response — check firmware serial output';
       });
-    } else {
-      setState(() {
-        _isProvisioning = false;
-        _statusMessage = '✗ No IP response — check firmware serial output';
-      });
+      return;
     }
+
+    // Step 3: retry connecting to the API — the ESP32 AsyncWebServer starts
+    // a second or two after WiFi connects (it finishes the boot screen delay
+    // first), so we try up to 10 times with a 1.5-second gap between attempts.
+    setState(() => _statusMessage = '← Device at $ip — waiting for API…');
+
+    const maxAttempts  = 10;
+    const retryDelay   = Duration(milliseconds: 1500);
+    bool  connected    = false;
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (!mounted) break;
+
+      connected = await api.connect(ip);
+      if (connected) break;
+
+      if (attempt < maxAttempts) {
+        setState(() =>
+            _statusMessage = '← $ip — retrying ($attempt/$maxAttempts)…');
+        await Future.delayed(retryDelay);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isProvisioning = false;
+      _statusMessage  = connected
+          ? '✓ Connected to device at $ip'
+          : '✗ Device at $ip found but API not responding after ${maxAttempts} attempts\n'
+            '   Try "Direct IP connection" below once the panel boots fully.';
+    });
   }
 
   Future<void> _connectByIp(dynamic api) async {
@@ -277,11 +311,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 }
 
-// ── Sub-widgets ───────────────────────────────────────────────────────────
+// ── Sub-widgets ────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String   label;
   const _SectionHeader({required this.icon, required this.label});
 
   @override
@@ -300,13 +334,13 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _OptionCard extends StatelessWidget {
-  final String index;
-  final String title;
-  final String subtitle;
-  final Color accentColor;
-  final bool available;
+  final String  index;
+  final String  title;
+  final String  subtitle;
+  final Color   accentColor;
+  final bool    available;
   final String? unavailableNote;
-  final Widget child;
+  final Widget  child;
 
   const _OptionCard({
     required this.index,
@@ -373,8 +407,7 @@ class _OptionCard extends StatelessWidget {
           if (!available && unavailableNote != null) ...[
             const Gap(12),
             Text(unavailableNote!,
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.textMuted)),
+                style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
           ] else ...[
             const Gap(16),
             child,
@@ -388,8 +421,8 @@ class _OptionCard extends StatelessWidget {
 class _WifiCredentialsForm extends StatelessWidget {
   final TextEditingController ssidController;
   final TextEditingController passwordController;
-  final bool obscurePassword;
-  final VoidCallback onToggleObscure;
+  final bool          obscurePassword;
+  final VoidCallback  onToggleObscure;
 
   const _WifiCredentialsForm({
     required this.ssidController,

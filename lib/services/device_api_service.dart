@@ -11,18 +11,18 @@ import '../models/device_state.dart';
 /// Feature-specific API calls live in device_api_extensions.dart as
 /// extension methods — they use the protected [postJson], [getJson], [baseUrl].
 class DeviceApiService extends ChangeNotifier {
-  String? _baseUrl;
-  WebSocketChannel? _wsChannel;
+  String?            _baseUrl;
+  WebSocketChannel?  _wsChannel;
   StreamSubscription? _wsSub;
-  DeviceState _deviceState = const DeviceState();
-  Timer? _pingTimer;
+  DeviceState        _deviceState = const DeviceState();
+  Timer?             _pingTimer;
 
   DeviceState get deviceState => _deviceState;
 
   /// Exposed for extension methods in device_api_extensions.dart
   String? get baseUrl => _baseUrl;
 
-  // ── Connection ─────────────────────────────────────────────────────────
+  // ── Connection ────────────────────────────────────────────────────────────
 
   Future<bool> connect(String ip) async {
     _baseUrl = 'http://$ip';
@@ -38,10 +38,21 @@ class DeviceApiService extends ChangeNotifier {
 
       if (res.statusCode == 200) {
         final info = jsonDecode(res.body) as Map<String, dynamic>;
+
+        // FIX: firmware sends mode as int (0/1/2/3), not a string.
+        // Handle both so the app works regardless of firmware version.
+        final rawMode = info['mode'];
+        final AppMode mode;
+        if (rawMode is int) {
+          mode = AppMode.values[rawMode.clamp(0, AppMode.values.length - 1)];
+        } else {
+          mode = _parseModeFromString(rawMode as String? ?? 'clock');
+        }
+
         _updateState(_deviceState.copyWith(
           connectionStatus: ConnectionStatus.connected,
           deviceName: info['name'] as String? ?? 'Matrix Panel',
-          activeMode: _parseModeFromString(info['mode'] as String? ?? 'clock'),
+          activeMode: mode,
         ));
         _connectWebSocket(ip);
         _startPingTimer();
@@ -63,11 +74,11 @@ class DeviceApiService extends ChangeNotifier {
     _wsSub?.cancel();
     _wsChannel?.sink.close();
     _wsChannel = null;
-    _baseUrl = null;
+    _baseUrl   = null;
     _updateState(const DeviceState());
   }
 
-  // ── Core commands ──────────────────────────────────────────────────────
+  // ── Core commands ─────────────────────────────────────────────────────────
 
   Future<void> setMode(AppMode mode) async {
     await postJson('/api/mode', {'mode': mode.name});
@@ -93,8 +104,8 @@ class DeviceApiService extends ChangeNotifier {
     Uint8List? albumArtJpeg,
   }) async {
     final body = <String, dynamic>{
-      'track': trackName,
-      'artist': artistName,
+      'track':   trackName,
+      'artist':  artistName,
       'playing': isPlaying,
     };
     if (albumArtJpeg != null) {
@@ -115,7 +126,7 @@ class DeviceApiService extends ChangeNotifier {
     await postJson('/api/gif/select', {'file': filename});
   }
 
-  // ── WebSocket ──────────────────────────────────────────────────────────
+  // ── WebSocket ─────────────────────────────────────────────────────────────
 
   void _connectWebSocket(String ip) {
     _wsChannel = WebSocketChannel.connect(Uri.parse('ws://$ip/ws'));
@@ -129,10 +140,15 @@ class DeviceApiService extends ChangeNotifier {
   void _handleWsMessage(String raw) {
     try {
       final msg = jsonDecode(raw) as Map<String, dynamic>;
-      if (msg['mode'] != null) {
-        _updateState(_deviceState.copyWith(
-          activeMode: _parseModeFromString(msg['mode'] as String),
-        ));
+      final rawMode = msg['mode'];
+      if (rawMode != null) {
+        final AppMode mode;
+        if (rawMode is int) {
+          mode = AppMode.values[rawMode.clamp(0, AppMode.values.length - 1)];
+        } else {
+          mode = _parseModeFromString(rawMode as String);
+        }
+        _updateState(_deviceState.copyWith(activeMode: mode));
       }
     } catch (_) {}
   }
@@ -146,7 +162,7 @@ class DeviceApiService extends ChangeNotifier {
     }
   }
 
-  // ── Ping ───────────────────────────────────────────────────────────────
+  // ── Ping ──────────────────────────────────────────────────────────────────
 
   void _startPingTimer() {
     _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
@@ -162,7 +178,7 @@ class DeviceApiService extends ChangeNotifier {
     });
   }
 
-  // ── HTTP helpers (also used by extension methods) ──────────────────────
+  // ── HTTP helpers (also used by extension methods) ─────────────────────────
 
   Future<Map<String, dynamic>?> getJson(String path) async {
     if (_baseUrl == null) return null;
