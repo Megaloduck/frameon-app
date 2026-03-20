@@ -7,9 +7,10 @@ import 'transport_service.dart';
 import 'spotify_service.dart';
 import '../models/device_state.dart';
 
-// ── Core services ──────────────────────────────────────────────────────────
-// These are app-lifetime singletons — never disposed while the app runs.
-// Using ChangeNotifierProvider (not autoDispose) ensures that.
+// ── Core services ─────────────────────────────────────────────────────────
+// All are app-lifetime singletons using plain ChangeNotifierProvider
+// (NOT autoDispose). They are never rebuilt unless the ProviderScope is
+// rebuilt (i.e. the whole app restarts).
 
 final deviceApiServiceProvider = ChangeNotifierProvider<DeviceApiService>(
   (ref) => DeviceApiService(),
@@ -19,29 +20,38 @@ final webSerialServiceProvider = ChangeNotifierProvider<WebSerialService>(
   (ref) => WebSerialService(),
 );
 
-/// USB command API — wraps WebSerialService with request/response protocol.
-/// Must NOT be autoDispose — it holds the line stream subscription.
+/// USB command API.
+///
+/// CRITICAL: Use ref.read (NOT ref.watch) to inject WebSerialService.
+/// ref.watch would cause this provider to rebuild every time WebSerialService
+/// calls notifyListeners() — which happens on every incoming serial line.
+/// That would dispose and recreate UsbApiService mid-conversation, causing
+/// "used after disposed" errors and lost response completers.
+///
+/// The UsbApiService adds its own ChangeNotifier listener to WebSerialService
+/// internally, so it reacts to status changes without Riverpod recreating it.
 final usbApiServiceProvider = ChangeNotifierProvider<UsbApiService>((ref) {
-  // Watch so the provider stays alive as long as webSerial does.
-  // Do NOT use ref.read here — we want dependency tracking.
-  final serial = ref.watch(webSerialServiceProvider);
+  final serial = ref.read(webSerialServiceProvider);
   final svc    = UsbApiService(serial);
   ref.onDispose(svc.dispose);
   return svc;
 });
 
 /// Unified transport — USB preferred, WiFi fallback.
-/// Must NOT be autoDispose — screens rebuild constantly and we must not
-/// dispose the transport mid-session (causes "used after disposed" crash).
+///
+/// Same pattern: ref.read to inject dependencies so this provider is never
+/// accidentally recreated by dependency notifications.
 final transportProvider = ChangeNotifierProvider<TransportService>((ref) {
-  final usb  = ref.watch(usbApiServiceProvider);
-  final wifi = ref.watch(deviceApiServiceProvider);
+  final usb  = ref.read(usbApiServiceProvider);
+  final wifi = ref.read(deviceApiServiceProvider);
   final svc  = TransportService(usb, wifi);
   ref.onDispose(svc.dispose);
   return svc;
 });
 
-// ── Derived state ──────────────────────────────────────────────────────────
+// ── Derived state ─────────────────────────────────────────────────────────
+// These use ref.watch correctly — they are lightweight computed values,
+// not service instances, so rebuilding them on change is fine and expected.
 
 final deviceStateProvider = Provider<DeviceState>((ref) {
   return ref.watch(deviceApiServiceProvider).deviceState;
@@ -55,11 +65,14 @@ final activeModeProvider = Provider<AppMode>((ref) {
   return ref.watch(deviceStateProvider).activeMode;
 });
 
-/// Which transport is currently active.
+/// Which transport is currently active (usb / wifi / none).
+/// Rebuilds widgets only when the transport enum value changes,
+/// not on every serial line received.
 final activeTransportProvider = Provider<ActiveTransport>((ref) {
   return ref.watch(transportProvider).transport;
 });
 
+// Feature providers are co-located with their screens:
 // spotifyServiceProvider  → lib/services/spotify_service.dart
 // clockConfigProvider     → lib/screens/clock/clock_screen.dart
 // pomodoroConfigProvider  → lib/screens/pomodoro/pomodoro_screen.dart

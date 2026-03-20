@@ -7,22 +7,17 @@ import '../models/device_state.dart';
 
 /// Communicates with the ESP32 over Wi-Fi.
 /// REST for commands, WebSocket for live state updates.
-///
-/// Feature-specific API calls live in device_api_extensions.dart as
-/// extension methods — they use the protected [postJson], [getJson], [baseUrl].
 class DeviceApiService extends ChangeNotifier {
-  String?            _baseUrl;
-  WebSocketChannel?  _wsChannel;
+  String?             _baseUrl;
+  WebSocketChannel?   _wsChannel;
   StreamSubscription? _wsSub;
-  DeviceState        _deviceState = const DeviceState();
-  Timer?             _pingTimer;
+  DeviceState         _deviceState = const DeviceState();
+  Timer?              _pingTimer;
 
   DeviceState get deviceState => _deviceState;
+  String?     get baseUrl     => _baseUrl;
 
-  /// Exposed for extension methods in device_api_extensions.dart
-  String? get baseUrl => _baseUrl;
-
-  // ── Connection ────────────────────────────────────────────────────────────
+  // ── Connection ────────────────────────────────────────────────────────
 
   Future<bool> connect(String ip) async {
     _baseUrl = 'http://$ip';
@@ -39,8 +34,6 @@ class DeviceApiService extends ChangeNotifier {
       if (res.statusCode == 200) {
         final info = jsonDecode(res.body) as Map<String, dynamic>;
 
-        // FIX: firmware sends mode as int (0/1/2/3), not a string.
-        // Handle both so the app works regardless of firmware version.
         final rawMode = info['mode'];
         final AppMode mode;
         if (rawMode is int) {
@@ -78,24 +71,15 @@ class DeviceApiService extends ChangeNotifier {
     _updateState(const DeviceState());
   }
 
-  // ── Core commands ─────────────────────────────────────────────────────────
+  // ── Core commands ─────────────────────────────────────────────────────
 
   Future<void> setMode(AppMode mode) async {
     await postJson('/api/mode', {'mode': mode.name});
     _updateState(_deviceState.copyWith(activeMode: mode));
   }
 
-  Future<void> setBrightness(int value) async {
-    await postJson('/api/brightness', {'value': value});
-  }
-
-  Future<void> setClockFormat(bool is24h) async {
-    await postJson('/api/clock/config', {'format24h': is24h});
-  }
-
-  Future<void> setClockTimezone(String tz) async {
-    await postJson('/api/clock/config', {'timezone': tz});
-  }
+  Future<void> setBrightness(int value) async =>
+      postJson('/api/brightness', {'value': value});
 
   Future<void> pushSpotifyState({
     required String trackName,
@@ -104,29 +88,19 @@ class DeviceApiService extends ChangeNotifier {
     Uint8List? albumArtJpeg,
   }) async {
     final body = <String, dynamic>{
-      'track':   trackName,
-      'artist':  artistName,
-      'playing': isPlaying,
+      'track': trackName, 'artist': artistName, 'playing': isPlaying,
     };
-    if (albumArtJpeg != null) {
-      body['art'] = base64Encode(albumArtJpeg);
-    }
+    if (albumArtJpeg != null) body['art'] = base64Encode(albumArtJpeg);
     await postJson('/api/spotify/state', body);
   }
 
-  Future<void> spotifyCommand(String cmd) async {
-    await postJson('/api/spotify/cmd', {'cmd': cmd});
-  }
+  Future<void> pomodoroCommand(String cmd) async =>
+      postJson('/api/pomodoro/cmd', {'cmd': cmd});
 
-  Future<void> pomodoroCommand(String cmd) async {
-    await postJson('/api/pomodoro/cmd', {'cmd': cmd});
-  }
+  Future<void> selectGif(String filename) async =>
+      postJson('/api/gif/select', {'file': filename});
 
-  Future<void> selectGif(String filename) async {
-    await postJson('/api/gif/select', {'file': filename});
-  }
-
-  // ── WebSocket ─────────────────────────────────────────────────────────────
+  // ── WebSocket ─────────────────────────────────────────────────────────
 
   void _connectWebSocket(String ip) {
     _wsChannel = WebSocketChannel.connect(Uri.parse('ws://$ip/ws'));
@@ -162,7 +136,7 @@ class DeviceApiService extends ChangeNotifier {
     }
   }
 
-  // ── Ping ──────────────────────────────────────────────────────────────────
+  // ── Ping ──────────────────────────────────────────────────────────────
 
   void _startPingTimer() {
     _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
@@ -178,7 +152,7 @@ class DeviceApiService extends ChangeNotifier {
     });
   }
 
-  // ── HTTP helpers (also used by extension methods) ─────────────────────────
+  // ── HTTP helpers ──────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> getJson(String path) async {
     if (_baseUrl == null) return null;
@@ -194,23 +168,26 @@ class DeviceApiService extends ChangeNotifier {
     }
     return null;
   }
-  
-   Future<bool> postJson(String path, Map<String, dynamic> body,
-       {Duration timeout = const Duration(seconds: 10)}) async {
-          if (_baseUrl == null) return false;
-            try {
-              final res = await http
-              .post(
-                Uri.parse('$_baseUrl$path'),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode(body),
-                )
-                .timeout(timeout);
-                return res.statusCode == 200;
-                } catch (e) {debugPrint('POST $path error: $e');
-                rethrow;
-           }
-        }
+
+  /// Posts JSON and returns true on HTTP 200.
+  /// Returns false (never throws) on network error or non-200 response.
+  /// TransportService._run() depends on this not throwing.
+  Future<bool> postJson(String path, Map<String, dynamic> body) async {
+    if (_baseUrl == null) return false;
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_baseUrl$path'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint('POST $path error: $e');
+      return false; // never rethrow — callers check the bool
+    }
+  }
 
   AppMode _parseModeFromString(String s) => AppMode.values.firstWhere(
         (m) => m.name == s,
