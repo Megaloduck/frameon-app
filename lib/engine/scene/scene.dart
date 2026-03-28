@@ -4,20 +4,16 @@ import 'layer.dart';
 const _uuid = Uuid();
 
 /// A [Scene] is the top-level project document — an ordered list of [Layer]s
-/// that are composited together to produce each frame on the LED matrix.
+/// composited together to produce each frame on the LED matrix.
 ///
-/// Layers are stored bottom-to-top (index 0 = back, last index = front).
-/// The [Scene] is immutable by design; mutations return a new [Scene].
+/// Layers are stored bottom-to-top (index 0 = back, last = front).
+/// All mutations return a new [Scene] — the model is fully immutable.
 class Scene {
   final String id;
   final String name;
   final List<Layer> layers;
-
-  /// Matrix canvas dimensions in pixels.
   final int matrixWidth;
   final int matrixHeight;
-
-  /// Target frame rate for preview and export (frames per second).
   final double fps;
 
   const Scene({
@@ -29,64 +25,59 @@ class Scene {
     this.fps = 10,
   });
 
-  /// Create a blank scene with a default name.
   factory Scene.blank({String name = 'Untitled'}) => Scene(
         id: _uuid.v4(),
         name: name,
         layers: const [],
       );
 
-  // ── Layer Operations (all return a new Scene) ───────────────────────────
+  // ── Layer mutations (all return a new Scene) ─────────────────────────────
 
-  /// Add [layer] on top of the stack.
-  Scene addLayer(Layer layer) {
-    final updated = List<Layer>.from(layers)..add(layer);
-    return _withLayers(updated);
-  }
+  Scene addLayer(Layer layer) =>
+      _withLayers(List<Layer>.from(layers)..add(layer));
 
-  /// Remove the layer with [id].
-  Scene removeLayer(String id) {
-    final updated = layers.where((l) => l.id != id).toList();
-    return _withLayers(updated);
-  }
+  Scene removeLayer(String id) =>
+      _withLayers(layers.where((l) => l.id != id).toList());
 
-  /// Replace the layer matching [layer.id] with the updated version.
-  Scene updateLayer(Layer layer) {
-    final updated = layers.map((l) => l.id == layer.id ? layer : l).toList();
-    return _withLayers(updated);
-  }
+  Scene updateLayer(Layer layer) =>
+      _withLayers(layers.map((l) => l.id == layer.id ? layer : l).toList());
 
-  /// Move a layer from [fromIndex] to [toIndex] (re-order).
+  /// Reorder a layer from [fromIndex] to [toIndex].
+  ///
+  /// Uses standard list-splice semantics: remove at [fromIndex], then insert
+  /// at [toIndex]. No adjustment needed — callers (e.g. ReorderableListView)
+  /// already pass the post-removal index.
   Scene reorderLayer(int fromIndex, int toIndex) {
+    if (fromIndex == toIndex) return this;
     final updated = List<Layer>.from(layers);
     final item = updated.removeAt(fromIndex);
-    final insertAt = toIndex > fromIndex ? toIndex - 1 : toIndex;
-    updated.insert(insertAt, item);
+    updated.insert(toIndex, item);
     return _withLayers(updated);
   }
 
-  /// Move a layer one step toward the front.
   Scene bringForward(String id) {
     final idx = _indexOfId(id);
     if (idx == -1 || idx == layers.length - 1) return this;
-    return reorderLayer(idx, idx + 2);
+    return reorderLayer(idx, idx + 1);
   }
 
-  /// Move a layer one step toward the back.
   Scene sendBackward(String id) {
     final idx = _indexOfId(id);
     if (idx <= 0) return this;
     return reorderLayer(idx, idx - 1);
   }
 
-  /// Toggle visibility of a layer.
+  /// Toggle the [visible] flag of the layer with [id].
+  ///
+  /// Previously this called copyWith() with no args (a no-op clone).
+  /// Fixed: explicitly passes visible: !layer.visible.
   Scene toggleVisibility(String id) {
     final layer = layerById(id);
     if (layer == null) return this;
-    return updateLayer(layer.copyWith());
+    return updateLayer(layer.copyWith(visible: !layer.visible));
   }
 
-  // ── Queries ─────────────────────────────────────────────────────────────
+  // ── Queries ──────────────────────────────────────────────────────────────
 
   Layer? layerById(String id) {
     try {
@@ -96,13 +87,11 @@ class Scene {
     }
   }
 
-  /// Layers ordered front-to-back (for rendering, iterate reversed).
-  List<Layer> get visibleLayers =>
-      layers.where((l) => l.visible).toList();
+  List<Layer> get visibleLayers => layers.where((l) => l.visible).toList();
 
   bool get isEmpty => layers.isEmpty;
 
-  // ── copyWith ────────────────────────────────────────────────────────────
+  // ── copyWith ─────────────────────────────────────────────────────────────
 
   Scene copyWith({
     String? id,
@@ -121,7 +110,7 @@ class Scene {
         fps: fps ?? this.fps,
       );
 
-  // ── Serialisation ────────────────────────────────────────────────────────
+  // ── Serialisation ─────────────────────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -143,7 +132,7 @@ class Scene {
             .toList(),
       );
 
-  // ── Private ──────────────────────────────────────────────────────────────
+  // ── Private ───────────────────────────────────────────────────────────────
 
   Scene _withLayers(List<Layer> updated) => copyWith(layers: updated);
 
