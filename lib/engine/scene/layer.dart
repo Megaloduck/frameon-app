@@ -303,6 +303,8 @@ class GifLayer extends Layer {
     String? id,
     String? name,
     String? filePath,
+    /// Set to true to explicitly clear filePath back to null.
+    bool clearFilePath = false,
     MediaLayout? layout,
     bool? dithering,
     bool? grayscale,
@@ -316,7 +318,7 @@ class GifLayer extends Layer {
       GifLayer(
         id: id ?? this.id,
         name: name ?? this.name,
-        filePath: filePath ?? this.filePath,
+        filePath: clearFilePath ? null : (filePath ?? this.filePath),
         layout: layout ?? this.layout,
         dithering: dithering ?? this.dithering,
         grayscale: grayscale ?? this.grayscale,

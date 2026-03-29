@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../engine/animation/animator.dart';
 import '../../engine/renderer/matrix_renderer.dart';
 import '../../engine/scene/layer.dart';
 import '../../engine/scene/scene.dart';
 import '../../engine/scene/timeline.dart';
+import '../../services/spotify/spotify_service.dart';
+
+export '../../services/spotify/spotify_service.dart' show spotifyServiceProvider;
 
 const _uuid = Uuid();
 
@@ -13,16 +17,9 @@ const _uuid = Uuid();
 // Scene Notifier
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Holds the current [Scene] and all mutations that can be applied to it.
-///
-/// Selection state lives here too as a single source of truth.
-/// Widgets watch [selectedLayerIdProvider] (a derived provider) for reactive
-/// rebuilds — [SceneNotifier] writes to it via [_setSelection].
 class SceneNotifier extends Notifier<Scene> {
   @override
   Scene build() => Scene.blank(name: 'Untitled Project');
-
-  // ── Layer CRUD ─────────────────────────────────────────────────────────
 
   void addTextLayer() => _add(TextLayer(
         id: _uuid.v4(),
@@ -60,27 +57,18 @@ class SceneNotifier extends Notifier<Scene> {
     if (_selectedId == id) _setSelection(null);
   }
 
-  void updateLayer(Layer layer) {
-    state = state.updateLayer(layer);
-  }
+  void updateLayer(Layer layer) => state = state.updateLayer(layer);
 
-  void reorderLayer(int fromIndex, int toIndex) {
-    state = state.reorderLayer(fromIndex, toIndex);
-  }
+  void reorderLayer(int fromIndex, int toIndex) =>
+      state = state.reorderLayer(fromIndex, toIndex);
 
-  /// Correctly toggles [visible] — previously was a no-op clone.
   void toggleVisibility(String id) {
     final layer = state.layerById(id);
     if (layer == null) return;
     state = state.updateLayer(layer.copyWith(visible: !layer.visible));
   }
 
-  // ── Selection — single source of truth ──────────────────────────────────
-  //
-  // [_selectedId] is the backing store. Widgets watch [selectedLayerIdProvider]
-  // which is kept in sync via [_setSelection]. This avoids the previous
-  // split-brain where SceneNotifier._selectedLayerId and
-  // selectedLayerIdProvider were two independent, unsynchronised sources.
+  // ── Selection — single source of truth ───────────────────────────────────
 
   String? _selectedId;
 
@@ -88,11 +76,10 @@ class SceneNotifier extends Notifier<Scene> {
 
   void _setSelection(String? id) {
     _selectedId = id;
-    // Keep the derived StateProvider in sync so widgets rebuild.
     ref.read(selectedLayerIdProvider.notifier).state = id;
   }
 
-  // ── Scene meta ───────────────────────────────────────────────────────────
+  // ── Scene meta ────────────────────────────────────────────────────────────
 
   void rename(String name) => state = state.copyWith(name: name);
 
@@ -111,14 +98,11 @@ final sceneProvider =
     NotifierProvider<SceneNotifier, Scene>(SceneNotifier.new);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Selection (single source of truth — written only by SceneNotifier)
+// Selection
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// The ID of the currently selected layer, or null.
-/// Written exclusively by [SceneNotifier._setSelection]; read by the UI.
 final selectedLayerIdProvider = StateProvider<String?>((ref) => null);
 
-/// The full [Layer] object for the current selection, or null.
 final selectedLayerProvider = Provider<Layer?>((ref) {
   final scene = ref.watch(sceneProvider);
   final id = ref.watch(selectedLayerIdProvider);
@@ -127,35 +111,43 @@ final selectedLayerProvider = Provider<Layer?>((ref) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Renderer singletons
+// Renderer — injects live Spotify state before each render
 // ─────────────────────────────────────────────────────────────────────────────
 
-final matrixRendererProvider =
-    Provider<MatrixRenderer>((_) => MatrixRenderer());
-
-final animatorProvider = Provider<Animator>((_) => const Animator());
+final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
+  final renderer = MatrixRenderer();
+  // Keep the renderer's live track in sync with SpotifyService.
+  ref.listen(spotifyServiceProvider, (_, next) {
+    renderer.currentTrack = next.isConnected ? next.toTrack() : null;
+  });
+  return renderer;
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timeline — debounced re-render
+// Timeline — properly debounced re-render
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Async provider that re-renders the [Scene] into a [Timeline] whenever the
-/// scene changes. Uses [AsyncNotifier] so re-renders can be debounced and
-/// cancelled when a newer render supersedes an in-flight one.
-///
-/// The previous implementation used a plain [FutureProvider] that triggered a
-/// full re-render on every scene mutation (including selection changes).
-/// This version only re-renders when the layer *content* changes, not when
-/// selection changes.
 class TimelineNotifier extends AsyncNotifier<Timeline> {
+  Timer? _debounce;
+  int _generation = 0;
+
   @override
   Future<Timeline> build() async {
-    // Watch only the layer list and their data — not selection state.
-    final scene = ref.watch(sceneProvider);
+    final scene    = ref.watch(sceneProvider);
     final renderer = ref.read(matrixRendererProvider);
 
-    // Debounce: wait 80 ms so rapid successive edits collapse into one render.
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    _debounce?.cancel();
+    final int gen = ++_generation;
+
+    final completer = Completer<void>();
+    _debounce = Timer(const Duration(milliseconds: 120), completer.complete);
+    ref.onDispose(() {
+      _debounce?.cancel();
+      if (!completer.isCompleted) completer.complete();
+    });
+
+    await completer.future;
+    if (gen != _generation) return state.value ?? Timeline();
 
     return renderer.render(
       scene,
@@ -172,8 +164,5 @@ final timelineProvider =
 // Preview playback
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Elapsed playback time in milliseconds. Incremented by the preview ticker.
 final previewElapsedMsProvider = StateProvider<int>((ref) => 0);
-
-/// Whether the preview is currently playing.
-final previewPlayingProvider = StateProvider<bool>((ref) => true);
+final previewPlayingProvider   = StateProvider<bool>((ref) => true);

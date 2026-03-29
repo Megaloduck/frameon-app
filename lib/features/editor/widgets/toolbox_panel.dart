@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../engine/scene/layer.dart';
 import '../../../shared/providers/providers.dart';
+import 'color_picker.dart';
 
 class ToolboxPanel extends ConsumerWidget {
   const ToolboxPanel({super.key});
@@ -53,7 +54,8 @@ class _Header extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
         child: Text(title,
             style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
                 letterSpacing: .08,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(.5))),
       );
@@ -84,9 +86,32 @@ Widget _row(String label, Widget control) => Padding(
 Widget _toggle(bool value, ValueChanged<bool> onChanged) => Align(
       alignment: Alignment.centerLeft,
       child: Switch(
-        value: value, onChanged: onChanged,
+        value: value,
+        onChanged: onChanged,
         activeColor: const Color(0xFF21C32C),
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+
+/// A colour swatch button that opens the [ColorPicker] bottom sheet.
+Widget _colorButton(
+  BuildContext context,
+  Color color,
+  ValueChanged<Color> onChanged,
+) =>
+    GestureDetector(
+      onTap: () async {
+        final picked = await showColorPicker(context, initialColor: color);
+        if (picked != null) onChanged(picked);
+      },
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.black.withOpacity(.2)),
+        ),
       ),
     );
 
@@ -100,29 +125,68 @@ class _TextToolbox extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(sceneProvider.notifier);
     return Column(children: [
+      // Color picker swatch
+      _row('Color', _colorButton(context, layer.color,
+          (c) => n.updateLayer(layer.copyWith(color: c)))),
+      // Inline mini picker
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ColorPicker(
+          color: layer.color,
+          onChanged: (c) => n.updateLayer(layer.copyWith(color: c)),
+        ),
+      ),
       _row('Text', TextField(
         controller: TextEditingController(text: layer.text),
         style: const TextStyle(fontSize: 13),
         decoration: const InputDecoration(isDense: true),
         onSubmitted: (v) => n.updateLayer(layer.copyWith(text: v)),
       )),
+      _row('Font', DropdownButton<PixelFontStyle>(
+        value: layer.fontStyle,
+        isExpanded: true,
+        isDense: true,
+        items: PixelFontStyle.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(fontStyle: v)) : null,
+      )),
       _row('Effect', DropdownButton<AnimationEffect>(
-        value: layer.effect, isExpanded: true, isDense: true,
-        items: AnimationEffect.values.map((e) =>
-            DropdownMenuItem(value: e, child: Text(e.name, style: const TextStyle(fontSize: 12)))).toList(),
-        onChanged: (v) => v != null ? n.updateLayer(layer.copyWith(effect: v)) : null,
+        value: layer.effect,
+        isExpanded: true,
+        isDense: true,
+        items: AnimationEffect.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(effect: v)) : null,
       )),
       _row('Align', DropdownButton<TextAlignment>(
-        value: layer.alignment, isExpanded: true, isDense: true,
-        items: TextAlignment.values.map((e) =>
-            DropdownMenuItem(value: e, child: Text(e.name, style: const TextStyle(fontSize: 12)))).toList(),
-        onChanged: (v) => v != null ? n.updateLayer(layer.copyWith(alignment: v)) : null,
+        value: layer.alignment,
+        isExpanded: true,
+        isDense: true,
+        items: TextAlignment.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(alignment: v)) : null,
       )),
-      _row('Opacity', Slider(
-        value: layer.opacity, min: 0, max: 1,
-        activeColor: const Color(0xFF21C32C),
-        onChanged: (v) => n.updateLayer(layer.copyWith(opacity: v)),
-      )),
+      _row(
+          'Opacity',
+          Slider(
+            value: layer.opacity,
+            min: 0,
+            max: 1,
+            activeColor: const Color(0xFF21C32C),
+            onChanged: (v) => n.updateLayer(layer.copyWith(opacity: v)),
+          )),
     ]);
   }
 }
@@ -135,21 +199,45 @@ class _ClockToolbox extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(sceneProvider.notifier);
     return Column(children: [
+      _row('Color', _colorButton(context, layer.color,
+          (c) => n.updateLayer(layer.copyWith(color: c)))),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ColorPicker(
+          color: layer.color,
+          onChanged: (c) => n.updateLayer(layer.copyWith(color: c)),
+        ),
+      ),
       _row('Format', DropdownButton<ClockFormat>(
-        value: layer.format, isExpanded: true, isDense: true,
-        items: ClockFormat.values.map((e) =>
-            DropdownMenuItem(value: e, child: Text(e.name, style: const TextStyle(fontSize: 12)))).toList(),
-        onChanged: (v) => v != null ? n.updateLayer(layer.copyWith(format: v)) : null,
+        value: layer.format,
+        isExpanded: true,
+        isDense: true,
+        items: ClockFormat.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(format: v)) : null,
       )),
-      _row('Show date',    _toggle(layer.showDate,    (v) => n.updateLayer(layer.copyWith(showDate: v)))),
-      _row('Show seconds', _toggle(layer.showSeconds, (v) => n.updateLayer(layer.copyWith(showSeconds: v)))),
-      _row('Blink colon',  _toggle(layer.blinkColon,  (v) => n.updateLayer(layer.copyWith(blinkColon: v)))),
       _row('Align', DropdownButton<ClockAlignment>(
-        value: layer.alignment, isExpanded: true, isDense: true,
-        items: ClockAlignment.values.map((e) =>
-            DropdownMenuItem(value: e, child: Text(e.name, style: const TextStyle(fontSize: 12)))).toList(),
-        onChanged: (v) => v != null ? n.updateLayer(layer.copyWith(alignment: v)) : null,
+        value: layer.alignment,
+        isExpanded: true,
+        isDense: true,
+        items: ClockAlignment.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(alignment: v)) : null,
       )),
+      _row('Show date',
+          _toggle(layer.showDate, (v) => n.updateLayer(layer.copyWith(showDate: v)))),
+      _row('Show seconds',
+          _toggle(layer.showSeconds, (v) => n.updateLayer(layer.copyWith(showSeconds: v)))),
+      _row('Blink colon',
+          _toggle(layer.blinkColon, (v) => n.updateLayer(layer.copyWith(blinkColon: v)))),
     ]);
   }
 }
@@ -162,7 +250,6 @@ class _GifToolbox extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(sceneProvider.notifier);
     return Column(children: [
-      // File picker — wired via file_picker package
       SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
@@ -172,7 +259,8 @@ class _GifToolbox extends ConsumerWidget {
               allowedExtensions: ['gif', 'png', 'jpg', 'jpeg'],
             );
             if (result != null && result.files.single.path != null) {
-              n.updateLayer(layer.copyWith(filePath: result.files.single.path));
+              n.updateLayer(
+                  layer.copyWith(filePath: result.files.single.path));
             }
           },
           icon: const Icon(Icons.upload_file, size: 16),
@@ -185,16 +273,35 @@ class _GifToolbox extends ConsumerWidget {
           ),
         ),
       ),
-      const SizedBox(height: 8),
+      if (layer.filePath != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: TextButton(
+            onPressed: () =>
+                n.updateLayer(layer.copyWith(clearFilePath: true)),
+            child: const Text('Remove file',
+                style: TextStyle(fontSize: 11, color: Colors.red)),
+          ),
+        ),
+      const SizedBox(height: 6),
       _row('Layout', DropdownButton<MediaLayout>(
-        value: layer.layout, isExpanded: true, isDense: true,
-        items: MediaLayout.values.map((e) =>
-            DropdownMenuItem(value: e, child: Text(e.name, style: const TextStyle(fontSize: 12)))).toList(),
-        onChanged: (v) => v != null ? n.updateLayer(layer.copyWith(layout: v)) : null,
+        value: layer.layout,
+        isExpanded: true,
+        isDense: true,
+        items: MediaLayout.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(layout: v)) : null,
       )),
-      _row('Dithering',  _toggle(layer.dithering,   (v) => n.updateLayer(layer.copyWith(dithering: v)))),
-      _row('Grayscale',  _toggle(layer.grayscale,   (v) => n.updateLayer(layer.copyWith(grayscale: v)))),
-      _row('Invert',     _toggle(layer.invertColor, (v) => n.updateLayer(layer.copyWith(invertColor: v)))),
+      _row('Dithering',
+          _toggle(layer.dithering, (v) => n.updateLayer(layer.copyWith(dithering: v)))),
+      _row('Grayscale',
+          _toggle(layer.grayscale, (v) => n.updateLayer(layer.copyWith(grayscale: v)))),
+      _row('Invert',
+          _toggle(layer.invertColor, (v) => n.updateLayer(layer.copyWith(invertColor: v)))),
     ]);
   }
 }
@@ -206,28 +313,74 @@ class _SpotifyToolbox extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(sceneProvider.notifier);
+    final spotifyState = ref.watch(spotifyServiceProvider);
+
     return Column(children: [
-      _row('Layout', DropdownButton<SpotifyLayout>(
-        value: layer.layout, isExpanded: true, isDense: true,
-        items: SpotifyLayout.values.map((e) =>
-            DropdownMenuItem(value: e, child: Text(e.name, style: const TextStyle(fontSize: 12)))).toList(),
-        onChanged: (v) => v != null ? n.updateLayer(layer.copyWith(layout: v)) : null,
-      )),
-      _row('Show title',    _toggle(layer.showTitle,    (v) => n.updateLayer(layer.copyWith(showTitle: v)))),
-      _row('Show artist',   _toggle(layer.showArtist,   (v) => n.updateLayer(layer.copyWith(showArtist: v)))),
-      _row('Show progress', _toggle(layer.showProgress, (v) => n.updateLayer(layer.copyWith(showProgress: v)))),
-      const SizedBox(height: 12),
-      SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1DB954), foregroundColor: Colors.white),
-          onPressed: () {
-            // TODO: launch Spotify OAuth flow
-          },
-          child: const Text('Connect with Spotify', style: TextStyle(fontSize: 13)),
+      // Connection status
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(.04),
+          borderRadius: BorderRadius.circular(8),
         ),
+        child: spotifyState.isConnected
+            ? Row(children: [
+                const Icon(Icons.music_note, size: 16, color: Color(0xFF1DB954)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(spotifyState.currentTrackTitle ?? 'Playing',
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis),
+                      Text(spotifyState.currentArtist ?? '',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.grey),
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 16),
+                  onPressed: () =>
+                      ref.read(spotifyServiceProvider.notifier).refresh(),
+                  tooltip: 'Refresh track',
+                ),
+              ])
+            : SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1DB954),
+                      foregroundColor: Colors.white),
+                  onPressed: () =>
+                      ref.read(spotifyServiceProvider.notifier).connect(),
+                  child: const Text('Connect with Spotify',
+                      style: TextStyle(fontSize: 13)),
+                ),
+              ),
       ),
+      const SizedBox(height: 10),
+      _row('Layout', DropdownButton<SpotifyLayout>(
+        value: layer.layout,
+        isExpanded: true,
+        isDense: true,
+        items: SpotifyLayout.values
+            .map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(e.name, style: const TextStyle(fontSize: 12))))
+            .toList(),
+        onChanged: (v) =>
+            v != null ? n.updateLayer(layer.copyWith(layout: v)) : null,
+      )),
+      _row('Show title',
+          _toggle(layer.showTitle, (v) => n.updateLayer(layer.copyWith(showTitle: v)))),
+      _row('Show artist',
+          _toggle(layer.showArtist, (v) => n.updateLayer(layer.copyWith(showArtist: v)))),
+      _row('Show progress',
+          _toggle(layer.showProgress, (v) => n.updateLayer(layer.copyWith(showProgress: v)))),
     ]);
   }
 }
@@ -240,12 +393,28 @@ class _PomodoroToolbox extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(sceneProvider.notifier);
     return Column(children: [
-      _row('Focus (min)',  _stepper(layer.focusDurationMinutes,  (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)))),
-      _row('Short break',  _stepper(layer.shortBreakMinutes,     (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)))),
-      _row('Long break',   _stepper(layer.longBreakMinutes,      (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)))),
-      _row('Sessions',     _stepper(layer.sessionsBeforeLongBreak,(v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)))),
-      _row('Show seconds', _toggle(layer.showSeconds, (v) => n.updateLayer(layer.copyWith(showSeconds: v)))),
-      _row('Blink color',  _toggle(layer.blinkColor,  (v) => n.updateLayer(layer.copyWith(blinkColor: v)))),
+      // Focus color
+      _row('Focus color',
+          _colorButton(context, layer.focusColor,
+              (c) => n.updateLayer(layer.copyWith(focusColor: c)))),
+      // Break color
+      _row('Break color',
+          _colorButton(context, layer.breakColor,
+              (c) => n.updateLayer(layer.copyWith(breakColor: c)))),
+      const Divider(height: 16),
+      _row('Focus (min)',  _stepper(layer.focusDurationMinutes,
+          (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)))),
+      _row('Short break', _stepper(layer.shortBreakMinutes,
+          (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)))),
+      _row('Long break',  _stepper(layer.longBreakMinutes,
+          (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)))),
+      _row('Sessions',    _stepper(layer.sessionsBeforeLongBreak,
+          (v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)))),
+      const Divider(height: 16),
+      _row('Show seconds',
+          _toggle(layer.showSeconds, (v) => n.updateLayer(layer.copyWith(showSeconds: v)))),
+      _row('Blink color',
+          _toggle(layer.blinkColor,  (v) => n.updateLayer(layer.copyWith(blinkColor: v)))),
     ]);
   }
 
@@ -256,8 +425,10 @@ class _PomodoroToolbox extends ConsumerWidget {
           constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
           padding: EdgeInsets.zero,
         ),
-        SizedBox(width: 28,
-            child: Text('$value', textAlign: TextAlign.center,
+        SizedBox(
+            width: 28,
+            child: Text('$value',
+                textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13))),
         IconButton(
           icon: const Icon(Icons.add, size: 14),
