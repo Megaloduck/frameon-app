@@ -1,15 +1,15 @@
 import 'dart:typed_data';
 
-import '../scene/layer.dart';
-import '../scene/scene.dart';
-import '../scene/timeline.dart';
-import '../widgets/clock_widget.dart';
-import '../widgets/gif_widget.dart';
-import '../widgets/pomodoro_widget.dart';
-import '../widgets/spotify_widget.dart';
-import '../widgets/text_widget.dart';
-import 'pixel_buffer.dart';
-import 'rgb565_encoder.dart';
+import '../../../engine/scene/layer.dart';
+import '../../../engine/scene/scene.dart';
+import '../../../engine/scene/timeline.dart';
+import '../../../engine/widgets/clock_widget.dart';
+import '../../../engine/widgets/gif_widget.dart';
+import '../../../engine/widgets/pomodoro_widget.dart';
+import '../../../engine/widgets/spotify_widget.dart';
+import '../../../engine/widgets/text_widget.dart';
+import '../../../engine/renderer/pixel_buffer.dart';
+import '../../../engine/renderer/rgb565_encoder.dart';
 
 /// The [MatrixRenderer] is the central compositing engine.
 ///

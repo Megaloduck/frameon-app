@@ -1,17 +1,14 @@
 import 'dart:ui';
 
 import '../renderer/pixel_buffer.dart';
+import '../renderer/pixel_font.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
-import 'text_widget.dart';
 
 /// Runtime state for a running Pomodoro timer.
-/// Produced by the PomodoroService and passed into [PomodoroWidget.renderWithState].
 class PomodoroTimerState {
-  /// Remaining time on the current interval.
   final Duration remaining;
   final PomodoroState phase;
-  /// Current session number (1-based).
   final int session;
   final bool isRunning;
 
@@ -29,103 +26,84 @@ class PomodoroTimerState {
   );
 }
 
-/// Renders a [PomodoroLayer] into a [PixelBuffer].
-///
-/// Uses [PomodoroTimerState] from the running timer service for live
-/// remaining-time display. Falls back to the layer's configured focus
-/// duration when no state is provided (e.g. during export).
-///
-/// Color is determined by [PomodoroLayer.currentState] via [Layer.activeColor]:
-/// - [PomodoroState.focus]      → [PomodoroLayer.focusColor] (yellow)
-/// - [PomodoroState.shortBreak] → [PomodoroLayer.breakColor] (green)
-/// - [PomodoroState.longBreak]  → [PomodoroLayer.breakColor]
-///
-/// Blink effect: when [PomodoroLayer.blinkColor] is true and the timer
-/// is in its last 10 seconds, the color alternates at 1 Hz.
+/// Renders a [PomodoroLayer] into a [PixelBuffer] using the real 5×7 font.
 class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   const PomodoroWidget();
 
-  static const _textWidget = TextWidget();
-
-  /// Render with live timer state from the PomodoroService.
   void renderWithState(
     PomodoroLayer layer,
     PixelBuffer buffer,
     int elapsedMs,
-    PomodoroTimerState timerState,
+    PomodoroTimerState state,
   ) {
-    final Duration remaining = timerState.remaining;
-    final int totalSeconds =
-        remaining.inMinutes * 60 + remaining.inSeconds % 60;
+    final int secs = state.remaining.inSeconds;
 
-    // Determine display color — blink in the final 10 seconds.
-    Color color = layer.activeColor;
-    if (layer.blinkColor && totalSeconds <= 10) {
-      final bool hide = (elapsedMs ~/ 500) % 2 == 1;
-      if (hide) return; // entire widget hidden on "off" tick
+    // Blink the entire display in the last 10 seconds.
+    if (layer.blinkColor && secs <= 10) {
+      if ((elapsedMs ~/ 500) % 2 == 1) return;
     }
 
-    final String display = _formatTime(remaining, layer.showSeconds);
-    _renderDisplay(buffer, display, color, layer, elapsedMs);
+    _renderTime(buffer, state.remaining, layer, elapsedMs);
 
     if (layer.showSession) {
-      _renderSession(buffer, timerState.session, color);
+      _renderSessionDots(buffer, state.session, layer.activeColor);
     }
   }
 
   @override
   void render(PomodoroLayer layer, PixelBuffer buffer, int elapsedMs) {
-    // Fallback: render with the configured focus duration as a static display.
-    final Duration remaining =
-        Duration(minutes: layer.focusDurationMinutes);
-    final String display = _formatTime(remaining, layer.showSeconds);
-    _renderDisplay(buffer, display, layer.activeColor, layer, elapsedMs);
+    _renderTime(
+      buffer,
+      Duration(minutes: layer.focusDurationMinutes),
+      layer,
+      elapsedMs,
+    );
   }
 
   // ── Private ───────────────────────────────────────────────────────────────
 
-  void _renderDisplay(
+  void _renderTime(
     PixelBuffer buffer,
-    String display,
-    Color color,
+    Duration remaining,
     PomodoroLayer layer,
     int elapsedMs,
   ) {
-    _textWidget.render(
-      TextLayer(
-        id: '',
-        name: '',
-        text: display,
-        color: color,
-        alignment: TextAlignment.center,
-        offset: layer.offset,
-      ),
-      buffer,
-      0, // no scroll/blink — handled above
+    final String display = _format(remaining, layer.showSeconds, elapsedMs);
+    final int y = (buffer.height - PixelFont.glyphHeight) ~/ 2 + layer.offset.dy.round();
+
+    PixelFont.drawCentered(
+      buffer: buffer,
+      text: display,
+      color: layer.activeColor,
+      bufferWidth: buffer.width,
+      y: y,
+      opacity: layer.opacity,
     );
   }
 
-  void _renderSession(PixelBuffer buffer, int session, Color color) {
-    // Draw [session] small dots in the bottom-right corner.
-    // Each dot is 2×2 px, spaced 3 px apart.
+  /// Format remaining time. The colon blinks at 1 Hz driven by [elapsedMs].
+  String _format(Duration d, bool showSeconds, int elapsedMs) {
+    final bool colonOn = (elapsedMs % 1000) < 500;
+    final String sep = colonOn ? ':' : ' ';
+    final int m = d.inMinutes.remainder(60);
+    final int s = d.inSeconds.remainder(60);
+    return showSeconds
+        ? '${_pad(m)}$sep${_pad(s)}'
+        : '${_pad(m)}$sep${_pad(00)}';
+  }
+
+  /// Draw small session-indicator dots in the bottom-right corner.
+  void _renderSessionDots(PixelBuffer buffer, int session, Color color) {
     const int dotSize = 2;
-    const int dotSpacing = 3;
-    final int totalW = session * dotSpacing - 1;
+    const int dotGap  = 1;
+    final int totalW  = session * dotSize + (session - 1) * dotGap;
     int x = buffer.width - totalW - 2;
-    final int y = buffer.height - dotSize - 2;
+    final int y = buffer.height - dotSize - 1;
 
     for (int i = 0; i < session; i++) {
       buffer.fillRect(x, y, dotSize, dotSize, color);
-      x += dotSpacing;
+      x += dotSize + dotGap;
     }
-  }
-
-  String _formatTime(Duration d, bool showSeconds) {
-    final int m = d.inMinutes;
-    final int s = d.inSeconds % 60;
-    return showSeconds
-        ? '${_pad(m)}:${_pad(s)}'
-        : '${_pad(m)}:00';
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');

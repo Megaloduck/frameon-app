@@ -1,53 +1,53 @@
 import 'dart:ui';
 
 import '../renderer/pixel_buffer.dart';
+import '../renderer/pixel_font.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
-import 'text_widget.dart';
 
-/// Renders a [ClockLayer] into a [PixelBuffer].
+/// Renders a [ClockLayer] into a [PixelBuffer] using the real 5×7 [PixelFont].
 ///
-/// Reads the current system time on every frame so the preview stays live.
-/// The colon blinks at 1 Hz when [ClockLayer.blinkColon] is true.
-///
-/// Layout (single-line):
-///   HH:MM          (24-h, seconds off)
-///   HH:MM:SS       (24-h, seconds on)
-///   H:MM AM/PM     (12-h, seconds off)
-///
-/// Date line (when [ClockLayer.showDate] is true) renders on the row above
-/// the time using the same glyph approach.
+/// Colon blink strategy:
+/// - In live preview [elapsedMs] advances with wall-clock time so the colon
+///   blinks naturally.
+/// - In frame export [elapsedMs] is synthetic (frameIdx × frameDurationMs);
+///   the colon blinks on a per-frame basis consistent with the exported timing.
+///   This fixes the previous bug where [elapsedMs] was hard-coded to 0.
 class ClockWidget extends MatrixWidget<ClockLayer> {
   const ClockWidget();
-
-  // Reuse the text drawing logic from TextWidget.
-  static const _textWidget = TextWidget();
 
   @override
   void render(ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
     final now = DateTime.now();
 
-    // Colon visibility: hidden during the second half of every second.
-    final bool colonOn = !layer.blinkColon || (now.millisecond < 500);
+    // Colon: visible for the first half of every second.
+    // For live preview we use wall-clock milliseconds; during export we use
+    // elapsedMs so exported frames are deterministic and consistent.
+    final bool colonOn =
+        !layer.blinkColon || (elapsedMs % 1000) < 500;
     final String sep = colonOn ? ':' : ' ';
 
-    final String timeStr = _buildTimeString(now, layer, sep);
+    final String timeStr = _buildTimeStr(now, layer, sep);
 
-    // Render time — vertically centred; horizontally per alignment.
-    final int yOffset = layer.showDate ? -4 : 0;
-    _drawString(buffer, timeStr, layer.color, layer.alignment, 0, yOffset);
+    // Vertical layout: if showing date, shift time down slightly.
+    final int totalH = layer.showDate
+        ? PixelFont.glyphHeight * 2 + 2
+        : PixelFont.glyphHeight;
+    final int startY = (buffer.height - totalH) ~/ 2;
 
-    // Render date above the time when requested.
     if (layer.showDate) {
       final String dateStr =
-          '${_pad(now.day)}/${_pad(now.month)}/${now.year % 100}';
-      _drawString(buffer, dateStr, layer.color, layer.alignment, 0, -12);
+          '${_pad(now.day)}.${_pad(now.month)}.${now.year % 100}';
+      _draw(buffer, dateStr, layer, startY);
+      _draw(buffer, timeStr, layer, startY + PixelFont.glyphHeight + 2);
+    } else {
+      _draw(buffer, timeStr, layer, startY);
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  String _buildTimeString(DateTime now, ClockLayer layer, String sep) {
+  String _buildTimeStr(DateTime now, ClockLayer layer, String sep) {
     if (layer.format == ClockFormat.h24) {
       final String base = '${_pad(now.hour)}$sep${_pad(now.minute)}';
       return layer.showSeconds ? '$base$sep${_pad(now.second)}' : base;
@@ -61,33 +61,25 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     }
   }
 
-  void _drawString(
-    PixelBuffer buffer,
-    String text,
-    Color color,
-    ClockAlignment alignment,
-    int xOff,
-    int yOff,
-  ) {
-    // Map ClockAlignment → TextAlignment for the shared drawing helper.
-    final TextAlignment textAlign = switch (alignment) {
-      ClockAlignment.left   => TextAlignment.left,
-      ClockAlignment.center => TextAlignment.center,
-      ClockAlignment.right  => TextAlignment.right,
-    };
-
-    _textWidget.render(
-      TextLayer(
-        id: '',
-        name: '',
-        text: text,
-        color: color,
-        alignment: textAlign,
-        offset: Offset(xOff.toDouble(), yOff.toDouble()),
-      ),
-      buffer,
-      0, // elapsedMs — clocks don't use animation effects internally
-    );
+  void _draw(PixelBuffer buffer, String text, ClockLayer layer, int y) {
+    switch (layer.alignment) {
+      case ClockAlignment.left:
+        PixelFont.draw(
+          buffer: buffer, text: text, color: layer.color,
+          x: layer.offset.dx.round(), y: y, opacity: layer.opacity,
+        );
+      case ClockAlignment.center:
+        PixelFont.drawCentered(
+          buffer: buffer, text: text, color: layer.color,
+          bufferWidth: buffer.width, y: y, opacity: layer.opacity,
+        );
+      case ClockAlignment.right:
+        PixelFont.drawRight(
+          buffer: buffer, text: text, color: layer.color,
+          rightEdge: buffer.width + layer.offset.dx.round(),
+          y: y, opacity: layer.opacity,
+        );
+    }
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
