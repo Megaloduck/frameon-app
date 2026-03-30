@@ -1,49 +1,31 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
 import '../widgets/gif_widget.dart';
 
-/// Decodes a GIF, PNG, or JPEG file from disk into a [GifAsset] ready for
-/// compositing by [GifWidget].
+/// Decodes GIF / PNG / JPEG bytes into a [GifAsset] for compositing.
 ///
-/// For animated GIFs every frame is decoded and its display duration is
-/// preserved. Static images produce a single-frame [GifAsset].
+/// ## Platform safety
+/// This file has **no `dart:io` import** — it works on Web, Desktop, Mobile.
+/// File loading is the caller's responsibility:
+/// - Desktop/Mobile: read bytes via `dart:io` File then call [decodeBytes].
+/// - Web: use `XFile.readAsBytes()` or the `file_picker` bytes field.
 ///
-/// All pixel data is stored as ARGB32 [Uint32List] matching [PixelBuffer]'s
-/// internal format so [GifWidget._blit] can read pixels directly.
+/// For a desktop convenience wrapper see `gif_decoder_io.dart`.
 class GifDecoder {
   const GifDecoder();
 
-  /// Decode [file] and return a [GifAsset], or null on error.
-  Future<GifAsset?> decode(File file) async {
+  /// Decode raw [bytes] into a [GifAsset]. Returns null on failure.
+  GifAsset? decodeBytes(Uint8List bytes) {
     try {
-      final Uint8List bytes = await file.readAsBytes();
-      return decodeBytes(bytes, path: file.path);
-    } catch (e) {
-      // Swallow decode errors — the renderer treats null as "not loaded yet".
-      return null;
-    }
-  }
-
-  /// Decode raw [bytes] (useful for web where there is no File API).
-  GifAsset? decodeBytes(Uint8List bytes, {String path = ''}) {
-    try {
-      final img.Image? decoded = img.decodeImage(bytes);
-      if (decoded == null) return null;
-
-      // img.decodeImage collapses animated GIFs to the first frame.
-      // For animated GIFs we need decodeAnimation.
-      if (_isGif(path, bytes)) {
+      if (_isGif(bytes)) {
         final img.Animation? anim = img.decodeAnimation(bytes);
-        if (anim != null && anim.length > 1) {
-          return _fromAnimation(anim);
-        }
+        if (anim != null && anim.length > 1) return _fromAnimation(anim);
       }
-
-      // Single frame (PNG, JPEG, or single-frame GIF).
-      return GifAsset(frames: [_frameFromImage(decoded, durationMs: 100)]);
+      final img.Image? frame = img.decodeImage(bytes);
+      if (frame == null) return null;
+      return GifAsset(frames: [_frameFromImage(frame, durationMs: 100)]);
     } catch (_) {
       return null;
     }
@@ -53,46 +35,30 @@ class GifDecoder {
 
   GifAsset _fromAnimation(img.Animation anim) {
     final List<DecodedFrame> frames = [];
-    for (final img.Image frame in anim) {
-      // GIF frame duration is stored in centiseconds; convert to ms.
-      final int durationMs =
-          frame.frameDuration > 0 ? frame.frameDuration * 10 : 100;
-      frames.add(_frameFromImage(frame, durationMs: durationMs));
+    for (final img.Image f in anim) {
+      final int ms = f.frameDuration > 0 ? f.frameDuration * 10 : 100;
+      frames.add(_frameFromImage(f, durationMs: ms));
     }
     return GifAsset(frames: frames);
   }
 
   DecodedFrame _frameFromImage(img.Image image, {required int durationMs}) {
-    // Ensure we have RGBA8888 — convert if the source uses a different format.
-    final img.Image rgba = image.format == img.Format.uint8 && image.numChannels == 4
-        ? image
-        : image.convert(format: img.Format.uint8, numChannels: 4);
+    // Normalise to RGBA8888
+    final img.Image rgba =
+        (image.format == img.Format.uint8 && image.numChannels == 4)
+            ? image
+            : image.convert(format: img.Format.uint8, numChannels: 4);
 
-    final int pixelCount = rgba.width * rgba.height;
-    final Uint32List argb = Uint32List(pixelCount);
-
-    // img stores pixels as RGBA; PixelBuffer expects ARGB.
+    final int n = rgba.width * rgba.height;
+    final Uint32List argb = Uint32List(n);
     final Uint8List raw = rgba.toUint8List();
-    for (int i = 0; i < pixelCount; i++) {
-      final int r = raw[i * 4];
-      final int g = raw[i * 4 + 1];
-      final int b = raw[i * 4 + 2];
-      final int a = raw[i * 4 + 3];
-      argb[i] = (a << 24) | (r << 16) | (g << 8) | b;
+    // img: RGBA → PixelBuffer: ARGB
+    for (int i = 0; i < n; i++) {
+      argb[i] = (raw[i*4+3] << 24) | (raw[i*4] << 16) | (raw[i*4+1] << 8) | raw[i*4+2];
     }
-
-    return DecodedFrame(
-      pixels: argb,
-      width: rgba.width,
-      height: rgba.height,
-      durationMs: durationMs,
-    );
+    return DecodedFrame(pixels: argb, width: rgba.width, height: rgba.height, durationMs: durationMs);
   }
 
-  bool _isGif(String path, Uint8List bytes) {
-    if (path.toLowerCase().endsWith('.gif')) return true;
-    // Check GIF magic bytes: GIF87a or GIF89a
-    if (bytes.length < 6) return false;
-    return bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46;
-  }
+  bool _isGif(Uint8List b) =>
+      b.length >= 6 && b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46;
 }

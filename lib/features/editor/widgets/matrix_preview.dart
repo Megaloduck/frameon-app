@@ -1,159 +1,153 @@
-import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../engine/scene/layer.dart';
-import '../../../engine/scene/scene.dart';
-import '../../../engine/scene/timeline.dart';
-import '../../../engine/widgets/clock_widget.dart';
-import '../../../engine/widgets/gif_widget.dart';
-import '../../../engine/widgets/pomodoro_widget.dart';
-import '../../../engine/widgets/spotify_widget.dart';
-import '../../../engine/widgets/text_widget.dart';
 import '../../../engine/renderer/pixel_buffer.dart';
 import '../../../engine/renderer/rgb565_encoder.dart';
+import '../../../engine/scene/timeline.dart';
+import '../../../shared/providers/providers.dart';
+import '../../../shared/providers/zoom_provider.dart';
 
-/// The [MatrixRenderer] is the central compositing engine.
-///
-/// It takes a [Scene], renders each visible [Layer] into a [PixelBuffer]
-/// via the appropriate [MatrixWidget], composites them back-to-front using
-/// Porter-Duff SRC_OVER blending, encodes each composite to RGB565, and
-/// accumulates the result into a [Timeline].
-///
-/// ## Thread safety
-/// [render] is `async` because asset loading (GIFs, album art) involves I/O.
-/// All pixel operations run on the calling isolate — move to a compute isolate
-/// if frame-rate suffers on large scenes.
-class MatrixRenderer {
-  MatrixRenderer();
+// ─────────────────────────────────────────────────────────────────────────────
+// MatrixPreview
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // ── Widget singletons (stateless — safe to share) ──────────────────────
-  static const _textWidget     = TextWidget();
-  static const _clockWidget    = ClockWidget();
-  static const _gifWidget      = GifWidget();
-  static const _spotifyWidget  = SpotifyWidget();
-  static const _pomodoroWidget = PomodoroWidget();
+/// Live LED dot-matrix preview. Scales dot size based on [zoomProvider].
+class MatrixPreview extends ConsumerStatefulWidget {
+  const MatrixPreview({super.key});
 
-  final Rgb565Encoder _encoder = const Rgb565Encoder();
+  @override
+  ConsumerState<MatrixPreview> createState() => _MatrixPreviewState();
+}
 
-  /// Reused output buffer — avoids one allocation per frame.
-  late Uint8List _encoded;
+class _MatrixPreviewState extends ConsumerState<MatrixPreview>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  int _elapsedMs = 0;
+  DateTime? _lastTick;
 
-  // ── Public API ────────────────────────────────────────────────────────────
-
-  /// Render [scene] into a [Timeline].
-  ///
-  /// [frameDurationMs] — display time per frame (default 100 ms = 10 fps).
-  /// [frameCount]      — number of frames to produce (default 33 ≈ 3.3 s).
-  Future<Timeline> render(
-    Scene scene, {
-    int frameDurationMs = 100,
-    int frameCount = 33,
-  }) async {
-    final int w = scene.matrixWidth;
-    final int h = scene.matrixHeight;
-    _encoded = Uint8List(w * h * 2);
-
-    final timeline = Timeline();
-    final assets = await _preloadAssets(scene);
-
-    for (int frameIdx = 0; frameIdx < frameCount; frameIdx++) {
-      final int elapsedMs = frameIdx * frameDurationMs;
-
-      final composite = PixelBuffer(width: w, height: h); // starts transparent
-
-      for (final layer in scene.visibleLayers) {
-        final layerBuffer = PixelBuffer(width: w, height: h);
-        _renderLayer(layer, layerBuffer, elapsedMs, assets);
-        composite.blendOver(layerBuffer);
-      }
-
-      _encoder.encodeInto(composite, _encoded);
-      timeline.addFrame(Frame(
-        data: Uint8List.fromList(_encoded),
-        durationMs: frameDurationMs,
-      ));
-    }
-
-    return timeline;
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick)..start();
   }
 
-  // ── Layer dispatch ────────────────────────────────────────────────────────
-
-  void _renderLayer(
-    Layer layer,
-    PixelBuffer buffer,
-    int elapsedMs,
-    _AssetCache assets,
-  ) {
-    switch (layer.type) {
-      case LayerType.text:
-        _textWidget.render(layer as TextLayer, buffer, elapsedMs);
-
-      case LayerType.clock:
-        _clockWidget.render(layer as ClockLayer, buffer, elapsedMs);
-
-      case LayerType.gif:
-        final gifLayer = layer as GifLayer;
-        final asset = gifLayer.filePath != null
-            ? assets.gifs[gifLayer.filePath]
-            : null;
-        _gifWidget.renderWithAsset(gifLayer, buffer, elapsedMs, asset);
-
-      case LayerType.spotify:
-        // Live track is injected by the Spotify service provider at runtime.
-        // During offline render (export), we use a placeholder track.
-        _spotifyWidget.renderWithTrack(
-          layer as SpotifyLayer,
-          buffer,
-          elapsedMs,
-          assets.spotifyTrack ?? SpotifyTrack.empty,
-        );
-
-      case LayerType.pomodoro:
-        // Timer state is injected by the Pomodoro service at runtime.
-        // During export, we render the static configured duration.
-        if (assets.pomodoroState != null) {
-          _pomodoroWidget.renderWithState(
-            layer as PomodoroLayer,
-            buffer,
-            elapsedMs,
-            assets.pomodoroState!,
-          );
-        } else {
-          _pomodoroWidget.render(layer as PomodoroLayer, buffer, elapsedMs);
-        }
+  void _onTick(Duration _) {
+    final now = DateTime.now();
+    if (_lastTick != null && ref.read(previewPlayingProvider)) {
+      _elapsedMs += now.difference(_lastTick!).inMilliseconds;
+      ref.read(previewElapsedMsProvider.notifier).state = _elapsedMs;
     }
+    _lastTick = now;
   }
 
-  // ── Asset pre-loading ─────────────────────────────────────────────────────
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
 
-  Future<_AssetCache> _preloadAssets(Scene scene) async {
-    final cache = _AssetCache();
+  @override
+  Widget build(BuildContext context) {
+    final timelineAsync = ref.watch(timelineProvider);
+    final elapsedMs     = ref.watch(previewElapsedMsProvider);
+    // Zoom is informational here — MatrixPreview fills its parent;
+    // zoom is used by the parent to size the container if needed.
+    // The dot size auto-scales to the available space.
 
-    for (final layer in scene.layers) {
-      if (layer is GifLayer && layer.filePath != null) {
-        final path = layer.filePath!;
-        if (!cache.gifs.containsKey(path)) {
-          // TODO: decode using the `image` package:
-          //   final img = decodeGif(await File(path).readAsBytes());
-          //   cache.gifs[path] = GifAsset(frames: img.frames.map(...).toList());
-          cache.gifs[path] = null; // placeholder until decoder is wired
-        }
-      }
-    }
-
-    return cache;
+    return Container(
+      color: const Color(0xFF0A0A0A),
+      child: AspectRatio(
+        aspectRatio: 64 / 32,
+        child: timelineAsync.when(
+          loading: () => const _Loading(),
+          error: (e, _) => const _Error(),
+          data: (t) => _Canvas(timeline: t, elapsedMs: elapsedMs),
+        ),
+      ),
+    );
   }
 }
 
-// ── Internal asset cache ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Canvas + Painter
+// ─────────────────────────────────────────────────────────────────────────────
 
-class _AssetCache {
-  /// Decoded GIF frames keyed by file path. Null value = decode pending.
-  final Map<String, GifAsset?> gifs = {};
+class _Canvas extends StatelessWidget {
+  final Timeline timeline;
+  final int elapsedMs;
+  const _Canvas({required this.timeline, required this.elapsedMs});
 
-  /// Current Spotify track — injected from SpotifyService at render time.
-  SpotifyTrack? spotifyTrack;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (_, c) => CustomPaint(
+          size: Size(c.maxWidth, c.maxHeight),
+          painter: _Painter(timeline: timeline, elapsedMs: elapsedMs),
+        ),
+      );
+}
 
-  /// Current Pomodoro state — injected from PomodoroService at render time.
-  PomodoroTimerState? pomodoroState;
+class _Painter extends CustomPainter {
+  final Timeline timeline;
+  final int elapsedMs;
+
+  static const int _cols = 64;
+  static const int _rows = 32;
+  static const _dec = Rgb565Encoder();
+
+  const _Painter({required this.timeline, required this.elapsedMs});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0xFF0A0A0A));
+
+    final Frame? frame = timeline.frameAt(elapsedMs);
+    if (frame == null) return;
+
+    final PixelBuffer buf = _dec.decode(frame.data);
+    final double dW = size.width / _cols;
+    final double dH = size.height / _rows;
+    // Dot radius = 78% of half a cell (leaves 22% gap — matches real LED panels)
+    final double r = (dW < dH ? dW : dH) * 0.39;
+    final Paint paint = Paint()..isAntiAlias = true;
+
+    for (int row = 0; row < _rows; row++) {
+      for (int col = 0; col < _cols; col++) {
+        final int argb = buf.getPixel(col, row);
+        final bool on  = (argb & 0x00FFFFFF) > 0x080808;
+        paint.color = on ? Color(argb | 0xFF000000) : const Color(0xFF111111);
+        canvas.drawCircle(
+            Offset(col * dW + dW / 2, row * dH + dH / 2), r, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Painter old) =>
+      old.elapsedMs != elapsedMs || old.timeline != timeline;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Loading / error states
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Loading extends StatelessWidget {
+  const _Loading();
+  @override
+  Widget build(BuildContext context) => const Center(
+        child: SizedBox(
+          width: 20, height: 20,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: Color(0xFF21C32C)),
+        ),
+      );
+}
+
+class _Error extends StatelessWidget {
+  const _Error();
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Text('render error',
+            style: TextStyle(color: Colors.red.shade400, fontSize: 11)),
+      );
 }

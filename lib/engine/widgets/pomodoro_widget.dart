@@ -26,7 +26,7 @@ class PomodoroTimerState {
   );
 }
 
-/// Renders a [PomodoroLayer] into a [PixelBuffer] using the real 5×7 font.
+/// Renders a [PomodoroLayer] into a [PixelBuffer] using the 5×7 [PixelFont].
 class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   const PomodoroWidget();
 
@@ -36,73 +36,44 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
     int elapsedMs,
     PomodoroTimerState state,
   ) {
-    final int secs = state.remaining.inSeconds;
-
-    // Blink the entire display in the last 10 seconds.
-    if (layer.blinkColor && secs <= 10) {
+    if (layer.blinkColor && state.remaining.inSeconds <= 10) {
       if ((elapsedMs ~/ 500) % 2 == 1) return;
     }
-
     _renderTime(buffer, state.remaining, layer, elapsedMs);
-
-    if (layer.showSession) {
-      _renderSessionDots(buffer, state.session, layer.activeColor);
-    }
+    if (layer.showSession) _renderSessionDots(buffer, state.session, layer.activeColor);
   }
 
   @override
   void render(PomodoroLayer layer, PixelBuffer buffer, int elapsedMs) {
-    _renderTime(
-      buffer,
-      Duration(minutes: layer.focusDurationMinutes),
-      layer,
-      elapsedMs,
-    );
+    _renderTime(buffer, Duration(minutes: layer.focusDurationMinutes), layer, elapsedMs);
   }
 
   // ── Private ───────────────────────────────────────────────────────────────
 
-  void _renderTime(
-    PixelBuffer buffer,
-    Duration remaining,
-    PomodoroLayer layer,
-    int elapsedMs,
-  ) {
-    final String display = _format(remaining, layer.showSeconds, elapsedMs);
-    final int y = (buffer.height - PixelFont.glyphHeight) ~/ 2 + layer.offset.dy.round();
-
-    PixelFont.drawCentered(
-      buffer: buffer,
-      text: display,
-      color: layer.activeColor,
-      bufferWidth: buffer.width,
-      y: y,
-      opacity: layer.opacity,
-    );
+  void _renderTime(PixelBuffer buf, Duration d, PomodoroLayer layer, int t) {
+    final String text = _format(d, layer.showSeconds, t);
+    final int y = (buf.height - PixelFont.glyphHeight) ~/ 2 + layer.offset.dy.round();
+    PixelFont.drawCentered(buffer: buf, text: text, color: layer.activeColor,
+        bufferWidth: buf.width, y: y, opacity: layer.opacity);
   }
 
-  /// Format remaining time. The colon blinks at 1 Hz driven by [elapsedMs].
+  /// Formats the remaining time. Fixed: was `_pad(00)` (always "00"),
+  /// now correctly uses `_pad(s)` for the actual seconds value.
   String _format(Duration d, bool showSeconds, int elapsedMs) {
     final bool colonOn = (elapsedMs % 1000) < 500;
     final String sep = colonOn ? ':' : ' ';
     final int m = d.inMinutes.remainder(60);
     final int s = d.inSeconds.remainder(60);
-    return showSeconds
-        ? '${_pad(m)}$sep${_pad(s)}'
-        : '${_pad(m)}$sep${_pad(00)}';
+    return showSeconds ? '${_pad(m)}$sep${_pad(s)}' : '${_pad(m)}${sep}00';
   }
 
-  /// Draw small session-indicator dots in the bottom-right corner.
-  void _renderSessionDots(PixelBuffer buffer, int session, Color color) {
-    const int dotSize = 2;
-    const int dotGap  = 1;
-    final int totalW  = session * dotSize + (session - 1) * dotGap;
-    int x = buffer.width - totalW - 2;
-    final int y = buffer.height - dotSize - 1;
-
+  void _renderSessionDots(PixelBuffer buf, int session, Color color) {
+    const int ds = 2, dg = 1;
+    int x = buf.width - (session * ds + (session - 1) * dg) - 2;
+    final int y = buf.height - ds - 1;
     for (int i = 0; i < session; i++) {
-      buffer.fillRect(x, y, dotSize, dotSize, color);
-      x += dotSize + dotGap;
+      buf.fillRect(x, y, ds, ds, color);
+      x += ds + dg;
     }
   }
 

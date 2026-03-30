@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import '../scene/layer.dart';
@@ -13,31 +12,46 @@ import 'gif_decoder.dart';
 import 'pixel_buffer.dart';
 import 'rgb565_encoder.dart';
 
-/// Central compositing engine.
+/// Central compositing engine. No dart:io — runs on all platforms.
 ///
-/// Renders each visible [Layer] via its [MatrixWidget], composites back-to-front
-/// using Porter-Duff SRC_OVER, encodes to RGB565, and builds a [Timeline].
-///
-/// GIF/image assets are decoded once per render call and cached in [_AssetCache].
-/// Spotify and Pomodoro live state is injected externally before calling [render].
+/// GIF bytes must be pre-registered via [addAssetBytes] (e.g. after file_picker
+/// returns bytes). The renderer decodes once and caches for subsequent frames.
 class MatrixRenderer {
   MatrixRenderer();
 
-  static const _textWidget     = TextWidget();
-  static const _clockWidget    = ClockWidget();
-  static const _gifWidget      = GifWidget();
-  static const _spotifyWidget  = SpotifyWidget();
-  static const _pomodoroWidget = PomodoroWidget();
-  static const _gifDecoder     = GifDecoder();
+  static const _text     = TextWidget();
+  static const _clock    = ClockWidget();
+  static const _gif      = GifWidget();
+  static const _spotify  = SpotifyWidget();
+  static const _pomodoro = PomodoroWidget();
+  static const _decoder  = GifDecoder();
 
-  final Rgb565Encoder _encoder = const Rgb565Encoder();
+  final Rgb565Encoder _enc = const Rgb565Encoder();
   late Uint8List _encoded;
 
-  /// Optional live state injected by service providers before export.
+  // ── Asset registry ────────────────────────────────────────────────────────
+
+  final Map<String, GifAsset?> _assetCache = {};
+
+  /// Register bytes for [filePath] — call after file_picker returns bytes.
+  void addAssetBytes(String filePath, Uint8List bytes) {
+    _assetCache[filePath] = _decoder.decodeBytes(bytes);
+  }
+
+  /// Register a pre-decoded asset directly (e.g. from GifDecoderIO).
+  void addAsset(String filePath, GifAsset? asset) {
+    _assetCache[filePath] = asset;
+  }
+
+  /// Remove a cached asset when the user removes a GIF layer.
+  void removeAsset(String filePath) => _assetCache.remove(filePath);
+
+  // ── Live service state (injected by providers) ────────────────────────────
+
   SpotifyTrack? currentTrack;
   PomodoroTimerState? currentPomodoroState;
 
-  // ── Public API ────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   Future<Timeline> render(
     Scene scene, {
@@ -47,103 +61,49 @@ class MatrixRenderer {
     final int w = scene.matrixWidth;
     final int h = scene.matrixHeight;
     _encoded = Uint8List(w * h * 2);
-
-    final _AssetCache assets = await _preloadAssets(scene);
+    _ensureEntries(scene);
 
     final timeline = Timeline();
-
     for (int i = 0; i < frameCount; i++) {
-      final int elapsedMs = i * frameDurationMs;
+      final int t = i * frameDurationMs;
       final composite = PixelBuffer(width: w, height: h);
-
       for (final layer in scene.visibleLayers) {
-        final layerBuffer = PixelBuffer(width: w, height: h);
-        _renderLayer(layer, layerBuffer, elapsedMs, assets);
-        composite.blendOver(layerBuffer);
+        final lb = PixelBuffer(width: w, height: h);
+        _renderLayer(layer, lb, t);
+        composite.blendOver(lb);
       }
-
-      _encoder.encodeInto(composite, _encoded);
-      timeline.addFrame(Frame(
-        data: Uint8List.fromList(_encoded),
-        durationMs: frameDurationMs,
-      ));
+      _enc.encodeInto(composite, _encoded);
+      timeline.addFrame(Frame(data: Uint8List.fromList(_encoded), durationMs: frameDurationMs));
     }
-
     return timeline;
   }
 
   // ── Layer dispatch ────────────────────────────────────────────────────────
 
-  void _renderLayer(
-    Layer layer,
-    PixelBuffer buffer,
-    int elapsedMs,
-    _AssetCache assets,
-  ) {
+  void _renderLayer(Layer layer, PixelBuffer buf, int t) {
     switch (layer.type) {
       case LayerType.text:
-        _textWidget.render(layer as TextLayer, buffer, elapsedMs);
-
+        _text.render(layer as TextLayer, buf, t);
       case LayerType.clock:
-        _clockWidget.render(layer as ClockLayer, buffer, elapsedMs);
-
+        _clock.render(layer as ClockLayer, buf, t);
       case LayerType.gif:
         final g = layer as GifLayer;
-        final asset =
-            g.filePath != null ? assets.gifs[g.filePath] : null;
-        _gifWidget.renderWithAsset(g, buffer, elapsedMs, asset);
-
+        _gif.renderWithAsset(g, buf, t, g.filePath != null ? _assetCache[g.filePath] : null);
       case LayerType.spotify:
-        _spotifyWidget.renderWithTrack(
-          layer as SpotifyLayer,
-          buffer,
-          elapsedMs,
-          assets.spotifyTrack ?? SpotifyTrack.empty,
-        );
-
+        _spotify.renderWithTrack(layer as SpotifyLayer, buf, t, currentTrack ?? SpotifyTrack.empty);
       case LayerType.pomodoro:
         final p = layer as PomodoroLayer;
-        final state = assets.pomodoroState;
-        if (state != null) {
-          _pomodoroWidget.renderWithState(p, buffer, elapsedMs, state);
-        } else {
-          _pomodoroWidget.render(p, buffer, elapsedMs);
-        }
+        final s = currentPomodoroState;
+        if (s != null) _pomodoro.renderWithState(p, buf, t, s);
+        else _pomodoro.render(p, buf, t);
     }
   }
 
-  // ── Asset pre-loading ─────────────────────────────────────────────────────
-
-  Future<_AssetCache> _preloadAssets(Scene scene) async {
-    final cache = _AssetCache(
-      spotifyTrack:   currentTrack,
-      pomodoroState:  currentPomodoroState,
-    );
-
+  void _ensureEntries(Scene scene) {
     for (final layer in scene.layers) {
       if (layer is GifLayer && layer.filePath != null) {
-        final String path = layer.filePath!;
-        if (cache.gifs.containsKey(path)) continue; // already decoded
-
-        final GifAsset? asset =
-            await _gifDecoder.decode(File(path));
-        cache.gifs[path] = asset; // null = decode failed, renders transparent
+        _assetCache.putIfAbsent(layer.filePath!, () => null);
       }
     }
-
-    return cache;
   }
-}
-
-// ── Internal asset cache ──────────────────────────────────────────────────────
-
-class _AssetCache {
-  /// Decoded GIF/image frames keyed by file path.
-  /// A null value means the file failed to decode — renders as transparent.
-  final Map<String, GifAsset?> gifs = {};
-
-  final SpotifyTrack? spotifyTrack;
-  final PomodoroTimerState? pomodoroState;
-
-  _AssetCache({this.spotifyTrack, this.pomodoroState});
 }
