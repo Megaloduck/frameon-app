@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app.dart' show themeModeProvider;
 import '../../../engine/scene/layer.dart';
 import '../../../features/device/connection_state.dart';
 import '../../../features/device/device_controller.dart';
@@ -94,25 +95,9 @@ class EditorPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _saveDialog(BuildContext context, WidgetRef ref) async {
-    final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save project',
-      fileName: '${ref.read(sceneProvider).name}.frameon',
-      allowedExtensions: ['frameon'],
-      type: FileType.custom,
-    );
-    if (result == null) return;
-    final json = ref.exportJson();
-    // Use dart:io conditionally via the IO extension
-    try {
-      // ignore: avoid_dynamic_calls
-      ref.importJson(json); // no-op, just to trigger save
-      // Platform save via project_service_io.dart
-      final bytes = json.codeUnits;
-      await FilePicker.platform.saveFile(fileName: result);
-      ref.read(editorControllerProvider.notifier).markSaved(result);
-    } catch (_) {}
-  }
+  // Keyboard shortcut Ctrl+S delegates to the same _saveFile used in the menu.
+  Future<void> _saveDialog(BuildContext context, WidgetRef ref) =>
+      _TopBar._saveFileStatic(context, ref);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,10 +202,17 @@ class _TopBar extends ConsumerWidget {
 
           // Light / dark toggle
           IconButton(
-            icon: const Icon(Icons.wb_sunny_outlined, size: 18),
+            icon: Icon(
+              ref.watch(themeModeProvider) == ThemeMode.dark
+                  ? Icons.wb_sunny_outlined
+                  : Icons.dark_mode_outlined,
+              size: 18,
+            ),
             tooltip: 'Toggle theme',
             onPressed: () {
-              // The theme provider lives in app.dart scope; use a global approach
+              final current = ref.read(themeModeProvider);
+              ref.read(themeModeProvider.notifier).state =
+                  current == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
             },
           ),
         ],
@@ -250,7 +242,10 @@ class _TopBar extends ConsumerWidget {
     }
   }
 
-  Future<void> _saveFile(BuildContext context, WidgetRef ref) async {
+  Future<void> _saveFile(BuildContext context, WidgetRef ref) =>
+      _saveFileStatic(context, ref);
+
+  static Future<void> _saveFileStatic(BuildContext context, WidgetRef ref) async {
     final json = ref.exportJson();
     final bytes = json.codeUnits;
     final result = await FilePicker.platform.saveFile(

@@ -5,19 +5,21 @@ import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
 import 'features/editor/pages/editor_page.dart';
 
-class FrameonApp extends StatelessWidget {
-  const FrameonApp({super.key});
+final themeModeProvider = StateProvider<ThemeMode>((_) => ThemeMode.light);
+
+class FrameOnApp extends ConsumerWidget {
+  const FrameOnApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return ProviderScope(
-      child: MaterialApp(
-        title: 'Frameon',
-        debugShowCheckedModeBanner: false,
-        theme: buildLightTheme(),
-        darkTheme: buildDarkTheme(),
-        home: const EditorPage(),
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    return MaterialApp(
+      title: 'FrameOn',
+      debugShowCheckedModeBanner: false,
+      themeMode: mode,
+      theme: buildLightTheme(),
+      darkTheme: buildDarkTheme(),
+      home: const EditorPage(),
     );
   }
 }
