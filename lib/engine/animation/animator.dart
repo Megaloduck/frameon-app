@@ -2,7 +2,8 @@ import '../scene/layer.dart';
 import '../renderer/pixel_buffer.dart';
 import 'effects/base_effect.dart';
 import 'effects/blink.dart';
-import 'effects/scroll.dart';
+import 'effects/scroll_left.dart';
+import 'effects/scroll_right.dart';
 
 /// Resolves the correct [AnimationEffectProcessor] for a given [Layer]
 /// and applies it during rendering.
@@ -28,30 +29,3 @@ class Animator {
   /// If the layer has no effect, [dst] is simply populated from [src].
   void applyEffect(
     Layer layer,
-    PixelBuffer src,
-    PixelBuffer dst,
-    int elapsedMs,
-  ) {
-    final effect = effectFor(layer);
-    if (effect == null) {
-      dst.copyFrom(src);
-    } else {
-      effect.apply(src, dst, elapsedMs);
-    }
-  }
-
-  // ── Private ──────────────────────────────────────────────────────────────
-
-  AnimationEffectProcessor? _resolve(AnimationEffect effect) {
-    switch (effect) {
-      case AnimationEffect.none:
-        return null;
-      case AnimationEffect.blink:
-        return const BlinkEffect(periodMs: 1000);
-      case AnimationEffect.scrollLeft:
-        return const ScrollLeftEffect(pixelsPerSecond: 20);
-      case AnimationEffect.scrollRight:
-        return const ScrollRightEffect(pixelsPerSecond: 20);
-    }
-  }
-}
