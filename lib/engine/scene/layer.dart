@@ -54,7 +54,14 @@ abstract class Layer {
     this.offset = Offset.zero,
   });
 
-  Layer copyWith();
+  Layer copyWith({
+    String? id,
+    String? name,
+    bool? visible,
+    int? zIndex,
+    double? opacity,
+    Offset? offset,
+  });
   Map<String, dynamic> toJson();
 }
 
