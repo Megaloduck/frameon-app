@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -104,6 +107,39 @@ Widget _dropdown<T extends Enum>(List<T> values, T current, ValueChanged<T> onCh
       onChanged: (v) { if (v != null) onChange(v); },
     );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// File reading — works around file_picker byte-delivery bugs on desktop
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Safely read bytes from a [PlatformFile].
+///
+/// Strategy (in priority order):
+///   1. On non-web platforms: read from [PlatformFile.path] via dart:io.
+///      This completely bypasses the file_picker completer bug.
+///   2. On web (no path): use [PlatformFile.bytes] which is always populated.
+///   3. Fallback: return null — caller shows an error to the user.
+Future<Uint8List?> _readPlatformFileBytes(PlatformFile pf) async {
+  // Desktop / Mobile: always prefer reading from disk.
+  if (!kIsWeb && pf.path != null) {
+    try {
+      // Run the IO on a background isolate so the UI stays responsive.
+      final path = pf.path!;
+      return await compute<String, Uint8List>(_readFileBytesIsolate, path);
+    } catch (_) {
+      // Fall through to bytes fallback.
+    }
+  }
+
+  // Web (or path unexpectedly null): rely on in-memory bytes.
+  final bytes = pf.bytes;
+  if (bytes != null && bytes.isNotEmpty) return bytes;
+
+  return null;
+}
+
+/// Top-level function required by [compute] (must not be a closure).
+Uint8List _readFileBytesIsolate(String path) => File(path).readAsBytesSync();
+
 // ── Text ──────────────────────────────────────────────────────────────────────
 
 class _TextBox extends ConsumerWidget {
@@ -133,7 +169,6 @@ class _TextBox extends ConsumerWidget {
           (v) => n.updateLayer(layer.copyWith(fontStyle: v)))),
       _row('Effect', _dropdown(AnimationEffect.values, layer.effect,
           (v) => n.updateLayer(layer.copyWith(effect: v)))),
-      // Speed slider — only relevant when effect is scroll/blink
       if (layer.effect != AnimationEffect.none) ...[
         _row('Speed', Slider(
           value: layer.effectSpeedMs.toDouble(),
@@ -187,36 +222,88 @@ class _ClockBox extends ConsumerWidget {
 
 // ── GIF ───────────────────────────────────────────────────────────────────────
 
-class _GifBox extends ConsumerWidget {
+class _GifBox extends ConsumerStatefulWidget {
   final GifLayer layer;
   const _GifBox({required this.layer});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_GifBox> createState() => _GifBoxState();
+}
+
+class _GifBoxState extends ConsumerState<_GifBox> {
+  bool _loading = false;
+
+  Future<void> _pickFile() async {
     final n        = ref.read(sceneProvider.notifier);
     final renderer = ref.read(matrixRendererProvider);
+
+    // Pick — withData: true only for web; desktop reads from path instead.
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['gif', 'png', 'jpg', 'jpeg'],
+        withData: kIsWeb, // avoid the completer bug on desktop
+      );
+    } catch (e) {
+      _snack('File picker error: $e');
+      return;
+    }
+
+    if (result == null || !mounted) return;
+    final pf = result.files.single;
+
+    setState(() => _loading = true);
+
+    try {
+      final bytes = await _readPlatformFileBytes(pf);
+
+      if (!mounted) return;
+
+      if (bytes == null || bytes.isEmpty) {
+        _snack('Could not read file — try again.');
+        return;
+      }
+
+      // Use the full path as cache key on desktop; filename on web.
+      final String key = pf.path ?? pf.name;
+      renderer.addAssetBytes(key, bytes);
+      n.updateLayer(widget.layer.copyWith(filePath: key));
+    } catch (e) {
+      if (mounted) _snack('Failed to load image: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n        = ref.read(sceneProvider.notifier);
+    final renderer = ref.read(matrixRendererProvider);
+    final layer    = widget.layer;
+
     return Column(children: [
       SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
-          onPressed: () async {
-            final result = await FilePicker.platform.pickFiles(
-              type: FileType.custom,
-              allowedExtensions: ['gif', 'png', 'jpg', 'jpeg'],
-              withData: true, // ensures bytes available on all platforms
-            );
-            if (result == null) return;
-            final pf = result.files.single;
-            final String key = pf.path ?? pf.name;
-            // Register bytes with renderer so it can decode immediately
-            if (pf.bytes != null) renderer.addAssetBytes(key, pf.bytes!);
-            n.updateLayer(layer.copyWith(filePath: key));
-          },
-          icon: const Icon(Icons.upload_file, size: 16),
+          onPressed: _loading ? null : _pickFile,
+          icon: _loading
+              ? const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.upload_file, size: 16),
           label: Text(
-            layer.filePath != null
-                ? layer.filePath!.split('/').last.split('\\').last
-                : 'Upload JPG · PNG · GIF',
+            _loading
+                ? 'Loading…'
+                : layer.filePath != null
+                    ? layer.filePath!.split('/').last.split('\\').last
+                    : 'Upload JPG · PNG · GIF',
             style: const TextStyle(fontSize: 12),
             overflow: TextOverflow.ellipsis,
           ),
