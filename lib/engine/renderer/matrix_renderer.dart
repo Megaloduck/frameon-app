@@ -12,10 +12,11 @@ import 'gif_decoder.dart';
 import 'pixel_buffer.dart';
 import 'rgb565_encoder.dart';
 
-/// Central compositing engine. No dart:io — runs on all platforms.
+/// Central compositing engine.  No dart:io — runs on all platforms.
 ///
-/// GIF bytes must be pre-registered via [addAssetBytes] (e.g. after file_picker
-/// returns bytes). The renderer decodes once and caches for subsequent frames.
+/// GIF bytes must be pre-registered via [addAssetBytes] before rendering.
+/// The renderer decodes once and caches the result; subsequent calls with the
+/// same key are no-ops unless [force] is true.
 class MatrixRenderer {
   MatrixRenderer();
 
@@ -33,22 +34,27 @@ class MatrixRenderer {
 
   final Map<String, GifAsset?> _assetCache = {};
 
-  /// Register bytes for [filePath] — call after file_picker returns bytes.
-  void addAssetBytes(String filePath, Uint8List bytes) {
-    _assetCache[filePath] = _decoder.decodeBytes(bytes);
+  /// Register bytes for [key].
+  ///
+  /// If the key already has a non-null decoded asset the call is a no-op
+  /// (avoids re-decoding on every timeline rebuild).  Pass [force] = true
+  /// to force re-decode (e.g. after the user replaces the file).
+  void addAssetBytes(String key, Uint8List bytes, {bool force = false}) {
+    if (!force && _assetCache[key] != null) return; // already decoded
+    _assetCache[key] = _decoder.decodeBytes(bytes);
   }
 
-  /// Register a pre-decoded asset directly (e.g. from GifDecoderIO).
-  void addAsset(String filePath, GifAsset? asset) {
-    _assetCache[filePath] = asset;
+  /// Register a pre-decoded asset directly.
+  void addAsset(String key, GifAsset? asset) {
+    _assetCache[key] = asset;
   }
 
-  /// Remove a cached asset when the user removes a GIF layer.
-  void removeAsset(String filePath) => _assetCache.remove(filePath);
+  /// Remove a cached asset.
+  void removeAsset(String key) => _assetCache.remove(key);
 
-  // ── Live service state (injected by providers) ────────────────────────────
+  // ── Live service state ────────────────────────────────────────────────────
 
-  SpotifyTrack? currentTrack;
+  SpotifyTrack?       currentTrack;
   PomodoroTimerState? currentPomodoroState;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -73,7 +79,8 @@ class MatrixRenderer {
         composite.blendOver(lb);
       }
       _enc.encodeInto(composite, _encoded);
-      timeline.addFrame(Frame(data: Uint8List.fromList(_encoded), durationMs: frameDurationMs));
+      timeline.addFrame(
+          Frame(data: Uint8List.fromList(_encoded), durationMs: frameDurationMs));
     }
     return timeline;
   }
@@ -88,9 +95,11 @@ class MatrixRenderer {
         _clock.render(layer as ClockLayer, buf, t);
       case LayerType.gif:
         final g = layer as GifLayer;
-        _gif.renderWithAsset(g, buf, t, g.filePath != null ? _assetCache[g.filePath] : null);
+        _gif.renderWithAsset(
+            g, buf, t, g.filePath != null ? _assetCache[g.filePath] : null);
       case LayerType.spotify:
-        _spotify.renderWithTrack(layer as SpotifyLayer, buf, t, currentTrack ?? SpotifyTrack.empty);
+        _spotify.renderWithTrack(
+            layer as SpotifyLayer, buf, t, currentTrack ?? SpotifyTrack.empty);
       case LayerType.pomodoro:
         final p = layer as PomodoroLayer;
         final s = currentPomodoroState;
