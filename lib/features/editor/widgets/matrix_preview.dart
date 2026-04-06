@@ -9,13 +9,10 @@ import '../../../shared/providers/providers.dart';
 import 'ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MatrixPreview — live LED dot-matrix preview widget.
+// MatrixPreview
 //
-// Exported names from this file:  MatrixPreview  (only).
-// All other classes are private (_) so they cannot clash with names in
-// other widget files (this was what caused the `ambiguous_import` error
-// for `LayerPanel` — a previous version of this file accidentally declared
-// a public LayerPanel class).
+// Key fix: the LED canvas is wrapped in AspectRatio(64/32 = 2.0) and centred
+// inside the available space. This prevents stretching at any window size.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MatrixPreview extends ConsumerStatefulWidget {
@@ -55,84 +52,108 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
   @override
   Widget build(BuildContext context) {
     final timelineAsync = ref.watch(timelineProvider);
-    final elapsedMs = ref.watch(previewElapsedMsProvider);
-    final playing = ref.watch(previewPlayingProvider);
-    final scene = ref.watch(sceneProvider);
+    final elapsedMs     = ref.watch(previewElapsedMsProvider);
+    final playing       = ref.watch(previewPlayingProvider);
+    final scene         = ref.watch(sceneProvider);
 
-    return Column(
-      children: [
-        // Canvas — fills available space
-        Expanded(
-          child: _CanvasArea(
-            timelineAsync: timelineAsync,
-            elapsedMs: elapsedMs,
+    return Container(
+      // Dot-grid background — warm parchment colour matches the app shell
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Column(
+        children: [
+          // "MATRIX PREVIEW" label
+          const _PreviewLabel(),
+
+          // Canvas area — fills remaining space, matrix centred inside
+          Expanded(
+            child: _CanvasArea(
+              timelineAsync: timelineAsync,
+              elapsedMs: elapsedMs,
+            ),
           ),
-        ),
 
-        // Playback controls
-        _PlaybackBar(
-          playing: playing,
-          elapsedMs: elapsedMs,
-          onToggle: () {
-            ref.read(previewPlayingProvider.notifier).state = !playing;
-          },
-          onReset: () {
-            _elapsedMs = 0;
-            ref.read(previewElapsedMsProvider.notifier).state = 0;
-          },
-        ),
-
-        // Info strip
-        _InfoStrip(
-          width: scene.matrixWidth,
-          height: scene.matrixHeight,
-          fps: scene.fps,
-          timelineAsync: timelineAsync,
-        ),
-      ],
+          // Info strip: ● 64 × 32 – RGB565 · N frames
+          _InfoStrip(
+            width:         scene.matrixWidth,
+            height:        scene.matrixHeight,
+            fps:           scene.fps,
+            timelineAsync: timelineAsync,
+          ),
+        ],
+      ),
     );
   }
 }
 
+// ── "MATRIX PREVIEW" label ────────────────────────────────────────────────────
+
+class _PreviewLabel extends StatelessWidget {
+  const _PreviewLabel();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(0, 10, 0, 8),
+        child: Text(
+          'MATRIX PREVIEW',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.08,
+            color: kTextMuted.withOpacity(0.6),
+          ),
+        ),
+      );
+}
+
 // ── Canvas area ───────────────────────────────────────────────────────────────
+//
+// The trick: we use a Stack with a dot-grid behind everything, and a centred
+// AspectRatio widget in front. The AspectRatio constrains the LED canvas to
+// exactly 64:32 regardless of the available space. A subtle drop-shadow
+// (via DecoratedBox behind the ClipRRect) lifts the frame off the background.
 
 class _CanvasArea extends StatelessWidget {
   final AsyncValue<Timeline> timelineAsync;
   final int elapsedMs;
-
   const _CanvasArea({required this.timelineAsync, required this.elapsedMs});
 
   @override
-  Widget build(BuildContext context) => Container(
-        color: const Color(0xFFE0DDD6), // warm dot-grid background
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Subtle dot-grid texture
-            Positioned.fill(child: CustomPaint(painter: _DotGridPainter())),
+  Widget build(BuildContext context) => Stack(
+        alignment: Alignment.center,
+        children: [
+          // Dot-grid texture fills the whole area
+          Positioned.fill(child: CustomPaint(painter: _DotGridPainter())),
 
-            // LED matrix frame
-            DecoratedBox(
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 18,
-                    offset: const Offset(0, 4),
+          // LED matrix — always 2:1 aspect ratio, centred
+          Center(
+            child: AspectRatio(
+              aspectRatio: 64 / 32, // == 2.0
+              child: Padding(
+                // Small horizontal inset so the frame doesn't touch the edge
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.22),
+                        blurRadius: 20,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.all(kRadiusSm),
-                child: timelineAsync.when(
-                  loading: () => const _Loading(),
-                  error: (_, __) => const _Error(),
-                  data: (t) => _LedCanvas(timeline: t, elapsedMs: elapsedMs),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.all(kRadiusSm),
+                    child: timelineAsync.when(
+                      loading: () => const _Loading(),
+                      error: (_, __) => const _Error(),
+                      data: (t) => _LedCanvas(timeline: t, elapsedMs: elapsedMs),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
 }
 
@@ -141,9 +162,9 @@ class _CanvasArea extends StatelessWidget {
 class _DotGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    const double step = 16;
-    const double r = 1.0;
-    final paint = Paint()..color = Colors.black.withOpacity(0.06);
+    const double step = 18;
+    const double r    = 1.2;
+    final paint = Paint()..color = Colors.black.withOpacity(0.055);
     for (double x = 0; x < size.width; x += step) {
       for (double y = 0; y < size.height; y += step) {
         canvas.drawCircle(Offset(x, y), r, paint);
@@ -155,7 +176,7 @@ class _DotGridPainter extends CustomPainter {
   bool shouldRepaint(_DotGridPainter _) => false;
 }
 
-// ── LED canvas ────────────────────────────────────────────────────────────────
+// ── LED canvas + painter ──────────────────────────────────────────────────────
 
 class _LedCanvas extends StatelessWidget {
   final Timeline timeline;
@@ -175,34 +196,31 @@ class _LedPainter extends CustomPainter {
   final Timeline timeline;
   final int elapsedMs;
 
-  static const int _cols = 64;
-  static const int _rows = 32;
+  static const int  _cols = 64;
+  static const int  _rows = 32;
   static const _dec = Rgb565Encoder();
 
   const _LedPainter({required this.timeline, required this.elapsedMs});
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0xFF0A0A0A),
-    );
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF0A0A0A));
 
     final Frame? frame = timeline.frameAt(elapsedMs);
     if (frame == null) return;
 
     final PixelBuffer buf = _dec.decode(frame.data);
-    final double dW = size.width / _cols;
+    final double dW = size.width  / _cols;
     final double dH = size.height / _rows;
-    final double r = (dW < dH ? dW : dH) * 0.38;
+    // Dot radius — 40% of the smaller cell dimension gives a tight but readable grid
+    final double r  = (dW < dH ? dW : dH) * 0.40;
     final paint = Paint()..isAntiAlias = true;
 
     for (int row = 0; row < _rows; row++) {
       for (int col = 0; col < _cols; col++) {
         final int argb = buf.getPixel(col, row);
-        final bool on = (argb & 0x00FFFFFF) > 0x080808;
-        paint.color =
-            on ? Color(argb | 0xFF000000) : const Color(0xFF181818);
+        final bool on  = (argb & 0x00FFFFFF) > 0x080808;
+        paint.color = on ? Color(argb | 0xFF000000) : const Color(0xFF181818);
         canvas.drawCircle(
           Offset(col * dW + dW / 2, row * dH + dH / 2),
           r,
@@ -217,154 +235,55 @@ class _LedPainter extends CustomPainter {
       old.elapsedMs != elapsedMs || old.timeline != timeline;
 }
 
-// ── Playback bar ──────────────────────────────────────────────────────────────
-
-class _PlaybackBar extends StatelessWidget {
-  final bool playing;
-  final int elapsedMs;
-  final VoidCallback onToggle;
-  final VoidCallback onReset;
-
-  const _PlaybackBar({
-    required this.playing,
-    required this.elapsedMs,
-    required this.onToggle,
-    required this.onReset,
-  });
-
-  String _fmt(int ms) {
-    final s = ms ~/ 1000;
-    final m = s ~/ 60;
-    final ss = (s % 60).toString().padLeft(2, '0');
-    return '$m:$ss';
-  }
-
-  @override
-  Widget build(BuildContext context) => Container(
-        height: 34,
-        decoration: const BoxDecoration(
-          border: Border(top: kPanelBorder, bottom: kPanelBorder),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: [
-            _PlayPauseButton(playing: playing, onTap: onToggle),
-            const SizedBox(width: 8),
-            Text(
-              _fmt(elapsedMs),
-              style: const TextStyle(
-                fontSize: 11,
-                fontFamily: 'monospace',
-                color: kTextMuted,
-              ),
-            ),
-            const Spacer(),
-            GestureDetector(
-              onTap: onReset,
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(Icons.replay_rounded, size: 14, color: kTextDim),
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-class _PlayPauseButton extends StatelessWidget {
-  final bool playing;
-  final VoidCallback onTap;
-  const _PlayPauseButton({required this.playing, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 22,
-          height: 22,
-          decoration: const BoxDecoration(
-            color: kGreen,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            size: 14,
-            color: Colors.white,
-          ),
-        ),
-      );
-}
-
 // ── Info strip ────────────────────────────────────────────────────────────────
 
 class _InfoStrip extends StatelessWidget {
-  final int width;
-  final int height;
+  final int width, height;
   final double fps;
   final AsyncValue<Timeline> timelineAsync;
-
   const _InfoStrip({
-    required this.width,
-    required this.height,
-    required this.fps,
-    required this.timelineAsync,
+    required this.width, required this.height,
+    required this.fps, required this.timelineAsync,
   });
 
   @override
   Widget build(BuildContext context) {
-    final frameInfo = timelineAsync.when(
+    final right = timelineAsync.when(
       loading: () => '—',
       error: (_, __) => '!',
-      data: (t) =>
-          '${t.frameCount} frames · ${(t.totalBytes / 1024).toStringAsFixed(1)} KB',
+      data: (t) => '${t.frameCount} frames · ${(t.totalBytes / 1024).toStringAsFixed(1)} KB',
     );
 
-    return Container(
-      height: 24,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: kGreen,
-              shape: BoxShape.circle,
-            ),
-          ),
+          Container(width: 7, height: 7, decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle)),
           const SizedBox(width: 6),
           Text(
-            '$width × $height  ·  RGB565  ·  ${fps.toStringAsFixed(0)} fps',
-            style: const TextStyle(fontSize: 10, color: kTextDim),
+            '$width × $height  –  RGB565',
+            style: const TextStyle(fontSize: 11, color: kTextMuted),
           ),
-          const Spacer(),
-          Text(
-            frameInfo,
-            style: const TextStyle(fontSize: 10, color: kTextDim),
-          ),
+          const SizedBox(width: 12),
+          Text(right, style: const TextStyle(fontSize: 11, color: kTextDim)),
         ],
       ),
     );
   }
 }
 
-// ── Loading / Error placeholders ──────────────────────────────────────────────
+// ── Placeholders ──────────────────────────────────────────────────────────────
 
 class _Loading extends StatelessWidget {
   const _Loading();
   @override
   Widget build(BuildContext context) => Container(
-        width: 256,
-        height: 128,
         color: const Color(0xFF0A0A0A),
         child: const Center(
           child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              color: kGreen,
-            ),
+            width: 18, height: 18,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: kGreen),
           ),
         ),
       );
@@ -374,14 +293,10 @@ class _Error extends StatelessWidget {
   const _Error();
   @override
   Widget build(BuildContext context) => Container(
-        width: 256,
-        height: 128,
         color: const Color(0xFF0A0A0A),
         child: Center(
-          child: Text(
-            'render error',
-            style: TextStyle(color: Colors.red.shade400, fontSize: 10),
-          ),
+          child: Text('render error',
+              style: TextStyle(color: Colors.red.shade400, fontSize: 10)),
         ),
       );
 }
