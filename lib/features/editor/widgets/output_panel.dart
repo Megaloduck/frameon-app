@@ -246,4 +246,4 @@ class _GroupLabel extends StatelessWidget {
   Widget build(BuildContext context) => Text(text.toUpperCase(),
       style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
           letterSpacing: 0.1, color: kTextDim));
-}
+}   

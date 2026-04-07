@@ -64,27 +64,32 @@ class EditorPage extends ConsumerWidget {
                 const _TopBar(),
 
                 // ── Body ───────────────────────────────────────────────────
+                // Layout:
+                //   Column
+                //   ├─ Expanded  ← preview row (slots + preview side-by-side)
+                //   └─ SizedBox(228)  ← bottom strip, FULL width (no slot indent)
                 Expanded(
-                  child: Row(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Left: preset slots column
-                      const _PresetSlots(),
-
-                      // Centre: preview + bottom strip
+                      // Preview row — slots column + matrix preview
                       Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              const Expanded(child: MatrixPreview()),
-                              const SizedBox(height: 8),
-                              SizedBox(height: 228, child: _BottomStrip()),
-                            ],
-                          ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const _PresetSlots(),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+                                child: const MatrixPreview(),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+
+                      // Bottom strip — full width, no indent for the slot column
+                      SizedBox(height: 228, child: _BottomStrip()),
                     ],
                   ),
                 ),
@@ -100,7 +105,7 @@ class EditorPage extends ConsumerWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save Frameon project',
+      dialogTitle: 'Save FrameOn project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom,
       allowedExtensions: ['frameon'],
@@ -223,7 +228,7 @@ class _Logo extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           const Text(
-            'Frameon',
+            'FrameOn',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -306,7 +311,7 @@ class _FileMenuBtn extends ConsumerWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save Frameon project',
+      dialogTitle: 'Save FrameOn project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom, allowedExtensions: ['frameon'], bytes: bytes,
     );
@@ -523,8 +528,53 @@ class _PresetSlots extends StatefulWidget {
 }
 
 class _PresetSlotsState extends State<_PresetSlots> {
+  // Each preset is an int label (1-based, always consecutive).
+  // We store them as a list so deletion can remove any index.
+  final List<int> _presets = [1, 2, 3, 4];
   int _active = 1;
-  int _count  = 4; // grows when the user taps +
+
+  // Next label to assign when a preset is added.
+  int get _nextLabel => (_presets.isEmpty ? 0 : _presets.last) + 1;
+
+  void _add() {
+    setState(() {
+      final label = _nextLabel;
+      _presets.add(label);
+      _active = label;
+    });
+  }
+
+  void _delete(int label) {
+    if (_presets.length <= 1) return; // never delete the last preset
+    setState(() {
+      _presets.remove(label);
+      // If the deleted slot was active, fall back to the first remaining slot.
+      if (_active == label) _active = _presets.first;
+    });
+  }
+
+  void _confirmDelete(BuildContext context, int label) {
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete preset?'),
+        content: Text('Preset $label will be removed. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) _delete(label);
+    });
+  }
 
   @override
   Widget build(BuildContext context) => Container(
@@ -532,16 +582,18 @@ class _PresetSlotsState extends State<_PresetSlots> {
         padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
         child: Column(
           children: [
-            // ── Numbered preset slots ──────────────────────────────────
-            ...List.generate(_count, (i) {
-              final n       = i + 1;
-              final isActive = _active == n;
+            // ── Numbered preset slots (long-press to delete) ───────────
+            ..._presets.map((label) {
+              final isActive = _active == label;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: _PresetSlot(
-                  label: '$n',
+                  label: '$label',
                   active: isActive,
-                  onTap: () => setState(() => _active = n),
+                  onTap: () => setState(() => _active = label),
+                  onLongPress: _presets.length > 1
+                      ? () => _confirmDelete(context, label)
+                      : null,
                 ),
               );
             }),
@@ -552,10 +604,7 @@ class _PresetSlotsState extends State<_PresetSlots> {
               child: _SlotIconBtn(
                 icon: Icons.add_rounded,
                 tooltip: 'Add preset',
-                onTap: () => setState(() {
-                  _count++;
-                  _active = _count; // auto-select new preset
-                }),
+                onTap: _add,
               ),
             ),
 
@@ -582,24 +631,35 @@ class _PresetSlot extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  const _PresetSlot({required this.label, required this.active, required this.onTap});
+  final VoidCallback? onLongPress;
+  const _PresetSlot({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.onLongPress,
+  });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(
-            color: active ? kGreen : Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.all(kRadiusSm),
-            border: Border.all(color: active ? kGreen : kBorder, width: active ? 0 : 1),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w700,
-              color: active ? Colors.white : kTextMuted,
+  Widget build(BuildContext context) => Tooltip(
+        message: onLongPress != null ? 'Hold to delete' : '',
+        child: GestureDetector(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: active ? kGreen : Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.all(kRadiusSm),
+              border: Border.all(
+                  color: active ? kGreen : kBorder, width: active ? 0 : 1),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w700,
+                color: active ? Colors.white : kTextMuted,
+              ),
             ),
           ),
         ),
@@ -644,44 +704,47 @@ class _BottomStrip extends StatelessWidget {
   _BottomStrip();
 
   @override
-  Widget build(BuildContext context) => Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 248,
-            child: PanelShell(
-              margin: const EdgeInsets.only(right: 8),
-              child: const WidgetPalette(),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(right:  8, left: 8, bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 250  ,
+              child: PanelShell(
+                margin: const EdgeInsets.only(right: 8),
+                child: const WidgetPalette(),
+              ),
             ),
-          ),
-          SizedBox(
-            width: 172,
-            child: PanelShell(
-              margin: const EdgeInsets.only(right: 8),
-              child: const LayerPanel(),
+            SizedBox(
+              width: 188,
+              child: PanelShell(
+                margin: const EdgeInsets.only(right: 8),
+                child: const LayerPanel(),
+              ),
             ),
-          ),
-          Expanded(
-            child: PanelShell(
-              margin: const EdgeInsets.only(right: 8),
-              child: const ToolboxLeftPanel(),
+            Expanded(
+              child: PanelShell(
+                margin: const EdgeInsets.only(right: 8),
+                child: const ToolboxLeftPanel(),
+              ),
             ),
-          ),
-          SizedBox(
-            width: 192,
-            child: PanelShell(
-              margin: const EdgeInsets.only(right: 8),
-              child: const ToolboxRightPanel(),
+            SizedBox(
+              width: 200,
+              child: PanelShell(
+                margin: const EdgeInsets.only(right: 8),
+                child: const ToolboxRightPanel(),
+              ),
             ),
-          ),
-          SizedBox(
-            width: 188,
-            child: PanelShell(
-              margin: EdgeInsets.zero,
-              child: const OutputPanel(),
+            SizedBox(
+              width: 188,
+              child: PanelShell(
+                margin: EdgeInsets.zero,
+                child: const OutputPanel(),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
 }
 
@@ -691,4 +754,4 @@ class _BottomStrip extends StatelessWidget {
 
 class _UndoIntent extends Intent { const _UndoIntent(); }
 class _RedoIntent extends Intent { const _RedoIntent(); }
-class _SaveIntent extends Intent { const _SaveIntent(); } 
+class _SaveIntent extends Intent { const _SaveIntent(); }
