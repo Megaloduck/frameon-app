@@ -19,15 +19,14 @@ class OutputPanel extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionLabel('Output'),
+        const SectionLabel('Output Rendering'),
         const Hairline(),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _GroupLabel('Render'),
+              children: [     
                 const SizedBox(height: 5),
                 timelineAsync.when(
                   loading: () => const _StatsGrid(frames: '—', bytes: '—', duration: '—', perFrame: '—'),
@@ -80,8 +79,6 @@ class OutputPanel extends ConsumerWidget {
 }
 
 // ── Stats grid ────────────────────────────────────────────────────────────────
-// Fix: childAspectRatio raised from 2.4 → 1.9 so each chip is tall enough
-// to hold a 9-pt label + 12-pt value without overflowing.
 
 class _StatsGrid extends StatelessWidget {
   final String frames, bytes, duration, perFrame;
@@ -95,7 +92,7 @@ class _StatsGrid extends StatelessWidget {
         physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 5,
         crossAxisSpacing: 5,
-        childAspectRatio: 1.9, // ← was 2.4, caused overflow
+        childAspectRatio: 2.3, // Increased from 2.2 to 2.3
         children: [
           _StatChip(label: 'Frames',    value: frames),
           _StatChip(label: 'Size',      value: bytes),
@@ -111,7 +108,7 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), // Reduced from 4 to 3
         decoration: BoxDecoration(
           color: kSurfaceLow,
           borderRadius: const BorderRadius.all(kRadiusSm),
@@ -120,13 +117,27 @@ class _StatChip extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min, // ← never ask for infinite height
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: const TextStyle(
-                fontSize: 9, color: kTextDim, fontWeight: FontWeight.w600)),
-            // No SizedBox here — let the Column breathe naturally
-            Text(value, style: const TextStyle(
-                fontSize: 12, color: kTextPrimary, fontWeight: FontWeight.w500)),
+            Text(
+              label, 
+              style: const TextStyle(
+                fontSize: 9, 
+                color: kTextDim, 
+                fontWeight: FontWeight.w600,
+                height: 1.1, // Reduced from 1.2 to 1.1
+              ),
+            ),
+            const SizedBox(height: 1), // Reduced from 2 to 1
+            Text(
+              value, 
+              style: const TextStyle(
+                fontSize: 11, 
+                color: kTextPrimary, 
+                fontWeight: FontWeight.w500,
+                height: 1.1, // Reduced from 1.2 to 1.1
+              ),
+            ),
           ],
         ),
       );
