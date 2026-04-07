@@ -811,7 +811,7 @@ class _PomodoroRight extends StatelessWidget {
         children: [
           _greenDropdown<PomodoroLayout>(PomodoroLayout.values, layer.layout,
               (v) => n.updateLayer(layer.copyWith(layout: v))),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _ToggleRow(label: 'Show seconds', value: layer.showSeconds, onChanged: (v) => n.updateLayer(layer.copyWith(showSeconds: v))),
           _ToggleRow(label: 'Show session', value: layer.showSession, onChanged: (v) => n.updateLayer(layer.copyWith(showSession: v))),
           _ToggleRow(label: 'Blink color',  value: layer.blinkColor,  onChanged: (v) => n.updateLayer(layer.copyWith(blinkColor: v))),
@@ -820,7 +820,7 @@ class _PomodoroRight extends StatelessWidget {
           _SpeedSlider(value: (1000 / layer.fps).clamp(10, 500),
               onChanged: (v) => n.updateLayer(layer.copyWith(fps: 1000 / v))),
           const SizedBox(height: 8),
-          TbLabel('Focus color'), const SizedBox(height: 4),
+          TbLabel('Session color'), const SizedBox(height: 4),
           Row(children: [
             _colorBtn(context, layer.focusColor, (c) => n.updateLayer(layer.copyWith(focusColor: c))),
             const SizedBox(width: 8),

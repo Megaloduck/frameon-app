@@ -258,7 +258,7 @@ class _FileMenuBtn extends StatelessWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save FrameOn project',
+      dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom,
       allowedExtensions: ['frameon'],

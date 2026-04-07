@@ -105,7 +105,7 @@ class EditorPage extends ConsumerWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save FrameOn project',
+      dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom,
       allowedExtensions: ['frameon'],
@@ -228,7 +228,7 @@ class _Logo extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           const Text(
-            'FrameOn',
+            'Frameon',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -311,7 +311,7 @@ class _FileMenuBtn extends ConsumerWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save FrameOn project',
+      dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom, allowedExtensions: ['frameon'], bytes: bytes,
     );
@@ -582,41 +582,46 @@ class _PresetSlotsState extends State<_PresetSlots> {
         padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
         child: Column(
           children: [
-            // ── Numbered preset slots (long-press to delete) ───────────
-            ..._presets.map((label) {
-              final isActive = _active == label;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: _PresetSlot(
-                  label: '$label',
-                  active: isActive,
-                  onTap: () => setState(() => _active = label),
-                  onLongPress: _presets.length > 1
-                      ? () => _confirmDelete(context, label)
-                      : null,
+            // ── Scrollable preset slots ────────────────────────────────
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    ..._presets.map((label) {
+                      final isActive = _active == label;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: _PresetSlot(
+                          label: '$label',
+                          active: isActive,
+                          onTap: () => setState(() => _active = label),
+                          onLongPress: _presets.length > 1
+                              ? () => _confirmDelete(context, label)
+                              : null,
+                        ),
+                      );
+                    }),
+                    // ── Add preset button ──────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: _SlotIconBtn(
+                        icon: Icons.add_rounded,
+                        tooltip: 'Add preset',
+                        onTap: _add,
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            }),
-
-            // ── Add preset button ──────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: _SlotIconBtn(
-                icon: Icons.add_rounded,
-                tooltip: 'Add preset',
-                onTap: _add,
               ),
             ),
 
-            // ── Divider ────────────────────────────────────────────────
+            // ── Fixed bottom section ───────────────────────────────────
             Container(
               height: 1,
               width: 32,
               color: kBorder,
               margin: const EdgeInsets.only(bottom: 6),
             ),
-
-            // ── Settings ───────────────────────────────────────────────
             _SlotIconBtn(
               icon: Icons.settings_rounded,
               tooltip: 'Settings',

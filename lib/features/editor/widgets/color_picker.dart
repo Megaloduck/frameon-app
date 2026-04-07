@@ -426,38 +426,51 @@ Future<Color?> showColorPicker(
   Color result = initialColor;
   await showModalBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
+    isScrollControlled: true, // Keep this to allow full height
     builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Pick colour',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 12),
-            ColorPicker(
-              color: initialColor,
-              onChanged: (c) => result = c,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85, // Use 85% of screen height
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (_, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Cancel')),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF21C32C),
-                        foregroundColor: Colors.white),
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Apply')),
+                const Text('Pick colour',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 12),
+                SizedBox(
+                  // Constrain the color picker height
+                  height: MediaQuery.of(ctx).size.height * 0.6,
+                  child: ColorPicker(
+                    color: initialColor,
+                    onChanged: (c) => result = c,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel')),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF21C32C),
+                            foregroundColor: Colors.white),
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Apply')),
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     ),

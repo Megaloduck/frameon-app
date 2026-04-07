@@ -7,14 +7,14 @@ import 'features/editor/pages/editor_page.dart';
 
 final themeModeProvider = StateProvider<ThemeMode>((_) => ThemeMode.light);
 
-class FrameOnApp extends ConsumerWidget {
-  const FrameOnApp({super.key});
+class FrameonApp extends ConsumerWidget {
+  const FrameonApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
     return MaterialApp(
-      title: 'FrameOn',
+      title: 'Frameon',
       debugShowCheckedModeBanner: false,
       themeMode: mode,
       theme: buildLightTheme(),

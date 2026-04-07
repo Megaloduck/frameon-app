@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import '../../engine/scene/timeline.dart';
 
-/// Packet header magic bytes expected by the FrameOn firmware.
+/// Packet header magic bytes expected by the Frameon firmware.
 const List<int> _kMagic = [0x46, 0x52, 0x4D]; // "FRM"
 
 /// Protocol version byte.

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// FrameOn light theme.
+/// Frameon light theme.
 ///
 /// Palette:
 ///   Scaffold bg  #ECEAE3  — warm off-white, like paper
