@@ -100,7 +100,7 @@ class EditorPage extends ConsumerWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save FrameOn project',
+      dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom,
       allowedExtensions: ['frameon'],
@@ -223,7 +223,7 @@ class _Logo extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           const Text(
-            'FrameOn',
+            'Frameon',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -306,7 +306,7 @@ class _FileMenuBtn extends ConsumerWidget {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save FrameOn project',
+      dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom, allowedExtensions: ['frameon'], bytes: bytes,
     );
@@ -524,6 +524,7 @@ class _PresetSlots extends StatefulWidget {
 
 class _PresetSlotsState extends State<_PresetSlots> {
   int _active = 1;
+  int _count  = 4; // grows when the user taps +
 
   @override
   Widget build(BuildContext context) => Container(
@@ -531,8 +532,9 @@ class _PresetSlotsState extends State<_PresetSlots> {
         padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
         child: Column(
           children: [
-            ...List.generate(4, (i) {
-              final n = i + 1;
+            // ── Numbered preset slots ──────────────────────────────────
+            ...List.generate(_count, (i) {
+              final n       = i + 1;
               final isActive = _active == n;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -543,19 +545,33 @@ class _PresetSlotsState extends State<_PresetSlots> {
                 ),
               );
             }),
-            const Spacer(),
-            // Settings cog
-            GestureDetector(
-              onTap: () {},
-              child: Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.all(kRadiusSm),
-                  border: Border.all(color: kBorder),
-                ),
-                child: const Icon(Icons.settings_rounded, size: 18, color: kTextMuted),
+
+            // ── Add preset button ──────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _SlotIconBtn(
+                icon: Icons.add_rounded,
+                tooltip: 'Add preset',
+                onTap: () => setState(() {
+                  _count++;
+                  _active = _count; // auto-select new preset
+                }),
               ),
+            ),
+
+            // ── Divider ────────────────────────────────────────────────
+            Container(
+              height: 1,
+              width: 32,
+              color: kBorder,
+              margin: const EdgeInsets.only(bottom: 6),
+            ),
+
+            // ── Settings ───────────────────────────────────────────────
+            _SlotIconBtn(
+              icon: Icons.settings_rounded,
+              tooltip: 'Settings',
+              onTap: () {},
             ),
           ],
         ),
@@ -585,6 +601,35 @@ class _PresetSlot extends StatelessWidget {
               fontSize: 15, fontWeight: FontWeight.w700,
               color: active ? Colors.white : kTextMuted,
             ),
+          ),
+        ),
+      );
+}
+
+/// Small square icon button used in the preset slot column.
+class _SlotIconBtn extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _SlotIconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.all(kRadiusSm),
+              border: Border.all(color: kBorder),
+            ),
+            child: Icon(icon, size: 18, color: kTextMuted),
           ),
         ),
       );
@@ -646,4 +691,4 @@ class _BottomStrip extends StatelessWidget {
 
 class _UndoIntent extends Intent { const _UndoIntent(); }
 class _RedoIntent extends Intent { const _RedoIntent(); }
-class _SaveIntent extends Intent { const _SaveIntent(); }
+class _SaveIntent extends Intent { const _SaveIntent(); } 
