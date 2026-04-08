@@ -157,6 +157,54 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
 class TimelineNotifier extends AsyncNotifier<Timeline> {
   Timer? _debounce;
   int    _generation = 0;
+  int _calculateFrameCount(Scene scene) {
+  // If no layers, return 0 frames
+  if (scene.layers.isEmpty || scene.visibleLayers.isEmpty) {
+    return 0;
+  }
+  
+  // Calculate total duration from your layers
+  // For example, for text layers with scroll animations:
+  int maxDurationMs = 0;
+  for (final layer in scene.visibleLayers) {
+    int layerDurationMs = 0;
+    
+    switch (layer.type) {
+      case LayerType.text:
+        final textLayer = layer as TextLayer;
+        if (textLayer.effect == AnimationEffect.scrollLeft ||
+            textLayer.effect == AnimationEffect.scrollRight) {
+          // Calculate scroll duration based on text length
+          layerDurationMs = textLayer.text.length * textLayer.effectSpeedMs;
+        } else {
+          // Static layers - maybe 2 seconds minimum
+          layerDurationMs = 2000;
+        }
+        break;
+        
+      case LayerType.gif:
+        final gifLayer = layer as GifLayer;
+        // Get duration from GIF if possible, otherwise default
+        layerDurationMs = 3000; // Placeholder - get actual GIF duration
+        break;
+        
+      case LayerType.clock:
+      case LayerType.pomodoro:
+      case LayerType.spotify:
+        // Dynamic layers - maybe 5 seconds preview
+        layerDurationMs = 5000;
+        break;
+    }
+    
+    if (layerDurationMs > maxDurationMs) {
+      maxDurationMs = layerDurationMs;
+    }
+  }
+  
+  // Calculate frames from duration
+  final frameDurationMs = (1000 / scene.fps).round();
+  return (maxDurationMs / frameDurationMs).ceil();
+}
 
   @override
   Future<Timeline> build() async {
@@ -188,10 +236,11 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     if (gen != _generation) return state.value ?? Timeline();
 
     return renderer.render(
-      scene,
-      frameDurationMs: (1000 / scene.fps).round(),
-      frameCount: 33,
-    );
+  scene,
+  frameDurationMs: (1000 / scene.fps).round(),
+  frameCount: _calculateFrameCount(scene),  // ← Dynamic calculation
+  );
+
   }
 }
 
