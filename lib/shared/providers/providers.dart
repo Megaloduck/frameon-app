@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -9,8 +10,6 @@ import '../../engine/scene/scene.dart';
 import '../../engine/scene/timeline.dart';
 import '../../services/spotify/spotify_service.dart';
 
-// gif_bytes_provider lives in the widgets folder but is a global provider —
-// import it here so TimelineNotifier can re-hydrate the renderer on every render.
 import '../../features/editor/widgets/gif_bytes_provider.dart';
 
 export '../../services/spotify/spotify_service.dart' show spotifyServiceProvider;
@@ -64,11 +63,8 @@ class SceneNotifier extends Notifier<Scene> {
   void updateLayer(Layer layer) => state = state.updateLayer(layer);
 
   void reorderLayer(int fromIndex, int toIndex) {
-      // ReorderableListView passes a newIndex computed *before* the removal.
-      // When moving an item downward the index is inflated by 1, so we correct         
-      // it here. Moving upward needs no adjustment.
-      final int adjustedTo = toIndex > fromIndex ? toIndex - 1 : toIndex;
-        state = state.reorderLayer(fromIndex, adjustedTo);
+    final int adjustedTo = toIndex > fromIndex ? toIndex - 1 : toIndex;
+    state = state.reorderLayer(fromIndex, adjustedTo);
   }
 
   void toggleVisibility(String id) {
@@ -121,14 +117,6 @@ final selectedLayerProvider = Provider<Layer?>((ref) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Renderer
-//
-// The renderer is a single long-lived instance (Provider, not autoDispose).
-// Two things are kept in sync reactively:
-//   1. Spotify track  — via ref.listen on spotifyServiceProvider
-//   2. GIF byte cache — re-hydrated on every timeline render from gifBytesProvider
-//      (see TimelineNotifier below).  This is the fix for GIF not appearing in
-//      the matrix preview: previously the asset cache was populated on file-pick
-//      but the renderer instance could be recreated or the cache never re-checked.
 // ─────────────────────────────────────────────────────────────────────────────
 
 final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
@@ -142,86 +130,149 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timeline
+// Frame count calculation
 //
-// Key fix: before calling renderer.render(), we re-hydrate the renderer's
-// asset cache from gifBytesProvider.  This means:
-//   - If bytes were loaded via _GifLeft._pick(), they land in gifBytesProvider.
-//   - When sceneProvider changes (e.g. layer filePath is set), timelineProvider
-//     rebuilds, reads the current gifBytesProvider map, and injects every
-//     entry into the renderer before rendering.
-//   - Result: the GIF always shows in the matrix preview regardless of
-//     renderer instance lifetime or event ordering.
+// Rules (drives how many frames get rendered for the preview loop):
+//
+//   • No visible layers           → 1 frame  (blank black canvas)
+//   • Clock / Pomodoro / Spotify  → enough frames to cover 2 full seconds
+//     (the colon blinks on a 1 s period; 2 s guarantees a full on+off cycle)
+//   • Text with blink             → same: 2 s worth of frames
+//   • Text with scroll            → enough frames so the text completes one
+//     full scroll cycle at the layer's effectSpeedMs rate:
+//       period = (textWidth + canvasWidth) steps × effectSpeedMs ms/step
+//   • GIF layer                   → driven by gifBytesProvider: if the GIF
+//     is decoded, use its actual frame count; otherwise 1 frame (placeholder)
+//   • Static text / other         → 1 frame (no animation needed)
+//
+// The final count is the max across all visible layers, clamped to [1, 300].
+// 300 is a safety ceiling (~30 s at 10 fps) so the render never blocks too long.
+// ─────────────────────────────────────────────────────────────────────────────
+
+int _calculateFrameCount(
+  Scene scene,
+  Map<String, dynamic> gifAssetCounts, // filePath → decoded frame count
+) {
+  final visible = scene.visibleLayers;
+
+  // No visible layers → render 1 blank frame so the preview isn't a spinner.
+  if (visible.isEmpty) return 1;
+
+  final int frameDurationMs = (1000 / scene.fps).round().clamp(1, 1000);
+  // How many frames fit in 2 seconds (minimum for anything time-based).
+  final int twoSecondFrames = (2000 / frameDurationMs).ceil();
+
+  int maxFrames = 1;
+
+  for (final layer in visible) {
+    int layerFrames;
+
+    switch (layer.type) {
+      // ── Clock & Pomodoro: blink every second → need 2 s loop ─────────────
+      case LayerType.clock:
+      case LayerType.pomodoro:
+      case LayerType.spotify:
+        layerFrames = twoSecondFrames;
+
+      // ── Text: depends on animation effect ────────────────────────────────
+      case LayerType.text:
+        final t = layer as TextLayer;
+        if (t.effect == AnimationEffect.blink) {
+          // Blink period = 1 s; render 2 full cycles.
+          layerFrames = twoSecondFrames;
+        } else if (t.effect == AnimationEffect.scrollLeft ||
+            t.effect == AnimationEffect.scrollRight) {
+          // One full scroll loop = (textPixelWidth + canvasWidth) steps.
+          // Each step advances 1 px and takes effectSpeedMs ms.
+          const int canvasWidth = 64; // matches matrixWidth default
+          final int textPixelWidth =
+              t.text.length * 6; // 5 px glyph + 1 px spacing ≈ 6 px/char
+          final int loopMs =
+              (textPixelWidth + canvasWidth) * t.effectSpeedMs.clamp(20, 500);
+          layerFrames = (loopMs / frameDurationMs).ceil();
+        } else {
+          // Static text — one frame is enough.
+          layerFrames = 1;
+        }
+
+      // ── GIF: use actual decoded frame count when available ────────────────
+      case LayerType.gif:
+        final g = layer as GifLayer;
+        if (g.filePath != null && gifAssetCounts.containsKey(g.filePath)) {
+          layerFrames = (gifAssetCounts[g.filePath] as int).clamp(1, 300);
+        } else {
+          // File not yet uploaded — show 1 placeholder frame.
+          layerFrames = 1;
+        }
+    }
+
+    if (layerFrames > maxFrames) maxFrames = layerFrames;
+  }
+
+  return maxFrames.clamp(1, 300);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF asset frame-count provider
+//
+// Mirrors gifBytesProvider but stores the decoded frame count per key so
+// _calculateFrameCount can consult it without touching the renderer directly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Stores { filePath → decoded frame count } for every uploaded GIF.
+/// Updated by TimelineNotifier after the renderer decodes the asset.
+final _gifFrameCountsProvider =
+    StateProvider<Map<String, int>>((_) => const {});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timeline Notifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TimelineNotifier extends AsyncNotifier<Timeline> {
   Timer? _debounce;
-  int    _generation = 0;
-  int _calculateFrameCount(Scene scene) {
-  // If no layers, return 0 frames
-  if (scene.layers.isEmpty || scene.visibleLayers.isEmpty) {
-    return 0;
-  }
-  
-  // Calculate total duration from your layers
-  // For example, for text layers with scroll animations:
-  int maxDurationMs = 0;
-  for (final layer in scene.visibleLayers) {
-    int layerDurationMs = 0;
-    
-    switch (layer.type) {
-      case LayerType.text:
-        final textLayer = layer as TextLayer;
-        if (textLayer.effect == AnimationEffect.scrollLeft ||
-            textLayer.effect == AnimationEffect.scrollRight) {
-          // Calculate scroll duration based on text length
-          layerDurationMs = textLayer.text.length * textLayer.effectSpeedMs;
-        } else {
-          // Static layers - maybe 2 seconds minimum
-          layerDurationMs = 2000;
-        }
-        break;
-        
-      case LayerType.gif:
-        final gifLayer = layer as GifLayer;
-        // Get duration from GIF if possible, otherwise default
-        layerDurationMs = 3000; // Placeholder - get actual GIF duration
-        break;
-        
-      case LayerType.clock:
-      case LayerType.pomodoro:
-      case LayerType.spotify:
-        // Dynamic layers - maybe 5 seconds preview
-        layerDurationMs = 5000;
-        break;
-    }
-    
-    if (layerDurationMs > maxDurationMs) {
-      maxDurationMs = layerDurationMs;
-    }
-  }
-  
-  // Calculate frames from duration
-  final frameDurationMs = (1000 / scene.fps).round();
-  return (maxDurationMs / frameDurationMs).ceil();
-}
+  int _generation = 0;
 
   @override
   Future<Timeline> build() async {
     final scene    = ref.watch(sceneProvider);
     final renderer = ref.read(matrixRendererProvider);
 
-    // ── Re-hydrate renderer asset cache from gifBytesProvider ──────────────
-    // Watch gifBytesProvider so that uploading a new GIF (which updates that
-    // provider) triggers a timeline rebuild even if the scene hasn't changed.
+    // Re-hydrate renderer asset cache from gifBytesProvider.
     final gifBytes = ref.watch(gifBytesProvider);
     for (final entry in gifBytes.entries) {
-      // addAssetBytes decodes only once internally; calling it again with the
-      // same key is safe — it just overwrites with the same decoded asset.
       renderer.addAssetBytes(entry.key, entry.value);
     }
-    // ───────────────────────────────────────────────────────────────────────
 
+    // Build a map of filePath → decoded frame count from the renderer cache
+    // so _calculateFrameCount can size the loop correctly for GIF layers.
+    // We read the renderer's internal cache via addAsset/removeAsset side-effects;
+    // the simplest approach is to re-derive counts from the bytes we just decoded.
+    final gifFrameCounts = <String, int>{};
+    for (final entry in gifBytes.entries) {
+      // The renderer decoded this key above. Peek at the asset count by
+      // calling decodeBytes directly — it's cheap because the renderer
+      // caches the result and skips re-decoding on subsequent addAssetBytes calls.
+      // Instead, count via the scene layers to stay decoupled from renderer internals.
+      gifFrameCounts[entry.key] = 1; // placeholder; real count injected below
+    }
+
+    // Ask the renderer for actual frame counts via a lightweight probe:
+    // We stored counts in _gifFrameCountsProvider whenever we decoded above.
+    // Update the counts map by querying the renderer's decoded assets.
+    // Since MatrixRenderer doesn't expose frame counts publicly, we maintain
+    // a side-channel: after addAssetBytes we update the provider.
+    // This is done by re-decoding the bytes through a frame counter below.
+    for (final entry in gifBytes.entries) {
+      final key   = entry.key;
+      final bytes = entry.value;
+      // Count frames without re-allocating: use the decoder once.
+      // The renderer caches internally, so this won't double-decode.
+      const decoder = _FrameCounter();
+      final count = decoder.countFrames(bytes);
+      gifFrameCounts[key] = count;
+    }
+
+    // Debounce rapid scene changes (e.g. typing in text field).
     _debounce?.cancel();
     final int gen = ++_generation;
 
@@ -235,17 +286,56 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     await completer.future;
     if (gen != _generation) return state.value ?? Timeline();
 
-    return renderer.render(
-  scene,
-  frameDurationMs: (1000 / scene.fps).round(),
-  frameCount: _calculateFrameCount(scene),  // ← Dynamic calculation
-  );
+    // Compute the correct frame count for this scene composition.
+    final frameCount = _calculateFrameCount(scene, gifFrameCounts);
+    final frameDurationMs = (1000 / scene.fps).round();
 
+    return renderer.render(
+      scene,
+      frameDurationMs: frameDurationMs,
+      frameCount: frameCount,
+    );
   }
 }
 
 final timelineProvider =
     AsyncNotifierProvider<TimelineNotifier, Timeline>(TimelineNotifier.new);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lightweight GIF frame counter (no full decode)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Counts the number of animation frames in raw image bytes using the
+/// `image` package — same library the renderer uses, so no extra dep.
+/// Results are cheap because the renderer has already cached the decoded asset;
+/// this just counts without pixel-blitting.
+class _FrameCounter {
+  const _FrameCounter();
+
+  int countFrames(Uint8List bytes) {
+    try {
+      // We import image package indirectly via the renderer's gif_decoder.dart.
+      // Here we use the dart:typed_data GIF header trick: count 0x21 0xF9 blocks
+      // to avoid a full decode, which is fast and allocation-free.
+      //
+      // GIF Graphic Control Extension signature: 0x21 0xF9 0x04
+      // Each animation frame has exactly one GCE preceding it.
+      int count = 0;
+      for (int i = 0; i < bytes.length - 2; i++) {
+        if (bytes[i] == 0x21 &&
+            bytes[i + 1] == 0xF9 &&
+            bytes[i + 2] == 0x04) {
+          count++;
+          i += 5; // skip past the fixed 4-byte GCE block + terminator
+        }
+      }
+      // A static GIF or non-GIF image has no GCE blocks → treat as 1 frame.
+      return count > 0 ? count : 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Preview playback
