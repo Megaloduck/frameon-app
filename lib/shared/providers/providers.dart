@@ -63,8 +63,13 @@ class SceneNotifier extends Notifier<Scene> {
 
   void updateLayer(Layer layer) => state = state.updateLayer(layer);
 
-  void reorderLayer(int fromIndex, int toIndex) =>
-      state = state.reorderLayer(fromIndex, toIndex);
+  void reorderLayer(int fromIndex, int toIndex) {
+      // ReorderableListView passes a newIndex computed *before* the removal.
+      // When moving an item downward the index is inflated by 1, so we correct         
+      // it here. Moving upward needs no adjustment.
+      final int adjustedTo = toIndex > fromIndex ? toIndex - 1 : toIndex;
+        state = state.reorderLayer(fromIndex, adjustedTo);
+  }
 
   void toggleVisibility(String id) {
     final layer = state.layerById(id);

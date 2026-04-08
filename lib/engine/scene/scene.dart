@@ -45,8 +45,8 @@ class Scene {
   /// Reorder a layer from [fromIndex] to [toIndex].
   ///
   /// Uses standard list-splice semantics: remove at [fromIndex], then insert
-  /// at [toIndex]. No adjustment needed — callers (e.g. ReorderableListView)
-  /// already pass the post-removal index.
+  /// at [toIndex]. Callers are responsible for adjusting [toIndex] for
+  /// Flutter's ReorderableListView convention before calling this.
   Scene reorderLayer(int fromIndex, int toIndex) {
     if (fromIndex == toIndex) return this;
     final updated = List<Layer>.from(layers);
