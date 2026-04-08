@@ -41,7 +41,7 @@ class OutputPanel extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const _GroupLabel('Device'),
+                const _GroupLabel('Device Status'),
                 const SizedBox(height: 5),
                 _DeviceStatus(state: device),
                 if (device.isSending) ...[

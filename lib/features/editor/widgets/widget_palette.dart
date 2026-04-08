@@ -44,7 +44,7 @@ class WidgetPalette extends ConsumerWidget {
               ),
               _PaletteEntry(
                 icon:    Icons.gif_box_rounded,
-                color:   kGreen,
+                color:   const Color.fromARGB(255, 122, 33, 195),
                 label:   'GIF / Image',
                 onTap:   notifier.addGifLayer,
               ),

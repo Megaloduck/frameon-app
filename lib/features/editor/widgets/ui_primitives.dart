@@ -170,7 +170,7 @@ class LayerTypeBadge extends StatelessWidget {
 const Map<String, Color> kLayerTypeColors = {
   'text':     Color(0xFF378ADD),
   'clock':    Color(0xFFEF9F27),
-  'gif':      Color(0xFF21C32C),
+  'gif':      Color.fromARGB(255, 122, 33, 195),  
   'spotify':  Color(0xFF1DB954),
   'pomodoro': Color(0xFFFFCC00),
 };
