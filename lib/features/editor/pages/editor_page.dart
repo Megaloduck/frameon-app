@@ -10,6 +10,7 @@ import '../../../features/device/connection_state.dart';
 import '../../../features/device/device_controller.dart';
 import '../../../features/editor/presentation/controller.dart';
 import '../../../services/storage/project_service.dart';
+import '../../../shared/providers/preset_provider.dart';
 import '../../../shared/providers/providers.dart';
 import '../../../shared/providers/zoom_provider.dart';
 import '../widgets/layer_panel.dart' show LayerPanel;
@@ -60,19 +61,11 @@ class EditorPage extends ConsumerWidget {
           child: Scaffold(
             body: Column(
               children: [
-                // ── Top bar ────────────────────────────────────────────────
                 const _TopBar(),
-
-                // ── Body ───────────────────────────────────────────────────
-                // Layout:
-                //   Column
-                //   ├─ Expanded  ← preview row (slots + preview side-by-side)
-                //   └─ SizedBox(228)  ← bottom strip, FULL width (no slot indent)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Preview row — slots column + matrix preview
                       Expanded(
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -87,8 +80,6 @@ class EditorPage extends ConsumerWidget {
                           ],
                         ),
                       ),
-
-                      // Bottom strip — full width, no indent for the slot column
                       SizedBox(height: 228, child: _BottomStrip()),
                     ],
                   ),
@@ -143,13 +134,10 @@ class _TopBar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
-          // ── Logo ─────────────────────────────────────────────────────
           _Logo(),
           const SizedBox(width: 12),
           Container(width: 1, height: 20, color: kBorder),
           const SizedBox(width: 12),
-
-          // ── Project name + dirty dot ──────────────────────────────────
           Text(
             scene.name,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: kTextMuted),
@@ -158,14 +146,9 @@ class _TopBar extends ConsumerWidget {
             const SizedBox(width: 5),
             Container(width: 5, height: 5, decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle)),
           ],
-
-          // ── File menu ─────────────────────────────────────────────────
           const SizedBox(width: 8),
           _FileMenuBtn(),
-
           const Spacer(),
-
-          // ── Undo / Redo ───────────────────────────────────────────────
           _TopIconBtn(
             icon: Icons.undo_rounded,
             tooltip: 'Undo  ⌘Z',
@@ -178,31 +161,22 @@ class _TopBar extends ConsumerWidget {
             enabled: editor.canRedo,
             onTap: () => ref.read(editorControllerProvider.notifier).redo(),
           ),
-
           const SizedBox(width: 8),
           Container(width: 1, height: 20, color: kBorder),
           const SizedBox(width: 8),
-
-          // ── USB connection chip ───────────────────────────────────────
           _ConnectionChip(state: device),
-
           const SizedBox(width: 8),
           Container(width: 1, height: 20, color: kBorder),
           const SizedBox(width: 8),
-
-          // ── Zoom label + buttons ──────────────────────────────────────
           const Text(
             'ZOOM',
             style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.08, color: kTextMuted),
           ),
           const SizedBox(width: 6),
           ...kZoomLevels.map((z) => _ZoomBtn(level: z, active: z == zoom)),
-
           const SizedBox(width: 8),
           Container(width: 1, height: 20, color: kBorder),
           const SizedBox(width: 8),
-
-          // ── Theme toggle ──────────────────────────────────────────────
           _ThemeBtn(isDark: isDark),
         ],
       ),
@@ -210,37 +184,24 @@ class _TopBar extends ConsumerWidget {
   }
 }
 
-// ── Logo ──────────────────────────────────────────────────────────────────────
-
 class _Logo extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Green LED-matrix icon
           Container(
             width: 26, height: 26,
-            decoration: BoxDecoration(
-              color: kGreen,
-              borderRadius: const BorderRadius.all(kRadiusSm),
-            ),
+            decoration: BoxDecoration(color: kGreen, borderRadius: const BorderRadius.all(kRadiusSm)),
             child: const Icon(Icons.grid_on_rounded, size: 15, color: Colors.white),
           ),
           const SizedBox(width: 7),
           const Text(
             'Frameon',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: kTextPrimary,
-              letterSpacing: -0.3,
-            ),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kTextPrimary, letterSpacing: -0.3),
           ),
         ],
       );
 }
-
-// ── File menu ─────────────────────────────────────────────────────────────────
 
 class _FileMenuBtn extends ConsumerWidget {
   @override
@@ -301,8 +262,7 @@ class _FileMenuBtn extends ConsumerWidget {
       ref.read(recentProjectsProvider.notifier).add(path);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed to open: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to open: $e')));
       }
     }
   }
@@ -321,8 +281,6 @@ class _FileMenuBtn extends ConsumerWidget {
     }
   }
 }
-
-// ── Top icon button ───────────────────────────────────────────────────────────
 
 class _TopIconBtn extends StatelessWidget {
   final IconData icon;
@@ -344,8 +302,6 @@ class _TopIconBtn extends StatelessWidget {
         ),
       );
 }
-
-// ── Connection chip ───────────────────────────────────────────────────────────
 
 class _ConnectionChip extends ConsumerWidget {
   final DeviceConnectionState state;
@@ -454,8 +410,6 @@ class _PortSheet extends ConsumerWidget {
   }
 }
 
-// ── Zoom button ───────────────────────────────────────────────────────────────
-
 class _ZoomBtn extends ConsumerWidget {
   final int level;
   final bool active;
@@ -474,16 +428,11 @@ class _ZoomBtn extends ConsumerWidget {
           ),
           child: Text(
             '${level}x',
-            style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w600,
-              color: active ? Colors.white : kTextMuted,
-            ),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: active ? Colors.white : kTextMuted),
           ),
         ),
       );
 }
-
-// ── Theme button ──────────────────────────────────────────────────────────────
 
 class _ThemeBtn extends ConsumerWidget {
   final bool isDark;
@@ -508,8 +457,7 @@ class _ThemeBtn extends ConsumerWidget {
             const SizedBox(width: 5),
             Text(
               isDark ? 'DARK' : 'LIGHT',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  letterSpacing: 0.05, color: kTextMuted),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.05, color: kTextMuted),
             ),
           ]),
         ),
@@ -518,129 +466,158 @@ class _ThemeBtn extends ConsumerWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Preset slots — left vertical strip
-// Slots 1-4 are matrix presets.  Settings icon at bottom.
+//
+// How it works:
+//   • Tapping a slot saves the current scene into the slot we're LEAVING,
+//     then loads the target slot's scene (or a blank if never saved).
+//   • Long-pressing a slot shows a delete confirmation.
+//   • The "+" button adds a new slot with a copy of the current scene as its
+//     initial content so the user always starts from something useful.
+//   • A dot indicator appears on any slot that has a saved (non-null) scene.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PresetSlots extends StatefulWidget {
+class _PresetSlots extends ConsumerWidget {
   const _PresetSlots();
-  @override
-  State<_PresetSlots> createState() => _PresetSlotsState();
-}
-
-class _PresetSlotsState extends State<_PresetSlots> {
-  // Each preset is an int label (1-based, always consecutive).
-  // We store them as a list so deletion can remove any index.
-  final List<int> _presets = [1, 2, 3, 4];
-  int _active = 1;
-
-  // Next label to assign when a preset is added.
-  int get _nextLabel => (_presets.isEmpty ? 0 : _presets.last) + 1;
-
-  void _add() {
-    setState(() {
-      final label = _nextLabel;
-      _presets.add(label);
-      _active = label;
-    });
-  }
-
-  void _delete(int label) {
-    if (_presets.length <= 1) return; // never delete the last preset
-    setState(() {
-      _presets.remove(label);
-      // If the deleted slot was active, fall back to the first remaining slot.
-      if (_active == label) _active = _presets.first;
-    });
-  }
-
-  void _confirmDelete(BuildContext context, int label) {
-    showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete preset?'),
-        content: Text('Preset $label will be removed. This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true) _delete(label);
-    });
-  }
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: 56,
-        padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
-        child: Column(
-          children: [
-            // ── Scrollable preset slots ────────────────────────────────
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    ..._presets.map((label) {
-                      final isActive = _active == label;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: _PresetSlot(
-                          label: '$label',
-                          active: isActive,
-                          onTap: () => setState(() => _active = label),
-                          onLongPress: _presets.length > 1
-                              ? () => _confirmDelete(context, label)
-                              : null,
-                        ),
-                      );
-                    }),
-                    // ── Add preset button ──────────────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: _SlotIconBtn(
-                        icon: Icons.add_rounded,
-                        tooltip: 'Add preset',
-                        onTap: _add,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final preset  = ref.watch(presetProvider);
+    final presetN = ref.read(presetProvider.notifier);
+    final sceneN  = ref.read(sceneProvider.notifier);
 
-            // ── Fixed bottom section ───────────────────────────────────
-            Container(
-              height: 1,
-              width: 32,
-              color: kBorder,
-              margin: const EdgeInsets.only(bottom: 6),
+    void switchTo(int label) {
+      // 1. Save the current scene back into the slot we're leaving.
+      final current = ref.read(sceneProvider);
+      presetN.saveScene(current, slot: preset.activeSlot);
+
+      // 2. Load the target slot's scene (blank if never saved).
+      final target = presetN.switchTo(label);
+      if (target != null) {
+        sceneN.loadScene(target);
+      } else {
+        // First visit — start with a fresh blank scene.
+        sceneN.newScene();
+        // Immediately snapshot it into the slot so it persists.
+        presetN.saveScene(ref.read(sceneProvider), slot: label);
+      }
+
+      // 3. Reset undo history — undo across preset boundaries is confusing.
+      ref.read(editorControllerProvider.notifier).newProject();
+    }
+
+    void addSlot() {
+      // Save current scene first.
+      final current = ref.read(sceneProvider);
+      presetN.saveScene(current, slot: preset.activeSlot);
+
+      // Add slot with a blank scene.
+      presetN.addSlot();
+      sceneN.newScene();
+      presetN.saveScene(ref.read(sceneProvider), slot: preset.activeSlot);
+      ref.read(editorControllerProvider.notifier).newProject();
+    }
+
+    void confirmDelete(int label) {
+      showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Delete preset?'),
+          content: Text('Preset $label will be removed. This cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
             ),
-            _SlotIconBtn(
-              icon: Icons.settings_rounded,
-              tooltip: 'Settings',
-              onTap: () {},
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
             ),
           ],
         ),
-      );
+      ).then((confirmed) {
+        if (confirmed != true) return;
+        final wasActive = preset.activeSlot == label;
+        presetN.removeSlot(label);
+        // If we deleted the active slot, load whichever slot is now active.
+        if (wasActive) {
+          final newActive = ref.read(presetProvider).activeSlot;
+          final saved = ref.read(presetProvider).scenes[newActive];
+          if (saved != null) {
+            sceneN.loadScene(saved);
+          } else {
+            sceneN.newScene();
+          }
+          ref.read(editorControllerProvider.notifier).newProject();
+        }
+      });
+    }
+
+    return Container(
+      width: 56,
+      padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  ...preset.slots.map((label) {
+                    final isActive = preset.activeSlot == label;
+                    final hasSaved = preset.scenes[label] != null;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: _PresetSlot(
+                        label: '$label',
+                        active: isActive,
+                        hasSavedContent: hasSaved,
+                        onTap: isActive ? null : () => switchTo(label),
+                        onLongPress: preset.slots.length > 1
+                            ? () => confirmDelete(label)
+                            : null,
+                      ),
+                    );
+                  }),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: _SlotIconBtn(
+                      icon: Icons.add_rounded,
+                      tooltip: 'Add preset',
+                      onTap: addSlot,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(height: 1, width: 32, color: kBorder, margin: const EdgeInsets.only(bottom: 6)),
+          _SlotIconBtn(
+            icon: Icons.settings_rounded,
+            tooltip: 'Settings',
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slot widgets
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _PresetSlot extends StatelessWidget {
   final String label;
   final bool active;
-  final VoidCallback onTap;
+  final bool hasSavedContent;
+  final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
   const _PresetSlot({
     required this.label,
     required this.active,
-    required this.onTap,
+    required this.hasSavedContent,
+    this.onTap,
     this.onLongPress,
   });
 
@@ -650,37 +627,48 @@ class _PresetSlot extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           onLongPress: onLongPress,
-          child: Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: active ? kGreen : Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.all(kRadiusSm),
-              border: Border.all(
-                  color: active ? kGreen : kBorder, width: active ? 0 : 1),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w700,
-                color: active ? Colors.white : kTextMuted,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  color: active ? kGreen : Theme.of(context).colorScheme.surface,
+                  borderRadius: const BorderRadius.all(kRadiusSm),
+                  border: Border.all(color: active ? kGreen : kBorder, width: active ? 0 : 1),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700,
+                    color: active ? Colors.white : kTextMuted,
+                  ),
+                ),
               ),
-            ),
+              // Small dot in top-right corner when slot has saved content.
+              if (hasSavedContent && !active)
+                Positioned(
+                  top: 4, right: 4,
+                  child: Container(
+                    width: 6, height: 6,
+                    decoration: const BoxDecoration(
+                      color: kGreen,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       );
 }
 
-/// Small square icon button used in the preset slot column.
 class _SlotIconBtn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
-  const _SlotIconBtn({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
+  const _SlotIconBtn({required this.icon, required this.tooltip, required this.onTap});
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -705,17 +693,16 @@ class _SlotIconBtn extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomStrip extends StatelessWidget {
-  // Not const — Consumer children resolved at runtime.
   _BottomStrip();
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(right:  8, left: 8, bottom: 8),
+        padding: const EdgeInsets.only(right: 8, left: 8, bottom: 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              width: 250  ,
+              width: 250,
               child: PanelShell(
                 margin: const EdgeInsets.only(right: 8),
                 child: const WidgetPalette(),
