@@ -69,7 +69,7 @@ class _ToolboxLeft extends ConsumerWidget {
   }
 
   String _leftTitle(LayerType t) => switch (t) {
-        LayerType.text     => 'TEXT COLOR',
+        LayerType.text     => 'TEXT STYLE',
         LayerType.clock    => 'CLOCK COLOR',
         LayerType.gif      => 'UPLOAD FILES',
         LayerType.spotify  => 'SPOTIFY SETTINGS',
@@ -602,7 +602,7 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
         GestureDetector(
           onTap: _loading ? null : _pick,
           child: Container(
-            height: 110,
+            height: 115,
             decoration: BoxDecoration(
               color: hasFile ? Colors.black : kSurfaceLow,
               borderRadius: const BorderRadius.all(kRadiusMd),
@@ -648,25 +648,44 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
           ),
         ),
 
-        // Filename + remove button
+        // Filename + remove button - now in a row horizontally aligned
         if (hasFile) ...[
-          const SizedBox(height: 6),
-          Text(fileName ?? '', style: const TextStyle(fontSize: 11, color: kTextMuted),
-              overflow: TextOverflow.ellipsis),
-          GestureDetector(
-            onTap: _remove,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text('Remove file',
-                  style: TextStyle(fontSize: 11, color: Colors.red.shade400)),
-            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              // Filename - expands to take available space
+              Expanded(
+                child: Text(
+                  fileName ?? '',
+                  style: const TextStyle(fontSize: 11, color: kTextMuted),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Remove button - right aligned
+              GestureDetector(
+                onTap: _remove,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.close_rounded, size: 14, color: Colors.red.shade400),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Remove',
+                        style: TextStyle(fontSize: 11, color: Colors.red.shade400),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ],
     );
   }
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // GIF — RIGHT
 // ─────────────────────────────────────────────────────────────────────────────
