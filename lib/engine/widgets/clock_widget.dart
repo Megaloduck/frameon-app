@@ -10,7 +10,7 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 
   // ── Spacing Configuration ─────────────────────────────
   static const int spacingBeforeColon = 2;
-  static const int spacingAfterColon = 0;
+  static const int spacingAfterColon = 0  ;
   static const int spacingGeneral = 1;
 
   // 🔧 Visual fix for colon glyph imbalance
