@@ -4,16 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/providers.dart';
 import 'ui_primitives.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WidgetPalette  (left panel, w = 160 px)
-//
-// Layout change from original:
-//   - Removed tonal FilledButton in favour of a plain row with a typed icon
-//     badge, label, and a subtle "+" affordance on hover.
-//   - A short section divider groups widgets by category if needed later.
-//   - No more per-button card border — the list itself is the boundary.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class WidgetPalette extends ConsumerWidget {
   const WidgetPalette({super.key});
 
@@ -25,40 +15,40 @@ class WidgetPalette extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SectionLabel('Widgets'),
-        const Hairline(),
+        Hairline(),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 4),
             children: [
               _PaletteEntry(
-                icon:    Icons.text_fields_rounded,
-                color:   const Color(0xFF378ADD),
-                label:   'Text',
-                onTap:   notifier.addTextLayer,
+                icon:  Icons.text_fields_rounded,
+                color: const Color(0xFF378ADD),
+                label: 'Text',
+                onTap: notifier.addTextLayer,
               ),
               _PaletteEntry(
-                icon:    Icons.schedule_rounded,
-                color:   const Color(0xFFEF9F27),
-                label:   'Clock',
-                onTap:   notifier.addClockLayer,
+                icon:  Icons.schedule_rounded,
+                color: const Color(0xFFEF9F27),
+                label: 'Clock',
+                onTap: notifier.addClockLayer,
               ),
               _PaletteEntry(
-                icon:    Icons.gif_box_rounded,
-                color:   const Color.fromARGB(255, 122, 33, 195),
-                label:   'GIF / Image',
-                onTap:   notifier.addGifLayer,
+                icon:  Icons.gif_box_rounded,
+                color: const Color.fromARGB(255, 122, 33, 195),
+                label: 'GIF / Image',
+                onTap: notifier.addGifLayer,
               ),
               _PaletteEntry(
-                icon:    Icons.music_note_rounded,
-                color:   const Color(0xFF1DB954),
-                label:   'Spotify',
-                onTap:   notifier.addSpotifyLayer,
+                icon:  Icons.music_note_rounded,
+                color: const Color(0xFF1DB954),
+                label: 'Spotify',
+                onTap: notifier.addSpotifyLayer,
               ),
               _PaletteEntry(
-                icon:    Icons.timer_rounded,
-                color:   const Color(0xFFFFCC00),
-                label:   'Pomodoro',
-                onTap:   notifier.addPomodoroLayer,
+                icon:  Icons.timer_rounded,
+                color: const Color(0xFFFFCC00),
+                label: 'Pomodoro',
+                onTap: notifier.addPomodoroLayer,
               ),
             ],
           ),
@@ -67,8 +57,6 @@ class WidgetPalette extends ConsumerWidget {
     );
   }
 }
-
-// ── Single palette entry ──────────────────────────────────────────────────────
 
 class _PaletteEntry extends StatefulWidget {
   final IconData icon;
@@ -102,7 +90,7 @@ class _PaletteEntryState extends State<_PaletteEntry> {
             margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
-              color: _hovered ? widget.color.withOpacity(0.07) : Colors.transparent,
+              color: _hovered ? widget.color.withOpacity(0.10) : Colors.transparent,
               borderRadius: const BorderRadius.all(kRadiusMd),
             ),
             child: Row(
@@ -115,7 +103,7 @@ class _PaletteEntryState extends State<_PaletteEntry> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: _hovered ? kTextPrimary : kTextMuted,
+                      color: _hovered ? context.tTextPrimary : context.tTextMuted,
                     ),
                   ),
                 ),

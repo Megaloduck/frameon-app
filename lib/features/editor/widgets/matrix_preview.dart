@@ -8,13 +8,6 @@ import '../../../engine/scene/timeline.dart';
 import '../../../shared/providers/providers.dart';
 import 'ui_primitives.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MatrixPreview
-//
-// Key fix: the LED canvas is wrapped in AspectRatio(64/32 = 2.0) and centred
-// inside the available space. This prevents stretching at any window size.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class MatrixPreview extends ConsumerStatefulWidget {
   const MatrixPreview({super.key});
 
@@ -53,26 +46,19 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
   Widget build(BuildContext context) {
     final timelineAsync = ref.watch(timelineProvider);
     final elapsedMs     = ref.watch(previewElapsedMsProvider);
-    final playing       = ref.watch(previewPlayingProvider);
     final scene         = ref.watch(sceneProvider);
 
     return Container(
-      // Dot-grid background — warm parchment colour matches the app shell
       color: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         children: [
-          // "MATRIX PREVIEW" label
           const _PreviewLabel(),
-
-          // Canvas area — fills remaining space, matrix centred inside
           Expanded(
             child: _CanvasArea(
               timelineAsync: timelineAsync,
               elapsedMs: elapsedMs,
             ),
           ),
-
-          // Info strip: ● 64 × 32 – RGB565 · N frames
           _InfoStrip(
             width:         scene.matrixWidth,
             height:        scene.matrixHeight,
@@ -84,8 +70,6 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
     );
   }
 }
-
-// ── "MATRIX PREVIEW" label ────────────────────────────────────────────────────
 
 class _PreviewLabel extends StatelessWidget {
   const _PreviewLabel();
@@ -99,18 +83,11 @@ class _PreviewLabel extends StatelessWidget {
             fontSize: 11,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.08,
-            color: kTextMuted.withOpacity(0.6),
+            color: context.tTextMuted.withOpacity(0.7),
           ),
         ),
       );
 }
-
-// ── Canvas area ───────────────────────────────────────────────────────────────
-//
-// The trick: we use a Stack with a dot-grid behind everything, and a centred
-// AspectRatio widget in front. The AspectRatio constrains the LED canvas to
-// exactly 64:32 regardless of the available space. A subtle drop-shadow
-// (via DecoratedBox behind the ClipRRect) lifts the frame off the background.
 
 class _CanvasArea extends StatelessWidget {
   final AsyncValue<Timeline> timelineAsync;
@@ -118,53 +95,58 @@ class _CanvasArea extends StatelessWidget {
   const _CanvasArea({required this.timelineAsync, required this.elapsedMs});
 
   @override
-  Widget build(BuildContext context) => Stack(
-        alignment: Alignment.center,
-        children: [
-          // Dot-grid texture fills the whole area
-          Positioned.fill(child: CustomPaint(painter: _DotGridPainter())),
-
-          // LED matrix — always 2:1 aspect ratio, centred
-          Center(
-            child: AspectRatio(
-              aspectRatio: 64 / 32, // == 2.0
-              child: Padding(
-                // Small horizontal inset so the frame doesn't touch the edge
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.22),
-                        blurRadius: 20,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.all(kRadiusSm),
-                    child: timelineAsync.when(
-                      loading: () => const _Loading(),
-                      error: (_, __) => const _Error(),
-                      data: (t) => _LedCanvas(timeline: t, elapsedMs: elapsedMs),
+  Widget build(BuildContext context) {
+    final isDark = context.isDark;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Positioned.fill(
+          child: CustomPaint(painter: _DotGridPainter(isDark: isDark)),
+        ),
+        Center(
+          child: AspectRatio(
+            aspectRatio: 64 / 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.5 : 0.22),
+                      blurRadius: 20,
+                      offset: const Offset(0, 5),
                     ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.all(kRadiusSm),
+                  child: timelineAsync.when(
+                    loading: () => const _Loading(),
+                    error: (_, __) => const _Error(),
+                    data: (t) => _LedCanvas(timeline: t, elapsedMs: elapsedMs),
                   ),
                 ),
               ),
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 }
 
-// ── Dot-grid background painter ───────────────────────────────────────────────
-
 class _DotGridPainter extends CustomPainter {
+  final bool isDark;
+  const _DotGridPainter({required this.isDark});
+
   @override
   void paint(Canvas canvas, Size size) {
     const double step = 18;
     const double r    = 1.2;
-    final paint = Paint()..color = Colors.black.withOpacity(0.055);
+    final paint = Paint()
+      ..color = isDark
+          ? Colors.white.withOpacity(0.06)
+          : Colors.black.withOpacity(0.055);
     for (double x = 0; x < size.width; x += step) {
       for (double y = 0; y < size.height; y += step) {
         canvas.drawCircle(Offset(x, y), r, paint);
@@ -173,10 +155,8 @@ class _DotGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DotGridPainter _) => false;
+  bool shouldRepaint(_DotGridPainter old) => old.isDark != isDark;
 }
-
-// ── LED canvas + painter ──────────────────────────────────────────────────────
 
 class _LedCanvas extends StatelessWidget {
   final Timeline timeline;
@@ -212,7 +192,6 @@ class _LedPainter extends CustomPainter {
     final PixelBuffer buf = _dec.decode(frame.data);
     final double dW = size.width  / _cols;
     final double dH = size.height / _rows;
-    // Dot radius — 40% of the smaller cell dimension gives a tight but readable grid
     final double r  = (dW < dH ? dW : dH) * 0.40;
     final paint = Paint()..isAntiAlias = true;
 
@@ -222,10 +201,7 @@ class _LedPainter extends CustomPainter {
         final bool on  = (argb & 0x00FFFFFF) > 0x080808;
         paint.color = on ? Color(argb | 0xFF000000) : const Color(0xFF181818);
         canvas.drawCircle(
-          Offset(col * dW + dW / 2, row * dH + dH / 2),
-          r,
-          paint,
-        );
+          Offset(col * dW + dW / 2, row * dH + dH / 2), r, paint);
       }
     }
   }
@@ -234,8 +210,6 @@ class _LedPainter extends CustomPainter {
   bool shouldRepaint(_LedPainter old) =>
       old.elapsedMs != elapsedMs || old.timeline != timeline;
 }
-
-// ── Info strip ────────────────────────────────────────────────────────────────
 
 class _InfoStrip extends StatelessWidget {
   final int width, height;
@@ -251,7 +225,8 @@ class _InfoStrip extends StatelessWidget {
     final right = timelineAsync.when(
       loading: () => '—',
       error: (_, __) => '!',
-      data: (t) => '${t.frameCount} frames · ${(t.totalBytes / 1024).toStringAsFixed(1)} KB',
+      data: (t) =>
+          '${t.frameCount} frames · ${(t.totalBytes / 1024).toStringAsFixed(1)} KB',
     );
 
     return Padding(
@@ -259,21 +234,22 @@ class _InfoStrip extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(width: 7, height: 7, decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle)),
+          Container(
+            width: 7, height: 7,
+            decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle),
+          ),
           const SizedBox(width: 6),
           Text(
             '$width × $height  –  RGB565',
-            style: const TextStyle(fontSize: 11, color: kTextMuted),
+            style: TextStyle(fontSize: 11, color: context.tTextMuted),
           ),
           const SizedBox(width: 12),
-          Text(right, style: const TextStyle(fontSize: 11, color: kTextDim)),
+          Text(right, style: TextStyle(fontSize: 11, color: context.tTextDim)),
         ],
       ),
     );
   }
 }
-
-// ── Placeholders ──────────────────────────────────────────────────────────────
 
 class _Loading extends StatelessWidget {
   const _Loading();
@@ -299,4 +275,4 @@ class _Error extends StatelessWidget {
               style: TextStyle(color: Colors.red.shade400, fontSize: 10)),
         ),
       );
-}
+} 

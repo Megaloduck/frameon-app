@@ -6,20 +6,6 @@ import '../../../shared/providers/providers.dart';
 import '../../../features/editor/presentation/controller.dart';
 import 'ui_primitives.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LayerPanel  (bottom-center strip, h = 190 px)
-//
-// Layout changes from original:
-//   - Reorderable list with a drag handle (≡) on each row.
-//   - Selected layer gets a 2 px green left border accent instead of a
-//     translucent overlay — much more legible at small sizes.
-//   - Row height reduced from ~40 px to 32 px — fits more layers.
-//   - Visibility icon replaced with an eye that dims the entire row when
-//     the layer is hidden.
-//   - Delete button only appears on hover (via _LayerRowState).
-//   - Layer count badge in the header.
-// ─────────────────────────────────────────────────────────────────────────────
-
 class LayerPanel extends ConsumerWidget {
   const LayerPanel({super.key});
 
@@ -36,22 +22,21 @@ class LayerPanel extends ConsumerWidget {
         Container(
           height: 34,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: const BoxDecoration(
-            border: Border(bottom: kPanelBorder),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.tBorder)),
           ),
           child: Row(
             children: [
-              const Text(
+              Text(
                 'LAYERS',
                 style: TextStyle(
                   fontSize: 9, fontWeight: FontWeight.w700,
-                  letterSpacing: 0.12, color: kTextDim,
+                  letterSpacing: 0.12, color: context.tTextDim,
                 ),
               ),
               const SizedBox(width: 6),
               _CountBadge(count: scene.layers.length),
               const Spacer(),
-              // Move selected up / down
               _HeaderBtn(
                 icon: Icons.keyboard_arrow_up_rounded,
                 tooltip: 'Move layer up',
@@ -102,8 +87,6 @@ class LayerPanel extends ConsumerWidget {
   }
 }
 
-// ── Layer row ─────────────────────────────────────────────────────────────────
-
 class _LayerRow extends ConsumerStatefulWidget {
   final Layer layer;
   final int   index;
@@ -130,6 +113,11 @@ class _LayerRowState extends ConsumerState<_LayerRow> {
   Widget build(BuildContext context) {
     final notifier = ref.read(sceneProvider.notifier);
     final hidden   = !widget.layer.visible;
+    final isDark   = context.isDark;
+
+    final hoverBg = isDark
+        ? Colors.white.withOpacity(0.04)
+        : Colors.black.withOpacity(0.025);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -141,10 +129,8 @@ class _LayerRowState extends ConsumerState<_LayerRow> {
           height: 32,
           decoration: BoxDecoration(
             color: widget.selected
-                ? _typeColor.withOpacity(0.06)
-                : _hovered
-                    ? Colors.black.withOpacity(0.025)
-                    : Colors.transparent,
+                ? _typeColor.withOpacity(0.10)
+                : _hovered ? hoverBg : Colors.transparent,
             border: Border(
               left: widget.selected
                   ? BorderSide(color: _typeColor, width: 2)
@@ -155,53 +141,44 @@ class _LayerRowState extends ConsumerState<_LayerRow> {
             opacity: hidden ? 0.4 : 1.0,
             child: Row(
               children: [
-                // Drag handle
                 ReorderableDragStartListener(
                   index: widget.index,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Icon(Icons.drag_indicator_rounded, size: 14, color: kTextDim),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(Icons.drag_indicator_rounded, size: 14,
+                        color: context.tTextDim),
                   ),
                 ),
-
-                // Type badge
                 LayerTypeBadge(icon: _typeIcon, color: _typeColor, size: 22),
                 const SizedBox(width: 7),
-
-                // Name
                 Expanded(
                   child: Text(
                     widget.layer.name,
-                    style: const TextStyle(fontSize: 12, color: kTextPrimary),
+                    style: TextStyle(fontSize: 12, color: context.tTextPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-
-                // Visibility toggle — always visible
                 _RowIconBtn(
                   icon: hidden
                       ? Icons.visibility_off_outlined
                       : Icons.visibility_outlined,
                   tooltip: hidden ? 'Show layer' : 'Hide layer',
-                  color: hidden ? kTextDim : kTextMuted,
+                  color: hidden ? context.tTextDim : context.tTextMuted,
                   onTap: () => notifier.toggleVisibility(widget.layer.id),
                 ),
-
-                // Delete — only on hover
                 AnimatedOpacity(
                   opacity: _hovered ? 1 : 0,
                   duration: const Duration(milliseconds: 100),
                   child: _RowIconBtn(
                     icon: Icons.delete_outline_rounded,
                     tooltip: 'Delete layer',
-                    color: Colors.red.shade300,
+                    color: Colors.red.shade400,
                     onTap: () {
                       ref.read(editorControllerProvider.notifier).snapshot();
                       notifier.removeLayer(widget.layer.id);
                     },
                   ),
                 ),
-
                 const SizedBox(width: 4),
               ],
             ),
@@ -212,7 +189,7 @@ class _LayerRowState extends ConsumerState<_LayerRow> {
   }
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 class _CountBadge extends StatelessWidget {
   final int count;
@@ -222,12 +199,13 @@ class _CountBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
         decoration: BoxDecoration(
-          color: kBorder,
+          color: context.tBorder,
           borderRadius: const BorderRadius.all(kRadiusSm),
         ),
         child: Text(
           '$count',
-          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: kTextMuted),
+          style: TextStyle(
+            fontSize: 9, fontWeight: FontWeight.w600, color: context.tTextMuted),
         ),
       );
 }
@@ -237,7 +215,8 @@ class _HeaderBtn extends StatelessWidget {
   final String tooltip;
   final VoidCallback? onTap;
   final bool enabled;
-  const _HeaderBtn({required this.icon, required this.tooltip, this.onTap, this.enabled = true});
+  const _HeaderBtn({required this.icon, required this.tooltip,
+      this.onTap, this.enabled = true});
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -247,7 +226,8 @@ class _HeaderBtn extends StatelessWidget {
           borderRadius: const BorderRadius.all(kRadiusSm),
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: Icon(icon, size: 15, color: enabled ? kTextMuted : kTextDim),
+            child: Icon(icon, size: 15,
+                color: enabled ? context.tTextMuted : context.tTextDim),
           ),
         ),
       );
@@ -258,7 +238,8 @@ class _RowIconBtn extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
   final Color color;
-  const _RowIconBtn({required this.icon, required this.tooltip, required this.onTap, required this.color});
+  const _RowIconBtn({required this.icon, required this.tooltip,
+      required this.onTap, required this.color});
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -276,11 +257,12 @@ class _RowIconBtn extends StatelessWidget {
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
+
   @override
-  Widget build(BuildContext context) => const Center(
+  Widget build(BuildContext context) => Center(
         child: Text(
           'No layers yet — add one from the widget palette',
-          style: TextStyle(fontSize: 11, color: kTextDim),
+          style: TextStyle(fontSize: 11, color: context.tTextDim),
           textAlign: TextAlign.center,
         ),
       );

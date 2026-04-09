@@ -1,16 +1,28 @@
 import 'package:flutter/material.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens
+// Static design tokens — light-mode constants kept for backwards compatibility
+// where a BuildContext is unavailable (e.g. CustomPainter, const widgets).
+// Prefer the ThemeTokens extension below whenever context is available.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const kGreen       = Color(0xFF21C32C);
+
+// Light-mode palette (used as fallbacks / in non-theme-aware code)
 const kSurface     = Color(0xFFF8F7F3);
 const kSurfaceLow  = Color(0xFFECEAE3);
 const kBorder      = Color(0xFFE0DDD6);
 const kTextPrimary = Color(0xFF1A1A1A);
 const kTextMuted   = Color(0xFF888580);
 const kTextDim     = Color(0xFFB0ADA8);
+
+// Dark-mode palette constants
+const kSurfaceDark     = Color(0xFF242424);
+const kSurfaceLowDark  = Color(0xFF1A1A1A);
+const kBorderDark      = Color(0xFF3A3A3A);
+const kTextPrimaryDark = Color(0xFFE8E8E8);
+const kTextMutedDark   = Color(0xFF9E9E9E);
+const kTextDimDark     = Color(0xFF6B6B6B);
 
 const kRadiusSm = Radius.circular(6);
 const kRadiusMd = Radius.circular(9);
@@ -19,7 +31,24 @@ const kRadiusLg = Radius.circular(12);
 const kPanelBorder = BorderSide(color: kBorder);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PanelShell — the outer wrapper every side/bottom panel uses
+// ThemeTokens — context-aware token accessor
+// ─────────────────────────────────────────────────────────────────────────────
+
+extension ThemeTokens on BuildContext {
+  bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  Color get tSurface     => isDark ? kSurfaceDark     : kSurface;
+  Color get tSurfaceLow  => isDark ? kSurfaceLowDark  : kSurfaceLow;
+  Color get tBorder      => isDark ? kBorderDark      : kBorder;
+  Color get tTextPrimary => isDark ? kTextPrimaryDark : kTextPrimary;
+  Color get tTextMuted   => isDark ? kTextMutedDark   : kTextMuted;
+  Color get tTextDim     => isDark ? kTextDimDark     : kTextDim;
+
+  BorderSide get tPanelBorder => BorderSide(color: tBorder);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PanelShell — outer wrapper for every side/bottom panel
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PanelShell extends StatelessWidget {
@@ -36,16 +65,16 @@ class PanelShell extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         margin: margin,
         decoration: BoxDecoration(
-          color: kSurface,
-          borderRadius: BorderRadius.all(kRadiusLg),
-          border: Border.all(color: kBorder),
+          color: context.tSurface,
+          borderRadius: const BorderRadius.all(kRadiusLg),
+          border: Border.all(color: context.tBorder),
         ),
         child: child,
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SectionLabel — uppercase panel section heading
+// SectionLabel
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SectionLabel extends StatelessWidget {
@@ -63,18 +92,18 @@ class SectionLabel extends StatelessWidget {
         padding: padding,
         child: Text(
           text.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 9,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.12,
-            color: kTextDim,
+            color: context.tTextDim,
           ),
         ),
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hairline — a 1-pixel divider
+// Hairline
 // ─────────────────────────────────────────────────────────────────────────────
 
 class Hairline extends StatelessWidget {
@@ -85,12 +114,12 @@ class Hairline extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         margin: margin,
         height: 1,
-        color: kBorder,
+        color: context.tBorder,
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PropRow — label + control row used throughout the toolbox
+// PropRow
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PropRow extends StatelessWidget {
@@ -108,7 +137,7 @@ class PropRow extends StatelessWidget {
               width: 88,
               child: Text(
                 label,
-                style: const TextStyle(fontSize: 12, color: kTextMuted),
+                style: TextStyle(fontSize: 12, color: context.tTextMuted),
               ),
             ),
             Expanded(child: child),
@@ -118,7 +147,7 @@ class PropRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GreenSwitch — a styled Switch that matches the theme
+// GreenSwitch
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GreenSwitch extends StatelessWidget {
@@ -136,7 +165,7 @@ class GreenSwitch extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LayerTypeBadge — colored icon badge in layer list and palette
+// LayerTypeBadge
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LayerTypeBadge extends StatelessWidget {
@@ -156,21 +185,21 @@ class LayerTypeBadge extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.all(kRadiusSm),
+          color: color.withOpacity(0.14),
+          borderRadius: const BorderRadius.all(kRadiusSm),
         ),
         child: Icon(icon, size: size * 0.5, color: color),
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Layer type color map
+// Layer type maps
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Map<String, Color> kLayerTypeColors = {
   'text':     Color(0xFF378ADD),
   'clock':    Color(0xFFEF9F27),
-  'gif':      Color.fromARGB(255, 122, 33, 195),  
+  'gif':      Color.fromARGB(255, 122, 33, 195),
   'spotify':  Color(0xFF1DB954),
   'pomodoro': Color(0xFFFFCC00),
 };
