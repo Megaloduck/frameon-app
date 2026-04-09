@@ -176,7 +176,12 @@ class TextLayer extends Layer {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ClockLayer extends Layer {
-  final Color color;
+  final Color color; // Keep for backward compatibility
+  final Color hoursColor;
+  final Color minutesColor;
+  final Color secondsColor;
+  final Color dateColor;
+  final Color colonColor;
   final ClockFormat format;
   final ClockAlignment alignment;
   final bool showDate;
@@ -188,6 +193,11 @@ class ClockLayer extends Layer {
     required super.id,
     required super.name,
     this.color = const Color(0xFF21C32C),
+    this.hoursColor = const Color(0xFF21C32C),
+    this.minutesColor = const Color(0xFF21C32C),
+    this.secondsColor = const Color(0xFF21C32C),
+    this.dateColor = const Color(0xFF21C32C),
+    this.colonColor = const Color(0xFF21C32C),
     this.format = ClockFormat.h24,
     this.alignment = ClockAlignment.center,
     this.showDate = false,
@@ -208,6 +218,11 @@ class ClockLayer extends Layer {
     String? id,
     String? name,
     Color? color,
+    Color? hoursColor,
+    Color? minutesColor,
+    Color? secondsColor,
+    Color? dateColor,
+    Color? colonColor,
     ClockFormat? format,
     ClockAlignment? alignment,
     bool? showDate,
@@ -223,6 +238,11 @@ class ClockLayer extends Layer {
         id: id ?? this.id,
         name: name ?? this.name,
         color: color ?? this.color,
+        hoursColor: hoursColor ?? this.hoursColor,
+        minutesColor: minutesColor ?? this.minutesColor,
+        secondsColor: secondsColor ?? this.secondsColor,
+        dateColor: dateColor ?? this.dateColor,
+        colonColor: colonColor ?? this.colonColor,
         format: format ?? this.format,
         alignment: alignment ?? this.alignment,
         showDate: showDate ?? this.showDate,
@@ -241,6 +261,11 @@ class ClockLayer extends Layer {
         'id': id,
         'name': name,
         'color': color.value,
+        'hoursColor': hoursColor.value,
+        'minutesColor': minutesColor.value,
+        'secondsColor': secondsColor.value,
+        'dateColor': dateColor.value,
+        'colonColor': colonColor.value,
         'format': format.name,
         'alignment': alignment.name,
         'showDate': showDate,
@@ -257,7 +282,12 @@ class ClockLayer extends Layer {
   factory ClockLayer.fromJson(Map<String, dynamic> j) => ClockLayer(
         id: j['id'] as String,
         name: j['name'] as String,
-        color: Color(j['color'] as int),
+        color: Color(j['color'] as int? ?? 0xFF21C32C),
+        hoursColor: Color(j['hoursColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
+        minutesColor: Color(j['minutesColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
+        secondsColor: Color(j['secondsColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
+        dateColor: Color(j['dateColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
+        colonColor: Color(j['colonColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         format: ClockFormat.values.byName(j['format'] as String? ?? 'h24'),
         alignment: ClockAlignment.values
             .byName(j['alignment'] as String? ?? 'center'),

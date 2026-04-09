@@ -70,7 +70,7 @@ class _ToolboxLeft extends ConsumerWidget {
 
   String _leftTitle(LayerType t) => switch (t) {
         LayerType.text     => 'TEXT STYLE',
-        LayerType.clock    => 'CLOCK COLOR',
+        LayerType.clock    => 'CLOCK STYLE',
         LayerType.gif      => 'UPLOAD FILES',
         LayerType.spotify  => 'SPOTIFY SETTINGS',
         LayerType.pomodoro => 'POMODORO SETTINGS',
@@ -432,23 +432,81 @@ class _TextRight extends StatelessWidget {
 class _ClockLeft extends StatelessWidget {
   final ClockLayer layer; final SceneNotifier n;
   const _ClockLeft({required this.layer, required this.n});
+  
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ColorPicker(color: layer.color, onChanged: (c) => n.updateLayer(layer.copyWith(color: c))),
-          const SizedBox(height: 10),
-          ...['Hours', 'Minutes', 'Seconds', 'Date', 'Colon'].map(
-            (lbl) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(children: [
-                Expanded(child: Text(lbl, style: const TextStyle(fontSize: 11, color: kTextMuted))),
-                Container(width: 14, height: 14,
-                    decoration: BoxDecoration(color: layer.color,
-                        borderRadius: const BorderRadius.all(kRadiusSm))),
-              ]),
+          // Individual element colors
+          const TbLabel('Element Colors'),
+          const SizedBox(height: 8),
+          
+          // Hours
+          _ColorRow(
+            label: 'Hours',
+            color: layer.hoursColor,
+            onChanged: (c) => n.updateLayer(layer.copyWith(hoursColor: c)),
+          ),
+          const SizedBox(height: 6),
+          
+          // Minutes
+          _ColorRow(
+            label: 'Minutes',
+            color: layer.minutesColor,
+            onChanged: (c) => n.updateLayer(layer.copyWith(minutesColor: c)),
+          ),
+          const SizedBox(height: 6),
+          
+          // Seconds (only shown if showSeconds is enabled)
+          if (layer.showSeconds)
+            _ColorRow(
+              label: 'Seconds',
+              color: layer.secondsColor,
+              onChanged: (c) => n.updateLayer(layer.copyWith(secondsColor: c)),
+            ),
+          if (layer.showSeconds) const SizedBox(height: 6),
+          
+          // Date (only shown if showDate is enabled)
+          if (layer.showDate)
+            _ColorRow(
+              label: 'Date',
+              color: layer.dateColor,
+              onChanged: (c) => n.updateLayer(layer.copyWith(dateColor: c)),
+            ),
+          if (layer.showDate) const SizedBox(height: 6),
+          
+          // Colon
+          _ColorRow(
+            label: 'Colon',
+            color: layer.colonColor,
+            onChanged: (c) => n.updateLayer(layer.copyWith(colonColor: c)),
+          ),
+        ],
+      );
+}
+
+// Helper widget for color row with label and color picker
+class _ColorRow extends StatelessWidget {
+  final String label;
+  final Color color;
+  final ValueChanged<Color> onChanged;
+  
+  const _ColorRow({
+    required this.label,
+    required this.color,
+    required this.onChanged,
+  });
+  
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: kTextMuted),
             ),
           ),
+          _colorBtn(context, color, onChanged),
         ],
       );
 }
