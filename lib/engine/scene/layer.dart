@@ -507,6 +507,8 @@ class SpotifyLayer extends Layer {
 // Pomodoro Layer
 // ─────────────────────────────────────────────────────────────────────────────
 
+// In layer.dart - PomodoroLayer class
+
 class PomodoroLayer extends Layer {
   final int focusDurationMinutes;
   final int shortBreakMinutes;
@@ -518,6 +520,7 @@ class PomodoroLayer extends Layer {
   final bool blinkColor;
   final Color focusColor;
   final Color breakColor;
+  final Color longBreakColor;  // ADD THIS
   final double fps;
   /// Current timer state — used by the renderer to pick the right color.
   final PomodoroState currentState;
@@ -535,6 +538,7 @@ class PomodoroLayer extends Layer {
     this.blinkColor = true,
     this.focusColor = const Color(0xFFFFCC00),
     this.breakColor = const Color(0xFF21C32C),
+    this.longBreakColor = const Color.fromARGB(255, 40, 86, 185),  
     this.fps = 10,
     this.currentState = PomodoroState.focus,
     super.visible,
@@ -547,8 +551,16 @@ class PomodoroLayer extends Layer {
   LayerType get type => LayerType.pomodoro;
 
   /// Returns the color appropriate for [currentState].
-  Color get activeColor =>
-      currentState == PomodoroState.focus ? focusColor : breakColor;
+  Color get activeColor {
+    switch (currentState) {
+      case PomodoroState.focus:
+        return focusColor;
+      case PomodoroState.shortBreak:
+        return breakColor;
+      case PomodoroState.longBreak:
+        return longBreakColor;
+    }
+  }
 
   @override
   PomodoroLayer copyWith({
@@ -564,6 +576,7 @@ class PomodoroLayer extends Layer {
     bool? blinkColor,
     Color? focusColor,
     Color? breakColor,
+    Color? longBreakColor,  // ADD THIS
     double? fps,
     PomodoroState? currentState,
     bool? visible,
@@ -585,6 +598,7 @@ class PomodoroLayer extends Layer {
         blinkColor: blinkColor ?? this.blinkColor,
         focusColor: focusColor ?? this.focusColor,
         breakColor: breakColor ?? this.breakColor,
+        longBreakColor: longBreakColor ?? this.longBreakColor,  // ADD THIS
         fps: fps ?? this.fps,
         currentState: currentState ?? this.currentState,
         visible: visible ?? this.visible,
@@ -608,6 +622,7 @@ class PomodoroLayer extends Layer {
         'blinkColor': blinkColor,
         'focusColor': focusColor.value,
         'breakColor': breakColor.value,
+        'longBreakColor': longBreakColor.value,  // ADD THIS
         'fps': fps,
         'currentState': currentState.name,
         'visible': visible,
@@ -631,6 +646,7 @@ class PomodoroLayer extends Layer {
         blinkColor: j['blinkColor'] as bool? ?? true,
         focusColor: Color(j['focusColor'] as int? ?? 0xFFFFCC00),
         breakColor: Color(j['breakColor'] as int? ?? 0xFF21C32C),
+        longBreakColor: Color(j['longBreakColor'] as int? ?? 0xFF21C32C),  // ADD THIS
         fps: (j['fps'] as num?)?.toDouble() ?? 10,
         currentState: PomodoroState.values
             .byName(j['currentState'] as String? ?? 'focus'),

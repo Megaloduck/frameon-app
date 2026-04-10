@@ -301,14 +301,20 @@ class _TransportBtn extends StatelessWidget {
 Widget _colorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =>
     GestureDetector(
       onTap: () async {
-        final c = await showColorPicker(ctx, initialColor: color);
-        if (c != null) onChange(c);
+        final c = await showColorPickerSheet(ctx, initialColor: color);
+        if (c != null) {
+          // Ensure the color has full opacity (alpha = 255) unless it's meant to be transparent
+          final fixedColor = c.withOpacity(c.opacity > 0 ? c.opacity : 1.0);
+          onChange(fixedColor);
+        }
       },
       child: Container(
         width: 26, height: 26,
-        decoration: BoxDecoration(color: color,
-            borderRadius: const BorderRadius.all(kRadiusSm),
-            border: Border.all(color: Colors.black.withOpacity(0.15))),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: const BorderRadius.all(kRadiusSm),
+          border: Border.all(color: Colors.black.withOpacity(0.15)),
+        ),
       ),
     );
 
@@ -898,7 +904,7 @@ class _PomodoroLeft extends StatelessWidget {
           // Long break: Color picker + duration on same row
           Row(
             children: [
-              _colorBtn(context, layer.breakColor, (c) => n.updateLayer(layer.copyWith(breakColor: c))),
+              _colorBtn(context, layer.longBreakColor, (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
               const SizedBox(width: 8),
               const Text('Long break', style: TextStyle(fontSize: 11, color: kTextMuted)),
               const Spacer(),
