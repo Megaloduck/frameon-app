@@ -862,12 +862,64 @@ class _PomodoroLeft extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Stepper(label: 'Focus duration',  value: layer.focusDurationMinutes,    unit: ' min', onChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v))),
-          _Stepper(label: 'Short break',     value: layer.shortBreakMinutes,       unit: ' min', onChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v))),
-          _Stepper(label: 'Long break',      value: layer.longBreakMinutes,        unit: ' min', onChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v))),
-          _Stepper(label: 'Sessions before long break', value: layer.sessionsBeforeLongBreak, onChanged: (v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v))),
+        children: [          
+          // Focus: Color picker + duration on same row
+          Row(
+            children: [
+              _colorBtn(context, layer.focusColor, (c) => n.updateLayer(layer.copyWith(focusColor: c))),
+              const SizedBox(width: 8),
+              const Text('Focus duration', style: TextStyle(fontSize: 11, color: kTextMuted)),
+              const Spacer(),
+              _DurationStepper(
+                value: layer.focusDurationMinutes,
+                unit: 'min',
+                onChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Short break: Color picker + duration on same row
+          Row(
+            children: [
+              _colorBtn(context, layer.breakColor, (c) => n.updateLayer(layer.copyWith(breakColor: c))),
+              const SizedBox(width: 8),
+              const Text('Short break', style: TextStyle(fontSize: 11, color: kTextMuted)),
+              const Spacer(),
+              _DurationStepper(
+                value: layer.shortBreakMinutes,
+                unit: 'min',
+                onChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Long break: Color picker + duration on same row
+          Row(
+            children: [
+              _colorBtn(context, layer.breakColor, (c) => n.updateLayer(layer.copyWith(breakColor: c))),
+              const SizedBox(width: 8),
+              const Text('Long break', style: TextStyle(fontSize: 11, color: kTextMuted)),
+              const Spacer(),
+              _DurationStepper(
+                value: layer.longBreakMinutes,
+                unit: 'min',
+                onChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Sessions before long break
+          _Stepper(
+            label: 'Sessions before long break',
+            value: layer.sessionsBeforeLongBreak,
+            onChanged: (v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
+          ),
           const SizedBox(height: 10),
+          
+          // Transport controls
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _TransportBtn(icon: Icons.restart_alt_rounded, onTap: () {}),
             const SizedBox(width: 8),
@@ -875,6 +927,47 @@ class _PomodoroLeft extends StatelessWidget {
             const SizedBox(width: 8),
             _TransportBtn(icon: Icons.skip_next_rounded, onTap: () {}),
           ]),
+        ],
+      );
+}
+
+// Helper widget for duration stepper used in rows
+class _DurationStepper extends StatelessWidget {
+  final int value;
+  final String unit;
+  final ValueChanged<int> onChanged;
+  final int min, max;
+  
+  const _DurationStepper({
+    required this.value,
+    required this.onChanged,
+    this.unit = '',
+    this.min = 1,
+    this.max = 99,
+  });
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StepBtn(
+            icon: Icons.remove_rounded,
+            enabled: value > min,
+            onTap: () => onChanged(value - 1),
+          ),
+          SizedBox(
+            width: 50,
+            child: Text(
+              '$value $unit',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+          _StepBtn(
+            icon: Icons.add_rounded,
+            enabled: value < max,
+            onTap: () => onChanged(value + 1),
+          ),
         ],
       );
 }
@@ -896,19 +989,6 @@ class _PomodoroRight extends StatelessWidget {
           TbLabel('Custom FPS'),
           _SpeedSlider(value: (1000 / layer.fps).clamp(10, 500),
               onChanged: (v) => n.updateLayer(layer.copyWith(fps: 1000 / v))),
-          const SizedBox(height: 8),
-          TbLabel('Session color'), const SizedBox(height: 4),
-          Row(children: [
-            _colorBtn(context, layer.focusColor, (c) => n.updateLayer(layer.copyWith(focusColor: c))),
-            const SizedBox(width: 8),
-            const Text('Focus', style: TextStyle(fontSize: 11, color: kTextMuted)),
-          ]),
-          const SizedBox(height: 6),
-          Row(children: [
-            _colorBtn(context, layer.breakColor, (c) => n.updateLayer(layer.copyWith(breakColor: c))),
-            const SizedBox(width: 8),
-            const Text('Break', style: TextStyle(fontSize: 11, color: kTextMuted)),
-          ]),
         ],
       );
 }
