@@ -1,25 +1,34 @@
 import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../renderer/pixel_buffer.dart';
 import '../renderer/pixel_font.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
+import '../../../shared/providers/time_service.dart';
 
 class ClockWidget extends MatrixWidget<ClockLayer> {
   const ClockWidget();
 
   // ── Spacing Configuration ─────────────────────────────
   static const int spacingBeforeColon = 2;
-  static const int spacingAfterColon = 0  ;
+  static const int spacingAfterColon = 0;
   static const int spacingGeneral = 1;
-
-  // 🔧 Visual fix for colon glyph imbalance
-  // Try -1 or +1 depending on your font
   static const int colonVisualOffset = -1;
+
+  // Store reference to the provider container
+  static ProviderContainer? _container;
+
+  // Call this once during app initialization
+  static void init(ProviderContainer container) {
+    _container = container;
+  }
 
   @override
   void render(ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
-    final now = DateTime.now();
+    // Get NTP-synced time
+    final DateTime now = _getCurrentTime();
 
     // Blink without affecting layout
     final bool colonOn = !layer.blinkColon || (elapsedMs % 1000) < 500;
@@ -84,16 +93,14 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 
     // ── FIRST COLON ─────────────────────────────────────
     currentX += spacingBeforeColon;
-
     _drawText(
       buffer,
       colonStr,
       layer.colonColor,
-      currentX + colonVisualOffset, // 👈 visual fix here
+      currentX + colonVisualOffset,
       currentY,
       colonOpacity,
     );
-
     currentX += PixelFont.measureWidth(colonStr);
     currentX += spacingAfterColon;
 
@@ -104,32 +111,36 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     // ── SECONDS ─────────────────────────────────────────
     if (hasSeconds) {
       currentX += spacingBeforeColon;
-
       _drawText(
         buffer,
         colonStr,
         layer.colonColor,
-        currentX + colonVisualOffset, // 👈 same fix here
+        currentX + colonVisualOffset,
         currentY,
         colonOpacity,
       );
-
       currentX += PixelFont.measureWidth(colonStr);
       currentX += spacingAfterColon;
-
       _drawText(buffer, secondsStr, layer.secondsColor, currentX, currentY, layer.opacity);
-      currentX += PixelFont.measureWidth(secondsStr);
     }
 
     // ── AM/PM ───────────────────────────────────────────
     if (hasAmPm) {
       currentX += spacingGeneral;
-
       _drawText(buffer, ampmStr, layer.minutesColor, currentX, currentY, layer.opacity);
     }
   }
 
-  // ── Helpers ──────────────────────────────────────────
+  // ── Time Helpers ─────────────────────────────────────
+
+  DateTime _getCurrentTime() {
+    // Use the static container reference if available
+    if (_container != null) {
+      return _container!.read(timeServiceProvider);
+    }
+    // Fallback to system time
+    return DateTime.now();
+  }
 
   String _buildHoursStr(DateTime now, ClockLayer layer) {
     if (layer.format == ClockFormat.h24) {
@@ -148,18 +159,15 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     String ampm,
   ) {
     int width = PixelFont.measureWidth(hours);
-
     width += spacingBeforeColon;
     width += PixelFont.measureWidth(':');
     width += spacingAfterColon;
-
     width += PixelFont.measureWidth(minutes);
 
     if (seconds.isNotEmpty) {
       width += spacingBeforeColon;
       width += PixelFont.measureWidth(':');
       width += spacingAfterColon;
-
       width += PixelFont.measureWidth(seconds);
     }
 
@@ -210,7 +218,6 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
           opacity: opacity,
         );
         break;
-
       case ClockAlignment.center:
         PixelFont.drawCentered(
           buffer: buffer,
@@ -221,7 +228,6 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
           opacity: opacity,
         );
         break;
-
       case ClockAlignment.right:
         PixelFont.drawRight(
           buffer: buffer,
@@ -244,7 +250,6 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     double opacity,
   ) {
     if (text.isEmpty) return;
-
     PixelFont.draw(
       buffer: buffer,
       text: text,
