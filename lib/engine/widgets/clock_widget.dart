@@ -13,189 +13,136 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 
   // ── Spacing Configuration ─────────────────────────────
   static const int spacingBeforeColon = 2;
-  static const int spacingAfterColon = 0;
-  static const int spacingGeneral = 1;
-  static const int colonVisualOffset = -1;
+  static const int spacingAfterColon  = 0;
+  static const int spacingGeneral     = 1;
+  static const int colonVisualOffset  = -1;
 
-  // Store reference to the provider container
+  /// Set once in main.dart so the stateless renderer can read the live time.
   static ProviderContainer? _container;
 
-  // Call this once during app initialization
   static void init(ProviderContainer container) {
     _container = container;
   }
 
   @override
   void render(ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
-    // Get NTP-synced time
     final DateTime now = _getCurrentTime();
 
-    // Blink without affecting layout
-    final bool colonOn = !layer.blinkColon || (elapsedMs % 1000) < 500;
-    final String colonStr = ':';
-    final double colonOpacity = colonOn ? layer.opacity : 0.0;
+    // Blink colon without shifting layout
+    final bool colonOn      = !layer.blinkColon || (elapsedMs % 1000) < 500;
+    final String colonStr   = ':';
+    final double colonAlpha = colonOn ? layer.opacity : 0.0;
 
-    final hoursStr = _buildHoursStr(now, layer);
+    final hoursStr   = _buildHoursStr(now, layer);
     final minutesStr = _pad(now.minute);
     final secondsStr = layer.showSeconds ? _pad(now.second) : '';
-    final dateStr = layer.showDate
+    final dateStr    = layer.showDate
         ? '${_pad(now.day)}.${_pad(now.month)}.${now.year % 100}'
         : '';
-    final ampmStr = (layer.format != ClockFormat.h24)
+    final ampmStr = layer.format != ClockFormat.h24
         ? (now.hour < 12 ? 'AM' : 'PM')
         : '';
 
-    final bool hasDate = dateStr.isNotEmpty;
+    final bool hasDate    = dateStr.isNotEmpty;
     final bool hasSeconds = secondsStr.isNotEmpty;
-    final bool hasAmPm = ampmStr.isNotEmpty;
+    final bool hasAmPm    = ampmStr.isNotEmpty;
 
-    // ── Vertical Layout ─────────────────────────────────
+    // ── Vertical layout ──────────────────────────────────
     int totalHeight = PixelFont.glyphHeight;
     if (hasDate) totalHeight += PixelFont.glyphHeight + 2;
 
-    final int startY = (buffer.height - totalHeight) ~/ 2;
-    int currentY = startY;
+    final int startY   = (buffer.height - totalHeight) ~/ 2;
+    int currentY       = startY;
 
-    // ── DATE ────────────────────────────────────────────
+    // ── Date row ─────────────────────────────────────────
     if (hasDate) {
-      _drawAlignedText(
-        buffer: buffer,
-        text: dateStr,
-        color: layer.dateColor,
-        alignment: layer.alignment,
-        offsetX: layer.offset.dx.round(),
-        y: currentY,
-        opacity: layer.opacity,
+      _drawAligned(
+        buffer:      buffer,
+        text:        dateStr,
+        color:       layer.dateColor,
+        alignment:   layer.alignment,
+        offsetX:     layer.offset.dx.round(),
+        y:           currentY,
+        opacity:     layer.opacity,
         bufferWidth: buffer.width,
       );
       currentY += PixelFont.glyphHeight + 2;
     }
 
-    // ── WIDTH CALCULATION ───────────────────────────────
-    final int totalWidth = _calculateTimeWidth(
-      hoursStr,
-      minutesStr,
-      secondsStr,
-      hasAmPm,
-      ampmStr,
-    );
+    // ── Compute total time-row width for alignment ────────
+    final int totalWidth = _calcTimeWidth(hoursStr, minutesStr, secondsStr, hasAmPm, ampmStr);
+    int cx = _startX(buffer, totalWidth, layer.alignment, layer.offset.dx.round());
 
-    int currentX = _getStartX(
-      buffer,
-      totalWidth,
-      layer.alignment,
-      layer.offset.dx.round(),
-    );
+    // ── Hours ─────────────────────────────────────────────
+    _drawText(buffer, hoursStr, layer.hoursColor, cx, currentY, layer.opacity);
+    cx += PixelFont.measureWidth(hoursStr);
 
-    // ── HOURS ───────────────────────────────────────────
-    _drawText(buffer, hoursStr, layer.hoursColor, currentX, currentY, layer.opacity);
-    currentX += PixelFont.measureWidth(hoursStr);
+    // ── Colon 1 ───────────────────────────────────────────
+    cx += spacingBeforeColon;
+    _drawText(buffer, colonStr, layer.colonColor, cx + colonVisualOffset, currentY, colonAlpha);
+    cx += PixelFont.measureWidth(colonStr) + spacingAfterColon;
 
-    // ── FIRST COLON ─────────────────────────────────────
-    currentX += spacingBeforeColon;
-    _drawText(
-      buffer,
-      colonStr,
-      layer.colonColor,
-      currentX + colonVisualOffset,
-      currentY,
-      colonOpacity,
-    );
-    currentX += PixelFont.measureWidth(colonStr);
-    currentX += spacingAfterColon;
+    // ── Minutes ───────────────────────────────────────────
+    _drawText(buffer, minutesStr, layer.minutesColor, cx, currentY, layer.opacity);
+    cx += PixelFont.measureWidth(minutesStr);
 
-    // ── MINUTES ─────────────────────────────────────────
-    _drawText(buffer, minutesStr, layer.minutesColor, currentX, currentY, layer.opacity);
-    currentX += PixelFont.measureWidth(minutesStr);
-
-    // ── SECONDS ─────────────────────────────────────────
+    // ── Seconds (optional) ────────────────────────────────
     if (hasSeconds) {
-      currentX += spacingBeforeColon;
-      _drawText(
-        buffer,
-        colonStr,
-        layer.colonColor,
-        currentX + colonVisualOffset,
-        currentY,
-        colonOpacity,
-      );
-      currentX += PixelFont.measureWidth(colonStr);
-      currentX += spacingAfterColon;
-      _drawText(buffer, secondsStr, layer.secondsColor, currentX, currentY, layer.opacity);
+      cx += spacingBeforeColon;
+      _drawText(buffer, colonStr, layer.colonColor, cx + colonVisualOffset, currentY, colonAlpha);
+      cx += PixelFont.measureWidth(colonStr) + spacingAfterColon;
+      _drawText(buffer, secondsStr, layer.secondsColor, cx, currentY, layer.opacity);
+      cx += PixelFont.measureWidth(secondsStr);
     }
 
-    // ── AM/PM ───────────────────────────────────────────
+    // ── AM/PM (optional) ──────────────────────────────────
     if (hasAmPm) {
-      currentX += spacingGeneral;
-      _drawText(buffer, ampmStr, layer.minutesColor, currentX, currentY, layer.opacity);
+      cx += spacingGeneral;
+      _drawText(buffer, ampmStr, layer.minutesColor, cx, currentY, layer.opacity);
     }
   }
 
-  // ── Time Helpers ─────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   DateTime _getCurrentTime() {
-    // Use the static container reference if available
     if (_container != null) {
       return _container!.read(timeServiceProvider);
     }
-    // Fallback to system time
     return DateTime.now();
   }
 
   String _buildHoursStr(DateTime now, ClockLayer layer) {
-    if (layer.format == ClockFormat.h24) {
-      return _pad(now.hour);
-    } else {
-      final int h = now.hour % 12 == 0 ? 12 : now.hour % 12;
-      return h.toString();
-    }
+    if (layer.format == ClockFormat.h24) return _pad(now.hour);
+    final int h = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    return h.toString();
   }
 
-  int _calculateTimeWidth(
-    String hours,
-    String minutes,
-    String seconds,
-    bool hasAmPm,
-    String ampm,
-  ) {
-    int width = PixelFont.measureWidth(hours);
-    width += spacingBeforeColon;
-    width += PixelFont.measureWidth(':');
-    width += spacingAfterColon;
-    width += PixelFont.measureWidth(minutes);
-
+  int _calcTimeWidth(String hours, String minutes, String seconds,
+      bool hasAmPm, String ampm) {
+    int w = PixelFont.measureWidth(hours)
+        + spacingBeforeColon
+        + PixelFont.measureWidth(':')
+        + spacingAfterColon
+        + PixelFont.measureWidth(minutes);
     if (seconds.isNotEmpty) {
-      width += spacingBeforeColon;
-      width += PixelFont.measureWidth(':');
-      width += spacingAfterColon;
-      width += PixelFont.measureWidth(seconds);
+      w += spacingBeforeColon
+          + PixelFont.measureWidth(':')
+          + spacingAfterColon
+          + PixelFont.measureWidth(seconds);
     }
-
-    if (hasAmPm) {
-      width += spacingGeneral;
-      width += PixelFont.measureWidth(ampm);
-    }
-
-    return width;
+    if (hasAmPm) w += spacingGeneral + PixelFont.measureWidth(ampm);
+    return w;
   }
 
-  int _getStartX(
-    PixelBuffer buffer,
-    int totalWidth,
-    ClockAlignment alignment,
-    int offsetX,
-  ) {
-    switch (alignment) {
-      case ClockAlignment.left:
-        return offsetX;
-      case ClockAlignment.center:
-        return ((buffer.width - totalWidth) ~/ 2) + offsetX;
-      case ClockAlignment.right:
-        return buffer.width - totalWidth + offsetX;
-    }
+  int _startX(PixelBuffer buffer, int totalWidth, ClockAlignment alignment, int offsetX) {
+    return switch (alignment) {
+      ClockAlignment.left   => offsetX,
+      ClockAlignment.center => ((buffer.width - totalWidth) ~/ 2) + offsetX,
+      ClockAlignment.right  => buffer.width - totalWidth + offsetX,
+    };
   }
 
-  void _drawAlignedText({
+  void _drawAligned({
     required PixelBuffer buffer,
     required String text,
     required Color color,
@@ -206,58 +153,19 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     required int bufferWidth,
   }) {
     if (text.isEmpty) return;
-
     switch (alignment) {
       case ClockAlignment.left:
-        PixelFont.draw(
-          buffer: buffer,
-          text: text,
-          color: color,
-          x: offsetX,
-          y: y,
-          opacity: opacity,
-        );
-        break;
+        PixelFont.draw(buffer: buffer, text: text, color: color, x: offsetX, y: y, opacity: opacity);
       case ClockAlignment.center:
-        PixelFont.drawCentered(
-          buffer: buffer,
-          text: text,
-          color: color,
-          bufferWidth: bufferWidth,
-          y: y,
-          opacity: opacity,
-        );
-        break;
+        PixelFont.drawCentered(buffer: buffer, text: text, color: color, bufferWidth: bufferWidth, y: y, opacity: opacity);
       case ClockAlignment.right:
-        PixelFont.drawRight(
-          buffer: buffer,
-          text: text,
-          color: color,
-          rightEdge: bufferWidth + offsetX,
-          y: y,
-          opacity: opacity,
-        );
-        break;
+        PixelFont.drawRight(buffer: buffer, text: text, color: color, rightEdge: bufferWidth + offsetX, y: y, opacity: opacity);
     }
   }
 
-  void _drawText(
-    PixelBuffer buffer,
-    String text,
-    Color color,
-    int x,
-    int y,
-    double opacity,
-  ) {
+  void _drawText(PixelBuffer buffer, String text, Color color, int x, int y, double opacity) {
     if (text.isEmpty) return;
-    PixelFont.draw(
-      buffer: buffer,
-      text: text,
-      color: color,
-      x: x,
-      y: y,
-      opacity: opacity,
-    );
+    PixelFont.draw(buffer: buffer, text: text, color: color, x: x, y: y, opacity: opacity);
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
