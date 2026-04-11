@@ -395,7 +395,12 @@ class _TextLeft extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ColorPicker(color: layer.color, onChanged: (c) => n.updateLayer(layer.copyWith(color: c))),
+          // Changed: Color picker as simple row with color box (like pomodoro)
+          Row(children: [
+            _colorBtn(context, layer.color, (c) => n.updateLayer(layer.copyWith(color: c))),
+            const SizedBox(width: 8),
+            const Text('Text Color', style: TextStyle(fontSize: 11, color: kTextMuted)),
+          ]),
           const SizedBox(height: 10),
           TbLabel('Font Style'), const SizedBox(height: 4),
           _TbDropdown(values: PixelFontStyle.values, current: layer.fontStyle,
