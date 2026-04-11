@@ -862,79 +862,149 @@ class _SpotifyRight extends StatelessWidget {
 // POMODORO
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PomodoroLeft extends StatelessWidget {
-  final PomodoroLayer layer; final SceneNotifier n;
+class _PomodoroLeft extends ConsumerWidget {
+  final PomodoroLayer layer;
+  final SceneNotifier n;
   const _PomodoroLeft({required this.layer, required this.n});
+ 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [          
-          // Focus: Color picker + duration on same row
-          Row(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timerState = ref.watch(pomodoroServiceProvider);
+    final service    = ref.read(pomodoroServiceProvider.notifier);
+ 
+    final phaseLabel = switch (timerState.phase) {
+      PomodoroState.focus      => 'Focus Session',
+      PomodoroState.shortBreak => 'Short Break',
+      PomodoroState.longBreak  => 'Long Break',
+    };
+ 
+    final phaseColor = switch (timerState.phase) {
+      PomodoroState.focus      => layer.focusColor,
+      PomodoroState.shortBreak => layer.breakColor,
+      PomodoroState.longBreak  => layer.longBreakColor,
+    };
+ 
+    final mins = timerState.remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final secs = timerState.remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+ 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Phase + time display ───────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: phaseColor.withOpacity(0.08),
+            borderRadius: const BorderRadius.all(kRadiusMd),
+            border: Border.all(color: phaseColor.withOpacity(0.3)),
+          ),
+          child: Row(
             children: [
-              _colorBtn(context, layer.focusColor, (c) => n.updateLayer(layer.copyWith(focusColor: c))),
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  color: timerState.isRunning ? phaseColor : kTextDim,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 8),
-              const Text('Focus duration', style: TextStyle(fontSize: 11, color: kTextMuted)),
+              Text(
+                phaseLabel,
+                style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600,
+                  color: phaseColor,
+                ),
+              ),
               const Spacer(),
-              _DurationStepper(
-                value: layer.focusDurationMinutes,
-                unit: 'min',
-                onChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
+              Text(
+                '$mins:$secs',
+                style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700,
+                  color: phaseColor, fontFamily: 'monospace',
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          
-          // Short break: Color picker + duration on same row
-          Row(
-            children: [
-              _colorBtn(context, layer.breakColor, (c) => n.updateLayer(layer.copyWith(breakColor: c))),
-              const SizedBox(width: 8),
-              const Text('Short break', style: TextStyle(fontSize: 11, color: kTextMuted)),
-              const Spacer(),
-              _DurationStepper(
-                value: layer.shortBreakMinutes,
-                unit: 'min',
-                onChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          // Long break: Color picker + duration on same row
-          Row(
-            children: [
-              _colorBtn(context, layer.longBreakColor, (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
-              const SizedBox(width: 8),
-              const Text('Long break', style: TextStyle(fontSize: 11, color: kTextMuted)),
-              const Spacer(),
-              _DurationStepper(
-                value: layer.longBreakMinutes,
-                unit: 'min',
-                onChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          // Sessions before long break
-          _Stepper(
-            label: 'Sessions before long break',
-            value: layer.sessionsBeforeLongBreak,
-            onChanged: (v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
-          ),
-          const SizedBox(height: 10),
-          
-          // Transport controls
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _TransportBtn(icon: Icons.restart_alt_rounded, onTap: () {}),
+        ),
+        const SizedBox(height: 10),
+ 
+        // ── Duration + color settings ──────────────────────────────────
+        Row(
+          children: [
+            _colorBtn(context, layer.focusColor,
+                (c) => n.updateLayer(layer.copyWith(focusColor: c))),
             const SizedBox(width: 8),
-            _TransportBtn(icon: Icons.play_arrow_rounded, filled: true, onTap: () {}),
+            const Text('Focus Session', style: TextStyle(fontSize: 11, color: kTextMuted)),
+            const Spacer(),
+            _DurationStepper(
+              value: layer.focusDurationMinutes,
+              unit: 'min',
+              onChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _colorBtn(context, layer.breakColor,
+                (c) => n.updateLayer(layer.copyWith(breakColor: c))),
             const SizedBox(width: 8),
-            _TransportBtn(icon: Icons.skip_next_rounded, onTap: () {}),
-          ]),
-        ],
-      );
+            const Text('Short break', style: TextStyle(fontSize: 11, color: kTextMuted)),
+            const Spacer(),
+            _DurationStepper(
+              value: layer.shortBreakMinutes,
+              unit: 'min',
+              onChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _colorBtn(context, layer.longBreakColor,
+                (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
+            const SizedBox(width: 8),
+            const Text('Long break', style: TextStyle(fontSize: 11, color: kTextMuted)),
+            const Spacer(),
+            _DurationStepper(
+              value: layer.longBreakMinutes,
+              unit: 'min',
+              onChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _Stepper(
+          label: 'Sessions before long break',
+          value: layer.sessionsBeforeLongBreak,
+          onChanged: (v) =>
+              n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
+        ),
+        const SizedBox(height: 10),
+ 
+        // ── Transport controls ─────────────────────────────────────────
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _TransportBtn(
+            icon: Icons.restart_alt_rounded,
+            onTap: () => service.reset(layer),
+          ),
+          const SizedBox(width: 8),
+          _TransportBtn(
+            icon: timerState.isRunning
+                ? Icons.pause_rounded
+                : Icons.play_arrow_rounded,
+            filled: true,
+            onTap: () => service.togglePlayPause(layer),
+          ),
+          const SizedBox(width: 8),
+          _TransportBtn(
+            icon: Icons.skip_next_rounded,
+            onTap: () => service.skip(layer),
+          ),
+        ]),
+      ],
+    );
+  }
 }
 
 // Helper widget for duration stepper used in rows

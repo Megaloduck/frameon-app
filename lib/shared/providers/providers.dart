@@ -9,11 +9,13 @@ import '../../engine/scene/layer.dart';
 import '../../engine/scene/scene.dart';
 import '../../engine/scene/timeline.dart';
 import '../../services/spotify/spotify_service.dart';
+import '../../services/pomodoro/pomodoro_service.dart';
 
 import '../../features/editor/widgets/gif_bytes_provider.dart';
 import 'time_service.dart';
 
 export '../../services/spotify/spotify_service.dart' show spotifyServiceProvider;
+export '../../services/pomodoro/pomodoro_service.dart' show pomodoroServiceProvider;
 
 const _uuid = Uuid();
 
@@ -123,8 +125,14 @@ final selectedLayerProvider = Provider<Layer?>((ref) {
 final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
   final renderer = MatrixRenderer();
 
+  // Wire Spotify track into renderer.
   ref.listen(spotifyServiceProvider, (_, next) {
     renderer.currentTrack = next.isConnected ? next.toTrack() : null;
+  });
+
+  // Wire Pomodoro timer state into renderer.
+  ref.listen(pomodoroServiceProvider, (_, next) {
+    renderer.currentPomodoroState = next;
   });
 
   return renderer;
@@ -202,12 +210,12 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     final renderer = ref.read(matrixRendererProvider);
 
     // Watch the live time ONLY when there are visible clock/pomodoro layers.
-    // This causes the timeline to re-render every second for those layer types,
-    // making the seconds hand and colon advance in the preview.
     final hasTimeLayers = scene.visibleLayers.any((l) =>
         l.type == LayerType.clock || l.type == LayerType.pomodoro);
     if (hasTimeLayers) {
       ref.watch(timeServiceProvider);
+      // Also watch pomodoro state so the preview updates each second.
+      ref.watch(pomodoroServiceProvider);
     }
 
     // Re-hydrate renderer asset cache from gifBytesProvider.
@@ -223,7 +231,6 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     }
 
     // Debounce rapid scene changes (e.g. typing in text field).
-    // Clock re-renders skip the debounce so seconds feel instant.
     if (!hasTimeLayers) {
       _debounce?.cancel();
       final int gen = ++_generation;
