@@ -76,7 +76,7 @@ class _ColorPickerState extends State<ColorPicker> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── SV square (constrained to reasonable size) ─────────────────────
+        // ── SV square ─────────────────────────────────────────────────
         LayoutBuilder(
           builder: (context, constraints) {
             final size = constraints.maxWidth.clamp(150.0, 280.0);
@@ -89,10 +89,7 @@ class _ColorPickerState extends State<ColorPicker> {
                   sat: _sat,
                   val: _val,
                   onChanged: (s, v) {
-                    setState(() {
-                      _sat = s;
-                      _val = v;
-                    });
+                    setState(() { _sat = s; _val = v; });
                     _emit();
                   },
                 ),
@@ -101,7 +98,7 @@ class _ColorPickerState extends State<ColorPicker> {
           },
         ),
         const SizedBox(height: 12),
-        // ── Hue strip ─────────────────────────────────────────────────────
+        // ── Hue strip ─────────────────────────────────────────────────
         Row(
           children: [
             const Text('Hue', style: TextStyle(fontSize: 11, color: Colors.grey)),
@@ -109,30 +106,21 @@ class _ColorPickerState extends State<ColorPicker> {
             Expanded(
               child: _HueStrip(
                 hue: _hue,
-                onChanged: (h) {
-                  setState(() => _hue = h);
-                  _emit();
-                },
+                onChanged: (h) { setState(() => _hue = h); _emit(); },
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        // ── Opacity strip ─────────────────────────────────────────────────
+        // ── Opacity strip ─────────────────────────────────────────────
         Row(
           children: [
             const Text('Alpha', style: TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(width: 8),
             Expanded(
               child: _OpacityStrip(
-                hue: _hue,
-                sat: _sat,
-                val: _val,
-                opacity: _opacity,
-                onChanged: (o) {
-                  setState(() => _opacity = o);
-                  _emit();
-                },
+                hue: _hue, sat: _sat, val: _val, opacity: _opacity,
+                onChanged: (o) { setState(() => _opacity = o); _emit(); },
               ),
             ),
             const SizedBox(width: 8),
@@ -147,12 +135,11 @@ class _ColorPickerState extends State<ColorPicker> {
           ],
         ),
         const SizedBox(height: 12),
-        // ── Hex + swatch ─────────────────────────────────────────────────
+        // ── Hex + swatch ─────────────────────────────────────────────
         Row(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 32, height: 32,
               decoration: BoxDecoration(
                 color: _current,
                 borderRadius: BorderRadius.circular(6),
@@ -209,19 +196,14 @@ class _SVSquare extends StatelessWidget {
   final double hue, sat, val;
   final void Function(double sat, double val) onChanged;
 
-  const _SVSquare({
-    required this.hue,
-    required this.sat,
-    required this.val,
-    required this.onChanged,
-  });
+  const _SVSquare({required this.hue, required this.sat, required this.val, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onPanStart: (d) => _update(d.localPosition, context),
+      onPanStart:  (d) => _update(d.localPosition, context),
       onPanUpdate: (d) => _update(d.localPosition, context),
-      onTapDown: (d) => _update(d.localPosition, context),
+      onTapDown:   (d) => _update(d.localPosition, context),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
@@ -254,39 +236,21 @@ class _SVPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
+    canvas.drawRect(rect, Paint()
+      ..shader = LinearGradient(
+        colors: [Colors.white, HSVColor.fromAHSV(1, hue, 1, 1).toColor()],
+      ).createShader(rect));
+    canvas.drawRect(rect, Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        colors: [Colors.transparent, Colors.black],
+      ).createShader(rect));
 
-    // Saturation: white → hue
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          colors: [Colors.white, HSVColor.fromAHSV(1, hue, 1, 1).toColor()],
-        ).createShader(rect),
-    );
-
-    // Value: transparent → black
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.black],
-        ).createShader(rect),
-    );
-
-    // Cursor
     final cursor = Offset(sat * size.width, (1 - val) * size.height);
-    canvas.drawCircle(
-      cursor,
-      6,
-      Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2,
-    );
-    canvas.drawCircle(
-      cursor,
-      4,
-      Paint()..color = Colors.black.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 1,
-    );
+    canvas.drawCircle(cursor, 6,
+        Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2);
+    canvas.drawCircle(cursor, 4,
+        Paint()..color = Colors.black.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 1);
   }
 
   @override
@@ -299,7 +263,6 @@ class _SVPainter extends CustomPainter {
 class _HueStrip extends StatelessWidget {
   final double hue;
   final ValueChanged<double> onChanged;
-
   const _HueStrip({required this.hue, required this.onChanged});
 
   @override
@@ -307,9 +270,9 @@ class _HueStrip extends StatelessWidget {
     return SizedBox(
       height: 24,
       child: GestureDetector(
-        onPanStart: (d) => _update(d.localPosition, context),
+        onPanStart:  (d) => _update(d.localPosition, context),
         onPanUpdate: (d) => _update(d.localPosition, context),
-        onTapDown: (d) => _update(d.localPosition, context),
+        onTapDown:   (d) => _update(d.localPosition, context),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
@@ -326,8 +289,7 @@ class _HueStrip extends StatelessWidget {
 
   void _update(Offset local, BuildContext context) {
     final box = context.findRenderObject() as RenderBox;
-    final width = box.size.width;
-    onChanged((local.dx / width).clamp(0.0, 1.0) * 360);
+    onChanged((local.dx / box.size.width).clamp(0.0, 1.0) * 360);
   }
 }
 
@@ -338,31 +300,18 @@ class _HuePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-
-    // Rainbow gradient
-    canvas.drawRect(
-      rect,
-      Paint()..shader = const LinearGradient(
+    canvas.drawRect(rect, Paint()
+      ..shader = const LinearGradient(
         colors: [
-          Color(0xFFFF0000),
-          Color(0xFFFFFF00),
-          Color(0xFF00FF00),
-          Color(0xFF00FFFF),
-          Color(0xFF0000FF),
-          Color(0xFFFF00FF),
-          Color(0xFFFF0000),
+          Color(0xFFFF0000), Color(0xFFFFFF00), Color(0xFF00FF00),
+          Color(0xFF00FFFF), Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
         ],
         stops: [0.0, 0.16, 0.33, 0.5, 0.66, 0.83, 1.0],
-      ).createShader(rect),
-    );
+      ).createShader(rect));
 
-    // Cursor
     final cx = (hue / 360) * size.width;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - 2, 2, 4, size.height - 4),
-        const Radius.circular(2),
-      ),
+      RRect.fromRectAndRadius(Rect.fromLTWH(cx - 2, 2, 4, size.height - 4), const Radius.circular(2)),
       Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2,
     );
   }
@@ -376,23 +325,17 @@ class _HuePainter extends CustomPainter {
 class _OpacityStrip extends StatelessWidget {
   final double hue, sat, val, opacity;
   final ValueChanged<double> onChanged;
-
-  const _OpacityStrip({
-    required this.hue,
-    required this.sat,
-    required this.val,
-    required this.opacity,
-    required this.onChanged,
-  });
+  const _OpacityStrip({required this.hue, required this.sat, required this.val,
+      required this.opacity, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 24,
       child: GestureDetector(
-        onPanStart: (d) => _update(d.localPosition, context),
+        onPanStart:  (d) => _update(d.localPosition, context),
         onPanUpdate: (d) => _update(d.localPosition, context),
-        onTapDown: (d) => _update(d.localPosition, context),
+        onTapDown:   (d) => _update(d.localPosition, context),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
@@ -401,12 +344,7 @@ class _OpacityStrip extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: CustomPaint(
-              painter: _OpacityPainter(
-                hue: hue,
-                sat: sat,
-                val: val,
-                opacity: opacity,
-              ),
+              painter: _OpacityPainter(hue: hue, sat: sat, val: val, opacity: opacity),
             ),
           ),
         ),
@@ -416,60 +354,38 @@ class _OpacityStrip extends StatelessWidget {
 
   void _update(Offset local, BuildContext context) {
     final box = context.findRenderObject() as RenderBox;
-    final width = box.size.width;
-    onChanged((local.dx / width).clamp(0.0, 1.0));
+    onChanged((local.dx / box.size.width).clamp(0.0, 1.0));
   }
 }
 
 class _OpacityPainter extends CustomPainter {
   final double hue, sat, val, opacity;
-  const _OpacityPainter({
-    required this.hue,
-    required this.sat,
-    required this.val,
-    required this.opacity,
-  });
+  const _OpacityPainter({required this.hue, required this.sat, required this.val, required this.opacity});
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-
-    // Checkerboard background
     const checkerSize = 6.0;
-    final darkPaint = Paint()..color = Colors.grey.shade300;
+    final darkPaint  = Paint()..color = Colors.grey.shade300;
     final lightPaint = Paint()..color = Colors.grey.shade100;
 
     for (double y = 0; y < size.height; y += checkerSize) {
       for (double x = 0; x < size.width; x += checkerSize) {
         final isDark = ((x ~/ checkerSize) + (y ~/ checkerSize)) % 2 == 0;
         canvas.drawRect(
-          Rect.fromLTWH(
-            x,
-            y,
-            math.min(checkerSize, size.width - x),
-            math.min(checkerSize, size.height - y),
-          ),
+          Rect.fromLTWH(x, y, math.min(checkerSize, size.width - x), math.min(checkerSize, size.height - y)),
           isDark ? darkPaint : lightPaint,
         );
       }
     }
 
-    // Opacity gradient
     final baseColor = HSVColor.fromAHSV(1, hue, sat, val).toColor();
-    canvas.drawRect(
-      rect,
-      Paint()..shader = LinearGradient(
-        colors: [baseColor.withOpacity(0), baseColor],
-      ).createShader(rect),
-    );
+    canvas.drawRect(rect, Paint()
+      ..shader = LinearGradient(colors: [baseColor.withOpacity(0), baseColor]).createShader(rect));
 
-    // Cursor
     final cx = opacity * size.width;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - 2, 2, 4, size.height - 4),
-        const Radius.circular(2),
-      ),
+      RRect.fromRectAndRadius(Rect.fromLTWH(cx - 2, 2, 4, size.height - 4), const Radius.circular(2)),
       Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2,
     );
   }
@@ -480,10 +396,16 @@ class _OpacityPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Convenience: show as a bottom sheet or popup
+// showColorPickerSheet
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Show the [ColorPicker] in a modal bottom sheet (improved version).
+/// Shows the color picker in a modal bottom sheet.
+///
+/// Fix: removed the `result.withOpacity(result.opacity > 0 ? result.opacity : 1.0)`
+/// re-wrapping in the Apply handler. That call was applying the opacity value
+/// *twice* (once during HSV→Color conversion, once again here), which for
+/// certain hues (most visibly blue) produced a near-zero alpha, making the
+/// color appear black. Now we return the color exactly as the picker produced it.
 Future<Color?> showColorPickerSheet(
   BuildContext context, {
   required Color initialColor,
@@ -506,18 +428,12 @@ Future<Color?> showColorPickerSheet(
         builder: (context, setState) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Pick Color',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
+            const Text('Pick Color',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             ColorPicker(
               color: result,
-              onChanged: (c) {
-                setState(() {
-                  result = c;
-                });
-              },
+              onChanged: (c) => setState(() { result = c; }),
             ),
             const SizedBox(height: 20),
             Row(
@@ -532,15 +448,10 @@ Future<Color?> showColorPickerSheet(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF21C32C),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: () {
-                    // Ensure we return a color with proper opacity
-                    final finalColor = result.withOpacity(result.opacity > 0 ? result.opacity : 1.0);
-                    Navigator.pop(ctx, finalColor);
-                  },
+                  // Fix: return result directly — no withOpacity re-wrapping.
+                  onPressed: () => Navigator.pop(ctx, result),
                   child: const Text('Apply'),
                 ),
               ],
@@ -552,12 +463,7 @@ Future<Color?> showColorPickerSheet(
   );
 }
 
-/// Legacy function - kept for backward compatibility.
-/// Use [showColorPickerSheet] for new code.
 @Deprecated('Use showColorPickerSheet instead')
-Future<Color?> showColorPicker(
-  BuildContext context, {
-  required Color initialColor,
-}) {
+Future<Color?> showColorPicker(BuildContext context, {required Color initialColor}) {
   return showColorPickerSheet(context, initialColor: initialColor);
 }

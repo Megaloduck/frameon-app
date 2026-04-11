@@ -60,7 +60,9 @@ class _ToolboxLeft extends ConsumerWidget {
               LayerType.clock    => _ClockLeft(layer: layer as ClockLayer, n: n),
               LayerType.gif      => _GifLeft(layer: layer as GifLayer, n: n),
               LayerType.spotify  => _SpotifyLeft(layer: layer as SpotifyLayer),
-              LayerType.pomodoro => _PomodoroLeft(layer: layer as PomodoroLayer, n: n),
+              // _PomodoroLeft fetches its own live layer via ref.watch —
+              // this is the key fix so color swatches update immediately.
+              LayerType.pomodoro => const _PomodoroLeft(),
             },
           ),
         ),
@@ -100,7 +102,7 @@ class _ToolboxRight extends ConsumerWidget {
               LayerType.clock    => _ClockRight(layer: layer as ClockLayer, n: n),
               LayerType.gif      => _GifRight(layer: layer as GifLayer, n: n),
               LayerType.spotify  => _SpotifyRight(layer: layer as SpotifyLayer, n: n),
-              LayerType.pomodoro => _PomodoroRight(layer: layer as PomodoroLayer, n: n),
+              LayerType.pomodoro => const _PomodoroRight(),
             },
           ),
         ),
@@ -150,7 +152,6 @@ class _EmptyToolbox extends StatelessWidget {
 // Shared helper widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Green pill dropdown (right sub-panel primary selector).
 Widget _greenDropdown<T extends Enum>(
   List<T> values, T current, ValueChanged<T> onChange,
 ) =>
@@ -298,15 +299,17 @@ class _TransportBtn extends StatelessWidget {
       );
 }
 
+/// Color swatch button.
+///
+/// Fix: the old version re-wrapped the returned color with .withOpacity()
+/// which could zero out the alpha for certain hues (blue being most visible).
+/// Now we pass the picked color through unchanged — showColorPickerSheet
+/// already returns a fully valid Color with correct alpha.
 Widget _colorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =>
     GestureDetector(
       onTap: () async {
-        final c = await showColorPickerSheet(ctx, initialColor: color);
-        if (c != null) {
-          // Ensure the color has full opacity (alpha = 255) unless it's meant to be transparent
-          final fixedColor = c.withOpacity(c.opacity > 0 ? c.opacity : 1.0);
-          onChange(fixedColor);
-        }
+        final picked = await showColorPickerSheet(ctx, initialColor: color);
+        if (picked != null) onChange(picked);
       },
       child: Container(
         width: 26, height: 26,
@@ -438,80 +441,45 @@ class _TextRight extends StatelessWidget {
 class _ClockLeft extends StatelessWidget {
   final ClockLayer layer; final SceneNotifier n;
   const _ClockLeft({required this.layer, required this.n});
-  
+
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Individual element colors
           const TbLabel('Element Colors'),
           const SizedBox(height: 8),
-          
-          // Hours
-          _ColorRow(
-            label: 'Hours',
-            color: layer.hoursColor,
-            onChanged: (c) => n.updateLayer(layer.copyWith(hoursColor: c)),
-          ),
+          _ColorRow(label: 'Hours', color: layer.hoursColor,
+              onChanged: (c) => n.updateLayer(layer.copyWith(hoursColor: c))),
           const SizedBox(height: 6),
-          
-          // Minutes
-          _ColorRow(
-            label: 'Minutes',
-            color: layer.minutesColor,
-            onChanged: (c) => n.updateLayer(layer.copyWith(minutesColor: c)),
-          ),
+          _ColorRow(label: 'Minutes', color: layer.minutesColor,
+              onChanged: (c) => n.updateLayer(layer.copyWith(minutesColor: c))),
           const SizedBox(height: 6),
-          
-          // Seconds (only shown if showSeconds is enabled)
-          if (layer.showSeconds)
-            _ColorRow(
-              label: 'Seconds',
-              color: layer.secondsColor,
-              onChanged: (c) => n.updateLayer(layer.copyWith(secondsColor: c)),
-            ),
-          if (layer.showSeconds) const SizedBox(height: 6),
-          
-          // Date (only shown if showDate is enabled)
-          if (layer.showDate)
-            _ColorRow(
-              label: 'Date',
-              color: layer.dateColor,
-              onChanged: (c) => n.updateLayer(layer.copyWith(dateColor: c)),
-            ),
-          if (layer.showDate) const SizedBox(height: 6),
-          
-          // Colon
-          _ColorRow(
-            label: 'Colon',
-            color: layer.colonColor,
-            onChanged: (c) => n.updateLayer(layer.copyWith(colonColor: c)),
-          ),
+          if (layer.showSeconds) ...[
+            _ColorRow(label: 'Seconds', color: layer.secondsColor,
+                onChanged: (c) => n.updateLayer(layer.copyWith(secondsColor: c))),
+            const SizedBox(height: 6),
+          ],
+          if (layer.showDate) ...[
+            _ColorRow(label: 'Date', color: layer.dateColor,
+                onChanged: (c) => n.updateLayer(layer.copyWith(dateColor: c))),
+            const SizedBox(height: 6),
+          ],
+          _ColorRow(label: 'Colon', color: layer.colonColor,
+              onChanged: (c) => n.updateLayer(layer.copyWith(colonColor: c))),
         ],
       );
 }
 
-// Helper widget for color row with label and color picker
 class _ColorRow extends StatelessWidget {
   final String label;
   final Color color;
   final ValueChanged<Color> onChanged;
-  
-  const _ColorRow({
-    required this.label,
-    required this.color,
-    required this.onChanged,
-  });
-  
+  const _ColorRow({required this.label, required this.color, required this.onChanged});
+
   @override
   Widget build(BuildContext context) => Row(
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11, color: kTextMuted),
-            ),
-          ),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 11, color: kTextMuted))),
           _colorBtn(context, color, onChanged),
         ],
       );
@@ -561,16 +529,7 @@ class _ClockRight extends StatelessWidget {
 enum _TzOpt { local, utc, bangkok, tokyo, london, newYork }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GIF — LEFT  (upload + thumbnail)
-//
-// Fix summary:
-//   1. After picking, bytes are stored in gifBytesProvider keyed by cache key.
-//   2. The thumbnail reads from gifBytesProvider via ref.watch — it stays alive
-//      across layer re-selection because the provider is global.
-//   3. On desktop, bytes are read via compute(File.readAsBytesSync) and ALSO
-//      passed to MatrixRenderer via addAssetBytes.
-//   4. The thumbnail uses Image.memory(bytes, fit: BoxFit.cover).
-//   5. Remove button clears both gifBytesProvider and the renderer cache.
+// GIF
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _GifLeft extends ConsumerStatefulWidget {
@@ -589,7 +548,7 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
       result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['gif', 'png', 'jpg', 'jpeg'],
-        withData: true, // always request bytes — safest on all platforms
+        withData: true,
       );
     } catch (e) { _snack('Picker error: $e'); return; }
 
@@ -599,26 +558,16 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
     setState(() => _loading = true);
     try {
       Uint8List? bytes = pf.bytes;
-
-      // On desktop the bytes field may be null even with withData:true due to a
-      // file_picker bug — fall back to reading the file directly.
       if ((bytes == null || bytes.isEmpty) && !kIsWeb && pf.path != null) {
         bytes = await compute<String, Uint8List>(
           (path) => File(path).readAsBytesSync(), pf.path!);
       }
-
       if (!mounted) return;
       if (bytes == null || bytes.isEmpty) { _snack('Could not read file.'); return; }
 
       final String key = pf.path ?? pf.name;
-
-      // 1. Store raw bytes so the thumbnail can render
       ref.read(gifBytesProvider.notifier).set(key, bytes);
-
-      // 2. Decode into renderer cache
       ref.read(matrixRendererProvider).addAssetBytes(key, bytes);
-
-      // 3. Update the layer model
       widget.n.updateLayer(widget.layer.copyWith(filePath: key));
     } catch (e) {
       if (mounted) _snack('Failed: $e');
@@ -642,17 +591,15 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
 
   @override
   Widget build(BuildContext context) {
-    final key      = widget.layer.filePath;
-    final hasFile  = key != null;
-    // Watch the bytes map — rebuilds when bytes are stored/removed
+    final key     = widget.layer.filePath;
+    final hasFile = key != null;
     final allBytes = ref.watch(gifBytesProvider);
-    final bytes    = hasFile ? allBytes[key] : null;
+    final bytes   = hasFile ? allBytes[key] : null;
     final fileName = hasFile ? key.split('/').last.split('\\').last : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header label matching the screenshot
         Row(children: [
           const Expanded(
             child: Text('JPG · PNG · GIF',
@@ -661,8 +608,6 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
           ),
         ]),
         const SizedBox(height: 8),
-
-        // Upload area / thumbnail
         GestureDetector(
           onTap: _loading ? null : _pick,
           child: Container(
@@ -670,16 +615,12 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
             decoration: BoxDecoration(
               color: hasFile ? Colors.black : kSurfaceLow,
               borderRadius: const BorderRadius.all(kRadiusMd),
-              border: hasFile
-                  ? null
-                  : Border.all(color: kBorder, style: BorderStyle.solid),
+              border: hasFile ? null : Border.all(color: kBorder, style: BorderStyle.solid),
             ),
             clipBehavior: Clip.antiAlias,
             child: hasFile && bytes != null
-                // ── Thumbnail ────────────────────────────────────────────
                 ? Stack(fit: StackFit.expand, children: [
                     Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true),
-                    // CHANGE overlay — top-right corner
                     Positioned(
                       top: 6, right: 6,
                       child: GestureDetector(
@@ -696,7 +637,6 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
                       ),
                     ),
                   ])
-                // ── Upload prompt ─────────────────────────────────────────
                 : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     if (_loading)
                       const SizedBox(width: 20, height: 20,
@@ -704,43 +644,27 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
                     else
                       const Icon(Icons.upload_file_rounded, size: 28, color: kTextDim),
                     const SizedBox(height: 6),
-                    Text(
-                      _loading ? 'Loading…' : 'Click to upload',
-                      style: const TextStyle(fontSize: 11, color: kTextDim),
-                    ),
+                    Text(_loading ? 'Loading…' : 'Click to upload',
+                        style: const TextStyle(fontSize: 11, color: kTextDim)),
                   ]),
           ),
         ),
-
-        // Filename + remove button - now in a row horizontally aligned
         if (hasFile) ...[
           const SizedBox(height: 8),
           Row(
             children: [
-              // Filename - expands to take available space
-              Expanded(
-                child: Text(
-                  fileName ?? '',
+              Expanded(child: Text(fileName ?? '',
                   style: const TextStyle(fontSize: 11, color: kTextMuted),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              // Remove button - right aligned
+                  overflow: TextOverflow.ellipsis)),
               GestureDetector(
                 onTap: _remove,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.close_rounded, size: 14, color: Colors.red.shade400),
-                      const SizedBox(width: 2),
-                      Text(
-                        'Remove',
-                        style: TextStyle(fontSize: 11, color: Colors.red.shade400),
-                      ),
-                    ],
-                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.close_rounded, size: 14, color: Colors.red.shade400),
+                    const SizedBox(width: 2),
+                    Text('Remove', style: TextStyle(fontSize: 11, color: Colors.red.shade400)),
+                  ]),
                 ),
               ),
             ],
@@ -750,9 +674,6 @@ class _GifLeftState extends ConsumerState<_GifLeft> {
     );
   }
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// GIF — RIGHT
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _GifRight extends StatelessWidget {
   final GifLayer layer; final SceneNotifier n;
@@ -764,9 +685,9 @@ class _GifRight extends StatelessWidget {
           _greenDropdown<MediaLayout>(MediaLayout.values, layer.layout,
               (v) => n.updateLayer(layer.copyWith(layout: v))),
           const SizedBox(height: 10),
-          _ToggleRow(label: 'Dithering',   value: layer.dithering,   onChanged: (v) => n.updateLayer(layer.copyWith(dithering: v))),
-          _ToggleRow(label: 'Grayscale',   value: layer.grayscale,   onChanged: (v) => n.updateLayer(layer.copyWith(grayscale: v))),
-          _ToggleRow(label: 'Invert color',value: layer.invertColor,  onChanged: (v) => n.updateLayer(layer.copyWith(invertColor: v))),
+          _ToggleRow(label: 'Dithering',    value: layer.dithering,   onChanged: (v) => n.updateLayer(layer.copyWith(dithering: v))),
+          _ToggleRow(label: 'Grayscale',    value: layer.grayscale,   onChanged: (v) => n.updateLayer(layer.copyWith(grayscale: v))),
+          _ToggleRow(label: 'Invert color', value: layer.invertColor, onChanged: (v) => n.updateLayer(layer.copyWith(invertColor: v))),
           const SizedBox(height: 8),
           TbLabel('Custom FPS'),
           _SpeedSlider(value: layer.fpsOverride ?? 100,
@@ -859,38 +780,45 @@ class _SpotifyRight extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POMODORO
+// POMODORO — LEFT
+//
+// Fix: reads layer via ref.watch(selectedLayerProvider) instead of accepting
+// it as a constructor prop. This guarantees the widget rebuilds after every
+// updateLayer() call, so the color swatch reflects the new value immediately.
+//
+// Additionally, _colorBtn no longer re-wraps the result with withOpacity(),
+// which was zeroing out alpha for blue and other saturated hues.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PomodoroLeft extends ConsumerWidget {
-  final PomodoroLayer layer;
-  final SceneNotifier n;
-  const _PomodoroLeft({required this.layer, required this.n});
- 
+  const _PomodoroLeft();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final layer = ref.watch(selectedLayerProvider) as PomodoroLayer;
+    final n = ref.read(sceneProvider.notifier);
     final timerState = ref.watch(pomodoroServiceProvider);
-    final service    = ref.read(pomodoroServiceProvider.notifier);
- 
+    final service = ref.read(pomodoroServiceProvider.notifier);
+
     final phaseLabel = switch (timerState.phase) {
       PomodoroState.focus      => 'Focus Session',
       PomodoroState.shortBreak => 'Short Break',
       PomodoroState.longBreak  => 'Long Break',
     };
- 
+
     final phaseColor = switch (timerState.phase) {
       PomodoroState.focus      => layer.focusColor,
       PomodoroState.shortBreak => layer.breakColor,
       PomodoroState.longBreak  => layer.longBreakColor,
     };
- 
+
     final mins = timerState.remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
     final secs = timerState.remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
- 
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Phase + time display ───────────────────────────────────────
+        // ── Phase + live countdown ─────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
@@ -908,112 +836,126 @@ class _PomodoroLeft extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                phaseLabel,
-                style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w600,
-                  color: phaseColor,
-                ),
-              ),
+              Text(phaseLabel,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: phaseColor)),
               const Spacer(),
-              Text(
-                '$mins:$secs',
-                style: TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w700,
-                  color: phaseColor, fontFamily: 'monospace',
-                ),
-              ),
+              Text('$mins:$secs',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                      color: phaseColor, fontFamily: 'monospace')),
             ],
           ),
         ),
         const SizedBox(height: 10),
- 
-        // ── Duration + color settings ──────────────────────────────────
-        Row(
-          children: [
-            _colorBtn(context, layer.focusColor,
-                (c) => n.updateLayer(layer.copyWith(focusColor: c))),
-            const SizedBox(width: 8),
-            const Text('Focus Session', style: TextStyle(fontSize: 11, color: kTextMuted)),
-            const Spacer(),
-            _DurationStepper(
-              value: layer.focusDurationMinutes,
-              unit: 'min',
-              onChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
-            ),
-          ],
-        ),
+
+        // ── Focus ──────────────────────────────────────────────────────
+        Row(children: [
+          _colorBtn(context, layer.focusColor,
+              (c) => n.updateLayer(layer.copyWith(focusColor: c))),
+          const SizedBox(width: 8),
+          const Text('Focus Session', style: TextStyle(fontSize: 11, color: kTextMuted)),
+          const Spacer(),
+          _DurationStepper(
+            value: layer.focusDurationMinutes,
+            unit: 'min',
+            onChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
+          ),
+        ]),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            _colorBtn(context, layer.breakColor,
-                (c) => n.updateLayer(layer.copyWith(breakColor: c))),
-            const SizedBox(width: 8),
-            const Text('Short break', style: TextStyle(fontSize: 11, color: kTextMuted)),
-            const Spacer(),
-            _DurationStepper(
-              value: layer.shortBreakMinutes,
-              unit: 'min',
-              onChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
-            ),
-          ],
-        ),
+
+        // ── Short break ────────────────────────────────────────────────
+        Row(children: [
+          _colorBtn(context, layer.breakColor,
+              (c) => n.updateLayer(layer.copyWith(breakColor: c))),
+          const SizedBox(width: 8),
+          const Text('Short break', style: TextStyle(fontSize: 11, color: kTextMuted)),
+          const Spacer(),
+          _DurationStepper(
+            value: layer.shortBreakMinutes,
+            unit: 'min',
+            onChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
+          ),
+        ]),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            _colorBtn(context, layer.longBreakColor,
-                (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
-            const SizedBox(width: 8),
-            const Text('Long break', style: TextStyle(fontSize: 11, color: kTextMuted)),
-            const Spacer(),
-            _DurationStepper(
-              value: layer.longBreakMinutes,
-              unit: 'min',
-              onChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)),
-            ),
-          ],
-        ),
+
+        // ── Long break ─────────────────────────────────────────────────
+        Row(children: [
+          _colorBtn(context, layer.longBreakColor,
+              (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
+          const SizedBox(width: 8),
+          const Text('Long break', style: TextStyle(fontSize: 11, color: kTextMuted)),
+          const Spacer(),
+          _DurationStepper(
+            value: layer.longBreakMinutes,
+            unit: 'min',
+            onChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)),
+          ),
+        ]),
         const SizedBox(height: 8),
+
         _Stepper(
           label: 'Sessions before long break',
           value: layer.sessionsBeforeLongBreak,
-          onChanged: (v) =>
-              n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
+          onChanged: (v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
         ),
         const SizedBox(height: 10),
- 
-        // ── Transport controls ─────────────────────────────────────────
+
+        // ── Transport ──────────────────────────────────────────────────
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _TransportBtn(
-            icon: Icons.restart_alt_rounded,
-            onTap: () => service.reset(layer),
-          ),
+          _TransportBtn(icon: Icons.restart_alt_rounded, onTap: () => service.reset(layer)),
           const SizedBox(width: 8),
           _TransportBtn(
-            icon: timerState.isRunning
-                ? Icons.pause_rounded
-                : Icons.play_arrow_rounded,
+            icon: timerState.isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
             filled: true,
             onTap: () => service.togglePlayPause(layer),
           ),
           const SizedBox(width: 8),
-          _TransportBtn(
-            icon: Icons.skip_next_rounded,
-            onTap: () => service.skip(layer),
-          ),
+          _TransportBtn(icon: Icons.skip_next_rounded, onTap: () => service.skip(layer)),
         ]),
       ],
     );
   }
 }
 
-// Helper widget for duration stepper used in rows
+// ─────────────────────────────────────────────────────────────────────────────
+// POMODORO — RIGHT
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PomodoroRight extends ConsumerWidget {
+  const _PomodoroRight();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layer = ref.watch(selectedLayerProvider) as PomodoroLayer;
+    final n = ref.read(sceneProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _greenDropdown<PomodoroLayout>(PomodoroLayout.values, layer.layout,
+            (v) => n.updateLayer(layer.copyWith(layout: v))),
+        const SizedBox(height: 8),
+        _ToggleRow(label: 'Show seconds', value: layer.showSeconds, onChanged: (v) => n.updateLayer(layer.copyWith(showSeconds: v))),
+        _ToggleRow(label: 'Show session', value: layer.showSession, onChanged: (v) => n.updateLayer(layer.copyWith(showSession: v))),
+        _ToggleRow(label: 'Blink color',  value: layer.blinkColor,  onChanged: (v) => n.updateLayer(layer.copyWith(blinkColor: v))),
+        const SizedBox(height: 8),
+        TbLabel('Custom FPS'),
+        _SpeedSlider(value: (1000 / layer.fps).clamp(10, 500),
+            onChanged: (v) => n.updateLayer(layer.copyWith(fps: 1000 / v))),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Duration stepper
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _DurationStepper extends StatelessWidget {
   final int value;
   final String unit;
   final ValueChanged<int> onChanged;
   final int min, max;
-  
+
   const _DurationStepper({
     required this.value,
     required this.onChanged,
@@ -1026,45 +968,13 @@ class _DurationStepper extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _StepBtn(
-            icon: Icons.remove_rounded,
-            enabled: value > min,
-            onTap: () => onChanged(value - 1),
-          ),
+          _StepBtn(icon: Icons.remove_rounded, enabled: value > min, onTap: () => onChanged(value - 1)),
           SizedBox(
             width: 50,
-            child: Text(
-              '$value $unit',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
+            child: Text('$value $unit', textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           ),
-          _StepBtn(
-            icon: Icons.add_rounded,
-            enabled: value < max,
-            onTap: () => onChanged(value + 1),
-          ),
-        ],
-      );
-}
-
-class _PomodoroRight extends StatelessWidget {
-  final PomodoroLayer layer; final SceneNotifier n;
-  const _PomodoroRight({required this.layer, required this.n});
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _greenDropdown<PomodoroLayout>(PomodoroLayout.values, layer.layout,
-              (v) => n.updateLayer(layer.copyWith(layout: v))),
-          const SizedBox(height: 8),
-          _ToggleRow(label: 'Show seconds', value: layer.showSeconds, onChanged: (v) => n.updateLayer(layer.copyWith(showSeconds: v))),
-          _ToggleRow(label: 'Show session', value: layer.showSession, onChanged: (v) => n.updateLayer(layer.copyWith(showSession: v))),
-          _ToggleRow(label: 'Blink color',  value: layer.blinkColor,  onChanged: (v) => n.updateLayer(layer.copyWith(blinkColor: v))),
-          const SizedBox(height: 8),
-          TbLabel('Custom FPS'),
-          _SpeedSlider(value: (1000 / layer.fps).clamp(10, 500),
-              onChanged: (v) => n.updateLayer(layer.copyWith(fps: 1000 / v))),
+          _StepBtn(icon: Icons.add_rounded, enabled: value < max, onTap: () => onChanged(value + 1)),
         ],
       );
 }

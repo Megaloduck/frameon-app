@@ -198,7 +198,21 @@ class _LedPainter extends CustomPainter {
     for (int row = 0; row < _rows; row++) {
       for (int col = 0; col < _cols; col++) {
         final int argb = buf.getPixel(col, row);
-        final bool on  = (argb & 0x00FFFFFF) > 0x080808;
+
+        // ── "LED is on" check ──────────────────────────────────────────
+        // Old check: (argb & 0x00FFFFFF) > 0x080808
+        // Bug: treats the RGB value as a single 24-bit integer, so pure
+        // blue (0x0000FF = 255) and any color where only the blue channel
+        // is lit would fail the threshold (0x080808 = 526) and render dark.
+        //
+        // Fix: check each channel independently — a pixel is "on" if ANY
+        // channel exceeds a small noise floor (8/255). This correctly
+        // handles pure blue, pure green, dim colors, and everything else.
+        final int r8 = (argb >> 16) & 0xFF;
+        final int g8 = (argb >> 8)  & 0xFF;
+        final int b8 =  argb        & 0xFF;
+        final bool on = r8 > 8 || g8 > 8 || b8 > 8;
+
         paint.color = on ? Color(argb | 0xFF000000) : const Color(0xFF181818);
         canvas.drawCircle(
           Offset(col * dW + dW / 2, row * dH + dH / 2), r, paint);
@@ -275,4 +289,4 @@ class _Error extends StatelessWidget {
               style: TextStyle(color: Colors.red.shade400, fontSize: 10)),
         ),
       );
-} 
+}
