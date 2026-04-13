@@ -10,6 +10,7 @@ import 'package:image/image.dart' as img;
 class SpotifyNowPlaying {
   final String  title;
   final String  artist;
+  final String? album;
   final String? albumArtUrl;
   final int     durationMs;
   final int     progressMs;
@@ -19,6 +20,7 @@ class SpotifyNowPlaying {
   const SpotifyNowPlaying({
     required this.title,
     required this.artist,
+    this.album,
     this.albumArtUrl,
     required this.durationMs,
     required this.progressMs,
@@ -28,6 +30,9 @@ class SpotifyNowPlaying {
 
   double get progress =>
       durationMs > 0 ? (progressMs / durationMs).clamp(0.0, 1.0) : 0.0;
+      
+  Duration get currentPosition => Duration(milliseconds: progressMs);
+  Duration get currentDuration => Duration(milliseconds: durationMs);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,14 +83,15 @@ class SpotifyApiClient {
       }
 
       return SpotifyNowPlaying(
-        title:       item['name'] as String,
-        artist:      artists,
-        albumArtUrl: artUrl,
-        durationMs:  item['duration_ms'] as int,
-        progressMs:  json['progress_ms'] as int? ?? 0,
-        isPlaying:   json['is_playing'] as bool? ?? false,
-        trackId:     item['id'] as String?,
-      );
+  title:       item['name'] as String,
+  artist:      artists,
+  album:       (item['album'] as Map<String, dynamic>?)?['name'] as String?,  // Add this
+  albumArtUrl: artUrl,
+  durationMs:  item['duration_ms'] as int,
+  progressMs:  json['progress_ms'] as int? ?? 0,
+  isPlaying:   json['is_playing'] as bool? ?? false,
+  trackId:     item['id'] as String?,
+);
     } catch (_) {
       return null;
     }

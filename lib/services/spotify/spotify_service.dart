@@ -20,6 +20,7 @@ class SpotifyState {
   final SpotifyConnectionStatus status;
   final String?     currentTrackTitle;
   final String?     currentArtist;
+  final String?     currentAlbum;   
   final String?     albumArtUrl;
   final Uint32List? albumArtPixels;
   final int         albumArtSize;
@@ -27,11 +28,16 @@ class SpotifyState {
   final bool        isPlaying;
   final String?     errorMessage;
   final String?     trackId;
+  final Duration    currentPosition;    
+  final Duration    currentDuration;    
 
   const SpotifyState({
     this.status            = SpotifyConnectionStatus.disconnected,
     this.currentTrackTitle,
     this.currentArtist,
+    this.currentAlbum,  
+    this.currentPosition = Duration.zero,   
+    this.currentDuration = Duration.zero,     
     this.albumArtUrl,
     this.albumArtPixels,
     this.albumArtSize      = 32,
@@ -44,7 +50,7 @@ class SpotifyState {
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
   bool get isConnecting => status == SpotifyConnectionStatus.connecting;
 
-  SpotifyTrack toTrack() => SpotifyTrack(
+    SpotifyTrack toTrack() => SpotifyTrack(
         title:     currentTrackTitle ?? '',
         artist:    currentArtist ?? '',
         artPixels: albumArtPixels,
@@ -54,10 +60,11 @@ class SpotifyState {
         isPlaying: isPlaying,
       );
 
-  SpotifyState copyWith({
+   SpotifyState copyWith({
     SpotifyConnectionStatus? status,
     String?     currentTrackTitle,
     String?     currentArtist,
+    String?     currentAlbum,
     String?     albumArtUrl,
     Uint32List? albumArtPixels,
     int?        albumArtSize,
@@ -65,13 +72,15 @@ class SpotifyState {
     bool?       isPlaying,
     String?     errorMessage,
     String?     trackId,
+    Duration?   currentPosition,
+    Duration?   currentDuration,
     bool        clearError = false,
     bool        clearArt   = false,
-  }) =>
-      SpotifyState(
+  }) => SpotifyState(
         status:            status            ?? this.status,
         currentTrackTitle: currentTrackTitle ?? this.currentTrackTitle,
         currentArtist:     currentArtist     ?? this.currentArtist,
+        currentAlbum:      currentAlbum      ?? this.currentAlbum,
         albumArtUrl:       albumArtUrl       ?? this.albumArtUrl,
         albumArtPixels:    clearArt  ? null  : (albumArtPixels ?? this.albumArtPixels),
         albumArtSize:      albumArtSize      ?? this.albumArtSize,
@@ -79,6 +88,8 @@ class SpotifyState {
         isPlaying:         isPlaying         ?? this.isPlaying,
         errorMessage:      clearError ? null : (errorMessage   ?? this.errorMessage),
         trackId:           trackId           ?? this.trackId,
+        currentPosition:   currentPosition   ?? this.currentPosition,
+        currentDuration:   currentDuration   ?? this.currentDuration,
       );
 }
 
@@ -143,35 +154,38 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
 
   // ── Now playing ───────────────────────────────────────────────────────────
 
-  Future<void> refresh() async {
-    final token = await _auth.validAccessToken;
-    if (token == null) return;
+Future<void> refresh() async {
+  final token = await _auth.validAccessToken;
+  if (token == null) return;
 
-    final np = await _client.getNowPlaying(token);
-    if (np == null) {
-      state = state.copyWith(
-        status:    SpotifyConnectionStatus.connected,
-        isPlaying: false,
-      );
-      return;
-    }
-
-    final trackChanged = np.trackId != state.trackId;
+  final np = await _client.getNowPlaying(token);
+  if (np == null) {
     state = state.copyWith(
-      status:            SpotifyConnectionStatus.connected,
-      currentTrackTitle: np.title,
-      currentArtist:     np.artist,
-      albumArtUrl:       np.albumArtUrl,
-      progress:          np.progress,
-      isPlaying:         np.isPlaying,
-      trackId:           np.trackId,
-      clearArt:          trackChanged,
+      status:    SpotifyConnectionStatus.connected,
+      isPlaying: false,
     );
-
-    if (trackChanged && np.albumArtUrl != null) {
-      _fetchAlbumArt(np.albumArtUrl!);
-    }
+    return;
   }
+
+  final trackChanged = np.trackId != state.trackId;
+  state = state.copyWith(
+    status:            SpotifyConnectionStatus.connected,
+    currentTrackTitle: np.title,
+    currentArtist:     np.artist,
+    currentAlbum:      np.album,  // Add this
+    albumArtUrl:       np.albumArtUrl,
+    progress:          np.progress,
+    isPlaying:         np.isPlaying,
+    trackId:           np.trackId,
+    currentPosition:   np.currentPosition,  // Add this
+    currentDuration:   np.currentDuration,   // Add this
+    clearArt:          trackChanged,
+  );
+
+  if (trackChanged && np.albumArtUrl != null) {
+    _fetchAlbumArt(np.albumArtUrl!);
+  }
+} 
 
   Future<void> _fetchAlbumArt(String url) async {
     final result = await _client.fetchAlbumArt(url);

@@ -707,9 +707,7 @@ class _GifRight extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SPOTIFY LEFT  (replace the existing _SpotifyLeft class in toolbox_panel.dart)
-// Also add these imports at the top of toolbox_panel.dart if not present:
-//   import 'dart:typed_data';
+// SPOTIFY
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SpotifyLeft extends ConsumerWidget {
@@ -726,7 +724,7 @@ class _SpotifyLeft extends ConsumerWidget {
       children: [
         // ── Status / now-playing card ──────────────────────────────────
         Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: kSurfaceLow,
             borderRadius: const BorderRadius.all(kRadiusMd),
@@ -742,57 +740,102 @@ class _SpotifyLeft extends ConsumerWidget {
                     ),
         ),
 
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
 
-        // ── Transport controls ─────────────────────────────────────────
+        // ── Transport controls with disconnect on right ─────────────────
         if (spot.isConnected) ...[
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _TransportBtn(
-              icon: Icons.skip_previous_rounded,
-              onTap: () => service.skipPrevious(),
-            ),
-            const SizedBox(width: 8),
-            _TransportBtn(
-              icon: spot.isPlaying
-                  ? Icons.pause_rounded
-                  : Icons.play_arrow_rounded,
-              filled: true,
-              onTap: () => service.togglePlayPause(),
-            ),
-            const SizedBox(width: 8),
-            _TransportBtn(
-              icon: Icons.skip_next_rounded,
-              onTap: () => service.skipNext(),
-            ),
-          ]),
-
-          const SizedBox(height: 8),
-
-          // ── Progress bar ───────────────────────────────────────────
-          ClipRRect(
-            borderRadius: const BorderRadius.all(kRadiusSm),
-            child: LinearProgressIndicator(
-              value:            spot.progress,
-              minHeight:        3,
-              backgroundColor:  kBorder,
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1DB954)),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Transport buttons group
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _TransportBtn(
+                    icon: Icons.skip_previous_rounded,
+                    onTap: () => service.skipPrevious(),
+                  ),
+                  const SizedBox(width: 8),
+                  _TransportBtn(
+                    icon: spot.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    filled: true,
+                    onTap: () => service.togglePlayPause(),
+                  ),
+                  const SizedBox(width: 8),
+                  _TransportBtn(
+                    icon: Icons.skip_next_rounded,
+                    onTap: () => service.skipNext(),
+                  ),
+                ],
+              ),
+              
+              // Disconnect button on the right
+              GestureDetector(
+                onTap: service.disconnect,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: kSurfaceLow,
+                    borderRadius: const BorderRadius.all(kRadiusSm),
+                    border: Border.all(color: kBorder),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.link_off_rounded, size: 12, color: kTextDim),
+                      SizedBox(width: 4),
+                      Text(
+                        'Disconnect',
+                        style: TextStyle(fontSize: 10, color: kTextDim),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
 
-          // ── Disconnect link ────────────────────────────────────────
-          GestureDetector(
-            onTap: service.disconnect,
-            child: const Text(
-              'Disconnect Spotify',
-              style: TextStyle(fontSize: 10, color: kTextDim),
-              textAlign: TextAlign.center,
-            ),
+          // ── Progress bar with timestamps ───────────────────────────
+          Column(
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.all(kRadiusSm),
+                child: LinearProgressIndicator(
+                  value: spot.progress,
+                  minHeight: 4,
+                  backgroundColor: kBorder,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1DB954)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _formatDuration(spot.currentPosition),
+                    style: const TextStyle(fontSize: 10, color: kTextDim),
+                  ),
+                  Text(
+                    _formatDuration(spot.currentDuration),
+                    style: const TextStyle(fontSize: 10, color: kTextDim),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ],
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds.remainder(60);
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
 
@@ -808,46 +851,77 @@ class _NowPlayingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
         children: [
-          // Album art
-          ClipRRect(
-            borderRadius: const BorderRadius.all(kRadiusSm),
-            child: spot.albumArtPixels != null
-                ? _AlbumArtThumbnail(
-                    pixels: spot.albumArtPixels!,
-                    size:   spot.albumArtSize,
-                  )
-                : Container(
-                    width: 36, height: 36,
-                    color: const Color(0xFF282828),
-                    child: const Icon(Icons.music_note_rounded,
-                        size: 18, color: Color(0xFF1DB954)),
-                  ),
+          // Album art with subtle shadow
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.all(kRadiusSm),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.all(kRadiusSm),
+              child: spot.albumArtPixels != null
+                  ? _AlbumArtThumbnail(
+                      pixels: spot.albumArtPixels!,
+                      size:   spot.albumArtSize,
+                    )
+                  : Container(
+                      width: 60, height: 60,
+                      color: const Color(0xFF282828),
+                      child: const Icon(Icons.music_note_rounded,
+                          size: 20, color: Color(0xFF1DB954)),
+                    ),
+            ),
           ),
-          const SizedBox(width: 8),
-          // Title + artist
+          const SizedBox(width: 12),
+          
+          // Title + artist with better spacing
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   spot.currentTrackTitle ?? '—',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 13, 
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 2),
                 Text(
                   spot.currentArtist ?? '',
-                  style: const TextStyle(fontSize: 10, color: kTextMuted),
+                  style: const TextStyle(fontSize: 11, color: kTextMuted),
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (spot.currentAlbum != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    spot.currentAlbum!,
+                    style: const TextStyle(fontSize: 9, color: kTextDim),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),
-          // Refresh
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 14),
-            onPressed: onRefresh,
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            padding: EdgeInsets.zero,
+          
+          // Refresh button with tooltip
+          Tooltip(
+            message: 'Refresh now playing',
+            child: IconButton(
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              onPressed: onRefresh,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              splashRadius: 20,
+            ),
           ),
         ],
       );
@@ -934,7 +1008,7 @@ class _AlbumArtThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-        size: const Size(36, 36),
+        size: const Size(60, 60),
         painter: _ArtPainter(pixels: pixels, size: size),
       );
 }

@@ -12,8 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const String kSpotifyClientId   = 'f6ee19fca6a74377aa6f7f1d5c8bf22b';
 const String kSpotifyRedirectUri = 'http://127.0.0.1:8888/callback';
-const String kSpotifyScopes =
-    'user-read-currently-playing user-read-playback-state user-modify-playback-state';
+const String kSpotifyScopes = 'user-read-currently-playing user-read-playback-state user-modify-playback-state';
 
 class SpotifyTokens {
   final String accessToken;
