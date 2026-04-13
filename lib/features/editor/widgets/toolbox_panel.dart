@@ -941,7 +941,7 @@ class _PomodoroRight extends ConsumerWidget {
         const SizedBox(height: 8),
         _ToggleRow(label: 'Show seconds', value: layer.showSeconds, onChanged: (v) => n.updateLayer(layer.copyWith(showSeconds: v))),
         _ToggleRow(label: 'Show session', value: layer.showSession, onChanged: (v) => n.updateLayer(layer.copyWith(showSession: v))),
-        _ToggleRow(label: 'Blink color',  value: layer.blinkColor,  onChanged: (v) => n.updateLayer(layer.copyWith(blinkColor: v))),
+        _ToggleRow(label: 'Blink colon',  value: layer.blinkColor,  onChanged: (v) => n.updateLayer(layer.copyWith(blinkColor: v))),
         const SizedBox(height: 8),
         TbLabel('Custom FPS'),
         _SpeedSlider(value: (1000 / layer.fps).clamp(10, 500),

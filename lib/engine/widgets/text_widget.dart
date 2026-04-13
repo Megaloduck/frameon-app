@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 import '../renderer/pixel_buffer.dart';
-import '../renderer/pixel_font.dart';
+import '../renderer/fonts/pixel_font.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
 

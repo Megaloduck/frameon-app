@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../renderer/pixel_buffer.dart';
-import '../renderer/pixel_font.dart';
+import '../renderer/fonts/pixel_font.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
 import '../../../shared/providers/time_service.dart';
