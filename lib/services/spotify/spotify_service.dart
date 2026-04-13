@@ -1,98 +1,216 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../engine/widgets/spotify_widget.dart';
+import 'spotify_auth.dart';
+import 'spotify_api_client.dart';
+
+export 'spotify_auth.dart';
+export 'spotify_api_client.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify state model
+// State
 // ─────────────────────────────────────────────────────────────────────────────
+
+enum SpotifyConnectionStatus { disconnected, connecting, connected, error }
 
 class SpotifyState {
-  final bool isConnected;
-  final String? currentTrackTitle;
-  final String? currentArtist;
-  final double progress;
-  final bool isPlaying;
-  final String? errorMessage;
+  final SpotifyConnectionStatus status;
+  final String?     currentTrackTitle;
+  final String?     currentArtist;
+  final String?     albumArtUrl;
+  final Uint32List? albumArtPixels;
+  final int         albumArtSize;
+  final double      progress;
+  final bool        isPlaying;
+  final String?     errorMessage;
+  final String?     trackId;
 
   const SpotifyState({
-    this.isConnected  = false,
+    this.status            = SpotifyConnectionStatus.disconnected,
     this.currentTrackTitle,
     this.currentArtist,
-    this.progress     = 0,
-    this.isPlaying    = false,
+    this.albumArtUrl,
+    this.albumArtPixels,
+    this.albumArtSize      = 32,
+    this.progress          = 0,
+    this.isPlaying         = false,
     this.errorMessage,
+    this.trackId,
   });
 
-  /// Build a [SpotifyTrack] suitable for the renderer.
+  bool get isConnected  => status == SpotifyConnectionStatus.connected;
+  bool get isConnecting => status == SpotifyConnectionStatus.connecting;
+
   SpotifyTrack toTrack() => SpotifyTrack(
-        title:    currentTrackTitle ?? '',
-        artist:   currentArtist ?? '',
-        progress: progress,
+        title:     currentTrackTitle ?? '',
+        artist:    currentArtist ?? '',
+        artPixels: albumArtPixels,
+        artWidth:  albumArtPixels != null ? albumArtSize : 0,
+        artHeight: albumArtPixels != null ? albumArtSize : 0,
+        progress:  progress,
         isPlaying: isPlaying,
       );
 
   SpotifyState copyWith({
-    bool? isConnected,
-    String? currentTrackTitle,
-    String? currentArtist,
-    double? progress,
-    bool? isPlaying,
-    String? errorMessage,
+    SpotifyConnectionStatus? status,
+    String?     currentTrackTitle,
+    String?     currentArtist,
+    String?     albumArtUrl,
+    Uint32List? albumArtPixels,
+    int?        albumArtSize,
+    double?     progress,
+    bool?       isPlaying,
+    String?     errorMessage,
+    String?     trackId,
+    bool        clearError = false,
+    bool        clearArt   = false,
   }) =>
       SpotifyState(
-        isConnected: isConnected ?? this.isConnected,
+        status:            status            ?? this.status,
         currentTrackTitle: currentTrackTitle ?? this.currentTrackTitle,
-        currentArtist: currentArtist ?? this.currentArtist,
-        progress: progress ?? this.progress,
-        isPlaying: isPlaying ?? this.isPlaying,
-        errorMessage: errorMessage ?? this.errorMessage,
+        currentArtist:     currentArtist     ?? this.currentArtist,
+        albumArtUrl:       albumArtUrl       ?? this.albumArtUrl,
+        albumArtPixels:    clearArt  ? null  : (albumArtPixels ?? this.albumArtPixels),
+        albumArtSize:      albumArtSize      ?? this.albumArtSize,
+        progress:          progress          ?? this.progress,
+        isPlaying:         isPlaying         ?? this.isPlaying,
+        errorMessage:      clearError ? null : (errorMessage   ?? this.errorMessage),
+        trackId:           trackId           ?? this.trackId,
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify service notifier
+// Service
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Manages Spotify OAuth and current-track polling.
-///
-/// In this iteration [connect] simulates OAuth and [refresh] returns a
-/// hard-coded demo track. Replace the body of both methods with a real
-/// Spotify Web API call once client credentials are available.
-///
-/// The renderer reads [SpotifyState.toTrack()] via [matrixRendererProvider]
-/// which injects the track into [MatrixRenderer.currentTrack] before each
-/// render call.
 class SpotifyServiceNotifier extends Notifier<SpotifyState> {
+  final _auth   = SpotifyAuth();
+  final _client = SpotifyApiClient();
+  Timer? _pollTimer;
+
+  static const _pollInterval = Duration(seconds: 5);
+
   @override
   SpotifyState build() => const SpotifyState();
 
-  /// Initiate Spotify OAuth.
-  /// TODO: replace with url_launcher + OAuth PKCE flow.
+  // ── Connection ────────────────────────────────────────────────────────────
+
   Future<void> connect() async {
-    // Simulate a short auth round-trip.
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    state = state.copyWith(isConnected: true);
-    await refresh();
+    state = state.copyWith(
+      status: SpotifyConnectionStatus.connecting,
+      clearError: true,
+    );
+    try {
+      final ok = await _auth.authorize();
+      if (!ok) {
+        state = state.copyWith(
+          status: SpotifyConnectionStatus.error,
+          errorMessage: 'Authorization was cancelled or failed. Please try again.',
+        );
+        return;
+      }
+      state = state.copyWith(status: SpotifyConnectionStatus.connected);
+      await refresh();
+      _startPolling();
+    } catch (e) {
+      state = state.copyWith(
+        status: SpotifyConnectionStatus.error,
+        errorMessage: e.toString(),
+      );
+    }
   }
 
-  /// Disconnect and clear track state.
   void disconnect() {
+    _stopPolling();
+    _auth.clear();
     state = const SpotifyState();
   }
 
-  /// Fetch the currently playing track from the Spotify Web API.
-  /// TODO: replace stub with real HTTP call to
-  ///   GET https://api.spotify.com/v1/me/player/currently-playing
+  // ── Polling ───────────────────────────────────────────────────────────────
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  // ── Now playing ───────────────────────────────────────────────────────────
+
   Future<void> refresh() async {
-    if (!state.isConnected) return;
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final token = await _auth.validAccessToken;
+    if (token == null) return;
+
+    final np = await _client.getNowPlaying(token);
+    if (np == null) {
+      state = state.copyWith(
+        status:    SpotifyConnectionStatus.connected,
+        isPlaying: false,
+      );
+      return;
+    }
+
+    final trackChanged = np.trackId != state.trackId;
     state = state.copyWith(
-      currentTrackTitle: 'Come Together',
-      currentArtist:     'The Beatles',
-      progress:          0.42,
-      isPlaying:         true,
+      status:            SpotifyConnectionStatus.connected,
+      currentTrackTitle: np.title,
+      currentArtist:     np.artist,
+      albumArtUrl:       np.albumArtUrl,
+      progress:          np.progress,
+      isPlaying:         np.isPlaying,
+      trackId:           np.trackId,
+      clearArt:          trackChanged,
+    );
+
+    if (trackChanged && np.albumArtUrl != null) {
+      _fetchAlbumArt(np.albumArtUrl!);
+    }
+  }
+
+  Future<void> _fetchAlbumArt(String url) async {
+    final result = await _client.fetchAlbumArt(url);
+    if (result == null) return;
+    state = state.copyWith(
+      albumArtPixels: result.pixels,
+      albumArtSize:   result.width,
     );
   }
+
+  // ── Transport ─────────────────────────────────────────────────────────────
+
+  Future<void> togglePlayPause() async {
+    if (state.isPlaying) {
+      await _doAction((t) => _client.pause(t));
+    } else {
+      await _doAction((t) => _client.play(t));
+    }
+  }
+
+  Future<void> skipNext() =>
+      _doAction((t) => _client.skipNext(t), delay: const Duration(milliseconds: 600));
+
+  Future<void> skipPrevious() =>
+      _doAction((t) => _client.skipPrevious(t), delay: const Duration(milliseconds: 600));
+
+  Future<void> _doAction(
+    Future<bool> Function(String token) action, {
+    Duration delay = const Duration(milliseconds: 300),
+  }) async {
+    final token = await _auth.validAccessToken;
+    if (token == null) return;
+    await action(token);
+    await Future<void>.delayed(delay);
+    await refresh();
+  }
+
+  @override
+  void dispose() => _stopPolling();
 }
 
 final spotifyServiceProvider =

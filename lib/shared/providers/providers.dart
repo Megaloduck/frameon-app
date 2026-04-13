@@ -14,7 +14,8 @@ import '../../services/pomodoro/pomodoro_service.dart';
 import '../../features/editor/widgets/gif_bytes_provider.dart';
 import 'time_service.dart';
 
-export '../../services/spotify/spotify_service.dart' show spotifyServiceProvider;
+export '../../services/spotify/spotify_service.dart'
+    show spotifyServiceProvider, SpotifyState, SpotifyConnectionStatus, SpotifyServiceNotifier;
 export '../../services/pomodoro/pomodoro_service.dart' show pomodoroServiceProvider;
 
 const _uuid = Uuid();

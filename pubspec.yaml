@@ -25,6 +25,15 @@ dependencies:
 
   # NTP for time sync 
   ntp: ^2.0.0
+  
+  # HTTP client for device communication
+  http: ^1.2.1
+
+  # URL launcher for opening device web interface
+  url_launcher: ^6.3.0
+  
+  # For hashing animations before sending to device
+  crypto: ^3.0.3
 
   # Serial communication (Windows / macOS)
   # flutter_libserialport: ^0.3.1   # uncomment when wiring device transport
