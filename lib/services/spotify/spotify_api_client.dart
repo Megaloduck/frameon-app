@@ -167,4 +167,24 @@ class SpotifyApiClient {
       return resp.statusCode >= 200 && resp.statusCode < 300;
     } catch (_) { return false; }
   }
+  
+  // ── Player state (includes shuffle) ─────────────────────────────────────────
+  Future<bool?> getShuffleState(String token) async {
+  try {
+    final resp = await http
+        .get(
+          Uri.parse('$_base/me/player'),
+          headers: _auth(token),
+        )
+        .timeout(const Duration(seconds: 8));
+    
+    if (resp.statusCode == 200) {
+      final json = jsonDecode(resp.body) as Map<String, dynamic>;
+      return json['shuffle_state'] as bool? ?? false;
+    }
+    return false;
+      } catch (_) {
+            return null;
+              }
+    }
 }

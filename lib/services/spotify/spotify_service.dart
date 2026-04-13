@@ -176,20 +176,26 @@ Future<void> refresh() async {
     status:            SpotifyConnectionStatus.connected,
     currentTrackTitle: np.title,
     currentArtist:     np.artist,
-    currentAlbum:      np.album,  // Add this
+    currentAlbum:      np.album,
     albumArtUrl:       np.albumArtUrl,
     progress:          np.progress,
     isPlaying:         np.isPlaying,
     trackId:           np.trackId,
-    currentPosition:   np.currentPosition,  // Add this
-    currentDuration:   np.currentDuration,   // Add this
+    currentPosition:   np.currentPosition,
+    currentDuration:   np.currentDuration,
     clearArt:          trackChanged,
   );
+
+  // Fetch shuffle state separately
+  final shuffleState = await _client.getShuffleState(token);
+  if (shuffleState != null) {
+    state = state.copyWith(isShuffling: shuffleState);
+  }
 
   if (trackChanged && np.albumArtUrl != null) {
     _fetchAlbumArt(np.albumArtUrl!);
   }
-} 
+}
 
   Future<void> _fetchAlbumArt(String url) async {
     final result = await _client.fetchAlbumArt(url);
@@ -226,7 +232,7 @@ Future<void> refresh() async {
     await Future<void>.delayed(delay);
     await refresh();
   }
-  
+
   Future<void> toggleShuffle() async {
   final token = await _auth.validAccessToken;
   if (token == null) return;
