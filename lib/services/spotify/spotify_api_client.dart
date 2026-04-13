@@ -138,6 +138,17 @@ class SpotifyApiClient {
   Future<bool> pause(String token)        => _put(token, 'pause');
   Future<bool> skipNext(String token)     => _post(token, 'next');
   Future<bool> skipPrevious(String token) => _post(token, 'previous');
+  Future<bool> toggleShuffle(String token, bool shuffleState) async {
+  try {
+    final resp = await http.put(
+      Uri.parse('$_base/me/player/shuffle?state=$shuffleState'),
+      headers: _auth(token),
+    ).timeout(const Duration(seconds: 8));
+    return resp.statusCode >= 200 && resp.statusCode < 300;
+  } catch (_) { 
+    return false; 
+  }
+}
 
   Future<bool> _put(String token, String action) async {
     try {

@@ -30,6 +30,7 @@ class SpotifyState {
   final String?     trackId;
   final Duration    currentPosition;    
   final Duration    currentDuration;    
+  final bool isShuffling;
 
   const SpotifyState({
     this.status            = SpotifyConnectionStatus.disconnected,
@@ -45,6 +46,7 @@ class SpotifyState {
     this.isPlaying         = false,
     this.errorMessage,
     this.trackId,
+    this.isShuffling = false,
   });
 
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
@@ -76,6 +78,7 @@ class SpotifyState {
     Duration?   currentDuration,
     bool        clearError = false,
     bool        clearArt   = false,
+    bool? isShuffling,
   }) => SpotifyState(
         status:            status            ?? this.status,
         currentTrackTitle: currentTrackTitle ?? this.currentTrackTitle,
@@ -90,6 +93,7 @@ class SpotifyState {
         trackId:           trackId           ?? this.trackId,
         currentPosition:   currentPosition   ?? this.currentPosition,
         currentDuration:   currentDuration   ?? this.currentDuration,
+        isShuffling: isShuffling ?? this.isShuffling,
       );
 }
 
@@ -204,7 +208,7 @@ Future<void> refresh() async {
     } else {
       await _doAction((t) => _client.play(t));
     }
-  }
+  }  
 
   Future<void> skipNext() =>
       _doAction((t) => _client.skipNext(t), delay: const Duration(milliseconds: 600));
@@ -222,10 +226,19 @@ Future<void> refresh() async {
     await Future<void>.delayed(delay);
     await refresh();
   }
+  
+  Future<void> toggleShuffle() async {
+  final token = await _auth.validAccessToken;
+  if (token == null) return;
+  await _client.toggleShuffle(token, !state.isShuffling);
+  await refresh();
+}
+  
 
   @override
   void dispose() => _stopPolling();
 }
+
 
 final spotifyServiceProvider =
     NotifierProvider<SpotifyServiceNotifier, SpotifyState>(

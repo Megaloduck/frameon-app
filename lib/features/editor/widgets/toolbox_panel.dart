@@ -284,20 +284,48 @@ class _StepBtn extends StatelessWidget {
 }
 
 class _TransportBtn extends StatelessWidget {
-  final IconData icon; final bool filled; final VoidCallback onTap;
-  const _TransportBtn({required this.icon, required this.onTap, this.filled = false});
+  final IconData icon;
+  final bool filled;
+  final bool active;
+  final VoidCallback onTap;
+  
+  const _TransportBtn({
+    required this.icon,
+    required this.onTap,
+    this.filled = false,
+    this.active = false,
+  });
+
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 34, height: 34,
-          decoration: BoxDecoration(
-            color: filled ? kGreen : kSurface, shape: BoxShape.circle,
-            border: Border.all(color: filled ? kGreen : kBorder),
+  Widget build(BuildContext context) {
+    final isActive = active && !filled;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: filled 
+              ? const Color(0xFF1DB954) 
+              : (isActive ? const Color(0xFF1DB954).withOpacity(0.15) : kSurface),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: filled 
+                ? const Color(0xFF1DB954) 
+                : (isActive ? const Color(0xFF1DB954) : kBorder),
+            width: isActive ? 1.5 : 1,
           ),
-          child: Icon(icon, size: 17, color: filled ? Colors.white : kTextMuted),
         ),
-      );
+        child: Icon(
+          icon,
+          size: filled ? 17 : 16,
+          color: filled 
+              ? Colors.white 
+              : (isActive ? const Color(0xFF1DB954) : kTextMuted),
+        ),
+      ),
+    );
+  }
 }
 
 /// Color swatch button.
@@ -742,12 +770,22 @@ class _SpotifyLeft extends ConsumerWidget {
 
         const SizedBox(height: 12),
 
-        // ── Transport controls with disconnect on right ─────────────────
+        // ── Transport controls with shuffle and disconnect ─────────────
         if (spot.isConnected) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Transport buttons group
+              // Shuffle button on the far left
+              _TransportBtn(
+                icon: Icons.shuffle_rounded,
+                onTap: () => service.toggleShuffle(),
+                active: spot.isShuffling,
+              ),
+              
+              // Spacer to push center group
+              const Spacer(),
+              
+              // Centered transport buttons group
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -755,7 +793,7 @@ class _SpotifyLeft extends ConsumerWidget {
                     icon: Icons.skip_previous_rounded,
                     onTap: () => service.skipPrevious(),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   _TransportBtn(
                     icon: spot.isPlaying
                         ? Icons.pause_rounded
@@ -763,7 +801,7 @@ class _SpotifyLeft extends ConsumerWidget {
                     filled: true,
                     onTap: () => service.togglePlayPause(),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   _TransportBtn(
                     icon: Icons.skip_next_rounded,
                     onTap: () => service.skipNext(),
@@ -771,24 +809,27 @@ class _SpotifyLeft extends ConsumerWidget {
                 ],
               ),
               
-              // Disconnect button on the right
+              // Spacer to balance
+              const Spacer(),
+              
+              // Disconnect button on the far right (green when connected)
               GestureDetector(
                 onTap: service.disconnect,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: kSurfaceLow,
+                    color: const Color(0xFF1DB954).withOpacity(0.15),
                     borderRadius: const BorderRadius.all(kRadiusSm),
-                    border: Border.all(color: kBorder),
+                    border: Border.all(color: const Color(0xFF1DB954).withOpacity(0.5)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Icon(Icons.link_off_rounded, size: 12, color: kTextDim),
+                      Icon(Icons.link_off_rounded, size: 12, color: Color(0xFF1DB954)),
                       SizedBox(width: 4),
                       Text(
                         'Disconnect',
-                        style: TextStyle(fontSize: 10, color: kTextDim),
+                        style: TextStyle(fontSize: 10, color: Color(0xFF1DB954)),
                       ),
                     ],
                   ),
