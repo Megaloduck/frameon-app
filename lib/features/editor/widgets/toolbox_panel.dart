@@ -782,37 +782,35 @@ class _SpotifyLeft extends ConsumerWidget {
                 active: spot.isShuffling,
               ),
               
-              // Spacer to push center group
-              const Spacer(),
-              
-              // Centered transport buttons group
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _TransportBtn(
-                    icon: Icons.skip_previous_rounded,
-                    onTap: () => service.skipPrevious(),
+              // Centered transport buttons group using Expanded
+              Expanded(
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _TransportBtn(
+                        icon: Icons.skip_previous_rounded,
+                        onTap: () => service.skipPrevious(),
+                      ),
+                      const SizedBox(width: 12),
+                      _TransportBtn(
+                        icon: spot.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        filled: true,
+                        onTap: () => service.togglePlayPause(),
+                      ),
+                      const SizedBox(width: 12),
+                      _TransportBtn(
+                        icon: Icons.skip_next_rounded,
+                        onTap: () => service.skipNext(),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  _TransportBtn(
-                    icon: spot.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    filled: true,
-                    onTap: () => service.togglePlayPause(),
-                  ),
-                  const SizedBox(width: 12),
-                  _TransportBtn(
-                    icon: Icons.skip_next_rounded,
-                    onTap: () => service.skipNext(),
-                  ),
-                ],
+                ),
               ),
               
-              // Spacer to balance
-              const Spacer(),
-              
-              // Disconnect button on the far right (green when connected)
+              // Disconnect button on the far right
               GestureDetector(
                 onTap: service.disconnect,
                 child: Container(

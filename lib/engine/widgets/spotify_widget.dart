@@ -30,11 +30,6 @@ class SpotifyTrack {
 }
 
 /// Renders a [SpotifyLayer] into a [PixelBuffer].
-///
-/// Layout modes:
-/// - artAndText — square album art on the left, scrolling text on the right
-/// - textOnly   — full-width scrolling text + progress bar
-/// - artOnly    — full-width scaled album art
 class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
   const SpotifyWidget();
 
@@ -44,19 +39,31 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int elapsedMs,
     SpotifyTrack track,
   ) {
+    // Clear buffer first
+    buffer.clear();
+    
     switch (layer.layout) {
       case SpotifyLayout.artAndText:
         _renderArtAndText(layer, buffer, elapsedMs, track);
       case SpotifyLayout.textOnly:
         _renderTextOnly(layer, buffer, elapsedMs, track);
       case SpotifyLayout.artOnly:
-        _blitArt(buffer, track, 0, 0, buffer.width, buffer.height);
+        _renderArtOnly(buffer, track, layer.opacity);
     }
   }
 
   @override
   void render(SpotifyLayer layer, PixelBuffer buffer, int elapsedMs) {
-    // No-op without a live track.
+    // No track available - show placeholder
+    buffer.clear();
+    PixelFont.draw(
+      buffer: buffer,
+      text: "No track",
+      color: const Color(0xFF21C32C),
+      x: (buffer.width - PixelFont.measureWidth("No track")) ~/ 2,
+      y: buffer.height ~/ 2 - 4,
+      opacity: layer.opacity,
+    );
   }
 
   // ── Layouts ───────────────────────────────────────────────────────────────
@@ -67,17 +74,17 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int elapsedMs,
     SpotifyTrack track,
   ) {
-    // Art occupies a square on the left equal to the canvas height.
-    final int artW = buffer.height;
-    _blitArt(buffer, track, 0, 0, artW, buffer.height);
+    // Art occupies a square on the left equal to the canvas height
+    final int artSize = buffer.height;
+    _renderArtOnly(buffer, track, layer.opacity, 0, 0, artSize, artSize);
 
-    final int textX   = artW + 1;
-    final int textW   = buffer.width - textX;
-    // Distribute the 3 rows evenly across the 32-pixel height.
-    // title row: y=2, artist row: y=11, progress bar: y=29
-    final int titleY  = 2;
+    final int textX = artSize + 1;
+    final int textW = buffer.width - textX;
+    
+    // Position text rows
+    final int titleY = 2;
     final int artistY = titleY + PixelFont.glyphHeight + 2;
-    final int barY    = buffer.height - 3;
+    final int barY = buffer.height - 3;
 
     if (layer.showTitle && track.title.isNotEmpty) {
       _scrollText(buffer, track.title, layer.textColor, textX, titleY,
@@ -98,20 +105,41 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int elapsedMs,
     SpotifyTrack track,
   ) {
-    final int titleY  = (buffer.height - PixelFont.glyphHeight * 2 - 2) ~/ 2;
+    final int titleY = (buffer.height - PixelFont.glyphHeight * 2 - 2) ~/ 2;
     final int artistY = titleY + PixelFont.glyphHeight + 2;
 
-    if (layer.showTitle) {
+    if (layer.showTitle && track.title.isNotEmpty) {
       _scrollText(buffer, track.title, layer.textColor, 0, titleY,
           buffer.width, elapsedMs, layer.opacity);
     }
-    if (layer.showArtist) {
+    if (layer.showArtist && track.artist.isNotEmpty) {
       _scrollText(buffer, track.artist, layer.textColor, 0, artistY,
           buffer.width, elapsedMs + 300, layer.opacity);
     }
     if (layer.showProgress) {
       _drawProgressBar(buffer, track.progress, 0, buffer.height - 2, buffer.width);
     }
+  }
+
+  void _renderArtOnly(
+    PixelBuffer buffer,
+    SpotifyTrack track,
+    double opacity, [
+    int x = 0,
+    int y = 0,
+    int? width,
+    int? height,
+  ]) {
+    final w = width ?? buffer.width;
+    final h = height ?? buffer.height;
+    
+    if (track.artPixels == null || track.artWidth == 0 || track.artHeight == 0) {
+      // Show placeholder when no art is available
+      buffer.fillRect(x, y, w, h, const Color(0xFF1E1E1E));
+      return;
+    }
+    
+    _blitArt(buffer, track, x, y, w, h, opacity);
   }
 
   // ── Drawing helpers ───────────────────────────────────────────────────────
@@ -128,7 +156,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int speedMs = 60,
   }) {
     final int contentW = PixelFont.measureWidth(text);
-    // Only scroll if text overflows the available width.
+    // Only scroll if text overflows the available width
     if (contentW <= maxW) {
       PixelFont.draw(
         buffer: buffer, text: text, color: color,
@@ -142,7 +170,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       buffer: buffer, text: text, color: color,
       x: startX - offset, y: y, opacity: opacity,
     );
-    // Draw the wrap-around copy once the first copy has scrolled off.
+    // Draw the wrap-around copy once the first copy has scrolled off
     if (offset > contentW) {
       PixelFont.draw(
         buffer: buffer, text: text, color: color,
@@ -151,19 +179,38 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     }
   }
 
-  void _blitArt(PixelBuffer dst, SpotifyTrack track, int x, int y, int w, int h) {
+  void _blitArt(
+    PixelBuffer dst,
+    SpotifyTrack track,
+    int x,
+    int y,
+    int w,
+    int h,
+    double opacity,
+  ) {
     if (track.artPixels == null || track.artWidth == 0 || track.artHeight == 0) {
       dst.fillRect(x, y, w, h, const Color(0xFF1E1E1E));
       return;
     }
-    final double sx = track.artWidth  / w;
-    final double sy = track.artHeight / h;
+    
+    // Calculate scaling factors
+    final double scaleX = track.artWidth / w;
+    final double scaleY = track.artHeight / h;
+    
     for (int dy = 0; dy < h; dy++) {
       for (int dx = 0; dx < w; dx++) {
-        final int srcX = (dx * sx).toInt().clamp(0, track.artWidth  - 1);
-        final int srcY = (dy * sy).toInt().clamp(0, track.artHeight - 1);
-        dst.setPixel(x + dx, y + dy,
-            track.artPixels![srcY * track.artWidth + srcX]);
+        final int srcX = (dx * scaleX).toInt().clamp(0, track.artWidth - 1);
+        final int srcY = (dy * scaleY).toInt().clamp(0, track.artHeight - 1);
+        
+        int pixel = track.artPixels![srcY * track.artWidth + srcX];
+        
+        // Apply opacity if needed
+        if (opacity < 1.0) {
+          final int alpha = ((pixel >> 24) & 0xFF) * opacity.toInt();
+          pixel = (alpha << 24) | (pixel & 0x00FFFFFF);
+        }
+        
+        dst.setPixel(x + dx, y + dy, pixel);
       }
     }
   }

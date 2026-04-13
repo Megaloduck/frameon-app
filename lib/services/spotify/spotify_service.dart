@@ -52,15 +52,19 @@ class SpotifyState {
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
   bool get isConnecting => status == SpotifyConnectionStatus.connecting;
 
-    SpotifyTrack toTrack() => SpotifyTrack(
-        title:     currentTrackTitle ?? '',
-        artist:    currentArtist ?? '',
-        artPixels: albumArtPixels,
-        artWidth:  albumArtPixels != null ? albumArtSize : 0,
-        artHeight: albumArtPixels != null ? albumArtSize : 0,
-        progress:  progress,
-        isPlaying: isPlaying,
-      );
+   // In spotify_service.dart - ensure toTrack() method properly passes album art
+
+SpotifyTrack toTrack() {
+  return SpotifyTrack(
+    title: currentTrackTitle ?? '',
+    artist: currentArtist ?? '',
+    artPixels: albumArtPixels,  // Make sure this is Uint32List? 
+    artWidth: albumArtSize,
+    artHeight: albumArtSize,
+    progress: progress,
+    isPlaying: isPlaying,
+  );
+}
 
    SpotifyState copyWith({
     SpotifyConnectionStatus? status,
