@@ -1,7 +1,7 @@
 import '../../renderer/pixel_buffer.dart';
 import 'base_effect.dart';
 
-/// Scrolls pixels toward the right and wraps content around at the edge.
+/// Scrolls pixels toward the right infinitely with seamless wrapping.
 class ScrollRightEffect extends AnimationEffectProcessor {
   final double pixelsPerSecond;
 
@@ -9,21 +9,21 @@ class ScrollRightEffect extends AnimationEffectProcessor {
 
   @override
   void apply(PixelBuffer src, PixelBuffer dst, int elapsedMs) {
-    final int offset = ((elapsedMs * pixelsPerSecond) / 1000).floor();
     final int width = src.width;
-
+    
     if (width <= 0) {
       dst.clear();
       return;
     }
 
-    final int normalized = offset % width;
+    final int offset = ((elapsedMs * pixelsPerSecond) / 1000).floor();
+    final int scrollPosition = offset % width;
 
     for (int y = 0; y < src.height; y++) {
       for (int x = 0; x < width; x++) {
-        final int srcX = (x - normalized) % width;
-        final int wrapped = srcX < 0 ? srcX + width : srcX;
-        dst.setPixel(x, y, src.getPixel(wrapped, y));
+        // Add width to ensure we never get negative numbers (balanced with left scroll)
+        final int srcX = (x - scrollPosition + width) % width;
+        dst.setPixel(x, y, src.getPixel(srcX, y));
       }
     }
   }
