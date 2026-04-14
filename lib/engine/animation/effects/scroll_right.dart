@@ -1,7 +1,10 @@
 import '../../renderer/pixel_buffer.dart';
 import 'base_effect.dart';
 
-/// Scrolls pixels toward the right infinitely with seamless wrapping.
+/// Marquee scroll — content enters from the left and exits to the right.
+///
+/// Shifts the entire buffer right by [offset] pixels, filling the vacated
+/// left side with transparent black.
 class ScrollRightEffect extends AnimationEffectProcessor {
   final double pixelsPerSecond;
 
@@ -9,20 +12,22 @@ class ScrollRightEffect extends AnimationEffectProcessor {
 
   @override
   void apply(PixelBuffer src, PixelBuffer dst, int elapsedMs) {
-    final int width = src.width;
-    
-    if (width <= 0) {
+    final int w = src.width;
+    final int h = src.height;
+
+    if (w <= 0) {
       dst.clear();
       return;
     }
 
-    final int offset = ((elapsedMs * pixelsPerSecond) / 1000).floor();
-    final int scrollPosition = offset % width;
+    final int shift = ((elapsedMs * pixelsPerSecond) / 1000).floor();
 
-    for (int y = 0; y < src.height; y++) {
-      for (int x = 0; x < width; x++) {
-        // Add width to ensure we never get negative numbers (balanced with left scroll)
-        final int srcX = (x - scrollPosition + width) % width;
+    dst.clear();
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final int srcX = x - shift;
+        if (srcX < 0 || srcX >= w) continue;
         dst.setPixel(x, y, src.getPixel(srcX, y));
       }
     }

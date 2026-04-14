@@ -1,7 +1,11 @@
 import '../../renderer/pixel_buffer.dart';
 import 'base_effect.dart';
 
-/// Scrolls pixels toward the left infinitely with seamless wrapping.
+/// Marquee scroll — content enters from the right and exits to the left.
+/// Unlike the old wrap-around version, this shifts the entire buffer left by
+/// [offset] pixels and fills the vacated right side with transparent black.
+/// The [TextWidget] already draws the text at its natural position; this
+/// effect then slides that rendered content across the canvas.
 class ScrollLeftEffect extends AnimationEffectProcessor {
   final double pixelsPerSecond;
 
@@ -9,20 +13,22 @@ class ScrollLeftEffect extends AnimationEffectProcessor {
 
   @override
   void apply(PixelBuffer src, PixelBuffer dst, int elapsedMs) {
-    final int width = src.width;
-    
-    if (width <= 0) {
+    final int w = src.width;
+    final int h = src.height;
+
+    if (w <= 0) {
       dst.clear();
       return;
     }
 
-    final int offset = ((elapsedMs * pixelsPerSecond) / 1000).floor();
-    final int scrollPosition = offset % width;
+    final int shift = ((elapsedMs * pixelsPerSecond) / 1000).floor();
 
-    for (int y = 0; y < src.height; y++) {
-      for (int x = 0; x < width; x++) {
-        // Add width to ensure we never get negative numbers (balanced with right scroll)
-        final int srcX = (x + scrollPosition + width) % width;
+    dst.clear(); // fill with transparent black first
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final int srcX = x + shift;
+        if (srcX < 0 || srcX >= w) continue; // out of source — leave black
         dst.setPixel(x, y, src.getPixel(srcX, y));
       }
     }

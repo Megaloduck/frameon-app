@@ -453,9 +453,7 @@ class _TextRight extends StatelessWidget {
           _SegAlign(current: layer.alignment,
               onChange: (v) => n.updateLayer(layer.copyWith(alignment: v))),
           const SizedBox(height: 12),
-          TbLabel('Opacity'),
-          Slider(value: layer.opacity, min: 0, max: 1,
-              onChanged: (v) => n.updateLayer(layer.copyWith(opacity: v))),
+
         ],
       );
 }
