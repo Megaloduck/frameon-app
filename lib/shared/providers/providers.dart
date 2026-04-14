@@ -15,13 +15,8 @@ import '../../features/editor/widgets/gif_bytes_provider.dart';
 import 'time_service.dart';
 
 export '../../services/spotify/spotify_service.dart'
-    show
-        spotifyServiceProvider,
-        SpotifyState,
-        SpotifyConnectionStatus,
-        SpotifyServiceNotifier;
-export '../../services/pomodoro/pomodoro_service.dart'
-    show pomodoroServiceProvider;
+    show spotifyServiceProvider, SpotifyState, SpotifyConnectionStatus, SpotifyServiceNotifier;
+export '../../services/pomodoro/pomodoro_service.dart' show pomodoroServiceProvider;
 
 const _uuid = Uuid();
 
@@ -108,7 +103,8 @@ class SceneNotifier extends Notifier<Scene> {
   }
 }
 
-final sceneProvider = NotifierProvider<SceneNotifier, Scene>(SceneNotifier.new);
+final sceneProvider =
+    NotifierProvider<SceneNotifier, Scene>(SceneNotifier.new);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Selection
@@ -118,33 +114,19 @@ final selectedLayerIdProvider = StateProvider<String?>((ref) => null);
 
 final selectedLayerProvider = Provider<Layer?>((ref) {
   final scene = ref.watch(sceneProvider);
-  final id = ref.watch(selectedLayerIdProvider);
+  final id    = ref.watch(selectedLayerIdProvider);
   if (id == null) return null;
   return scene.layerById(id);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Renderer with change tracking
+// Renderer
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Version counter that increments whenever the Spotify track changes.
-/// Used to force timeline rebuilds when new music starts playing.
-final spotifyTrackVersionProvider = StateProvider<int>((ref) => 0);
-
-/// Version counter that increments whenever Pomodoro state changes.
-final pomodoroStateVersionProvider = StateProvider<int>((ref) => 0);
 
 final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
   final renderer = MatrixRenderer();
 
-  // Set up callback to notify when track/pomodoro state changes
-  renderer.addListener(() {
-    // Increment version providers to trigger timeline rebuilds
-    ref.read(spotifyTrackVersionProvider.notifier).state++;
-    ref.read(pomodoroStateVersionProvider.notifier).state++;
-  });
-
-  // Wire Spotify track into renderer.
+  // Wire Spotify track into renderer whenever state changes.
   ref.listen(spotifyServiceProvider, (_, next) {
     renderer.currentTrack = next.isConnected ? next.toTrack() : null;
   });
@@ -152,11 +134,6 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
   // Wire Pomodoro timer state into renderer.
   ref.listen(pomodoroServiceProvider, (_, next) {
     renderer.currentPomodoroState = next;
-  });
-
-  ref.onDispose(() {
-    // Clean up listener on provider disposal
-    renderer.removeListener(() {});
   });
 
   return renderer;
@@ -217,8 +194,6 @@ int _calculateFrameCount(
   return maxFrames.clamp(1, 300);
 }
 
-final _gifFrameCountsProvider = StateProvider<Map<String, int>>((_) => const {});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Timeline Notifier
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,22 +204,26 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
 
   @override
   Future<Timeline> build() async {
-    final scene = ref.watch(sceneProvider);
+    final scene    = ref.watch(sceneProvider);
     final renderer = ref.read(matrixRendererProvider);
 
-    // Force rebuild when Spotify track changes
-    final spotifyVersion = ref.watch(spotifyTrackVersionProvider);
-    
-    // Force rebuild when Pomodoro state changes
-    final pomodoroVersion = ref.watch(pomodoroStateVersionProvider);
-
-    // Watch the live time ONLY when there are visible clock/pomodoro layers.
+    // Determine which live-data layers are visible
     final hasTimeLayers = scene.visibleLayers.any((l) =>
         l.type == LayerType.clock || l.type == LayerType.pomodoro);
+    final hasSpotifyLayers =
+        scene.visibleLayers.any((l) => l.type == LayerType.spotify);
+
     if (hasTimeLayers) {
       ref.watch(timeServiceProvider);
-      // Also watch pomodoro service so the preview updates each second.
       ref.watch(pomodoroServiceProvider);
+    }
+
+    // ── KEY FIX: watch Spotify state so album art + progress trigger re-render ──
+    if (hasSpotifyLayers) {
+      final spotifyState = ref.watch(spotifyServiceProvider);
+      // Push latest track data into renderer before rendering frames
+      renderer.currentTrack =
+          spotifyState.isConnected ? spotifyState.toTrack() : null;
     }
 
     // Re-hydrate renderer asset cache from gifBytesProvider.
@@ -260,10 +239,9 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     }
 
     // Debounce rapid scene changes (e.g. typing in text field).
-    // But skip debouncing when track/pomodoro changed (they need immediate update)
-    final skipDebounce = hasTimeLayers || spotifyVersion > 0 || pomodoroVersion > 0;
-    
-    if (!skipDebounce) {
+    // Skip debounce for live layers so clock/spotify update immediately.
+    final isLive = hasTimeLayers || hasSpotifyLayers;
+    if (!isLive) {
       _debounce?.cancel();
       final int gen = ++_generation;
 
@@ -278,13 +256,8 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
       if (gen != _generation) return state.value ?? Timeline();
     }
 
-    final frameCount = _calculateFrameCount(scene, gifFrameCounts);
+    final frameCount      = _calculateFrameCount(scene, gifFrameCounts);
     final frameDurationMs = (1000 / scene.fps).round();
-
-    // Use the version variables to ensure they're tracked as dependencies
-    // This forces the provider to rebuild when these versions change
-    final _ = spotifyVersion;
-    final __ = pomodoroVersion;
 
     return renderer.render(
       scene,
@@ -327,4 +300,4 @@ class _FrameCounter {
 // ─────────────────────────────────────────────────────────────────────────────
 
 final previewElapsedMsProvider = StateProvider<int>((ref) => 0);
-final previewPlayingProvider = StateProvider<bool>((ref) => true);
+final previewPlayingProvider   = StateProvider<bool>((ref) => true);

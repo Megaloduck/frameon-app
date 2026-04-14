@@ -20,7 +20,7 @@ class SpotifyState {
   final SpotifyConnectionStatus status;
   final String?     currentTrackTitle;
   final String?     currentArtist;
-  final String?     currentAlbum;   
+  final String?     currentAlbum;
   final String?     albumArtUrl;
   final Uint32List? albumArtPixels;
   final int         albumArtSize;
@@ -28,17 +28,15 @@ class SpotifyState {
   final bool        isPlaying;
   final String?     errorMessage;
   final String?     trackId;
-  final Duration    currentPosition;    
-  final Duration    currentDuration;    
-  final bool isShuffling;
+  final Duration    currentPosition;
+  final Duration    currentDuration;
+  final bool        isShuffling;
 
   const SpotifyState({
     this.status            = SpotifyConnectionStatus.disconnected,
     this.currentTrackTitle,
     this.currentArtist,
-    this.currentAlbum,  
-    this.currentPosition = Duration.zero,   
-    this.currentDuration = Duration.zero,     
+    this.currentAlbum,
     this.albumArtUrl,
     this.albumArtPixels,
     this.albumArtSize      = 32,
@@ -46,27 +44,25 @@ class SpotifyState {
     this.isPlaying         = false,
     this.errorMessage,
     this.trackId,
-    this.isShuffling = false,
+    this.currentPosition   = Duration.zero,
+    this.currentDuration   = Duration.zero,
+    this.isShuffling       = false,
   });
 
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
   bool get isConnecting => status == SpotifyConnectionStatus.connecting;
 
-   // In spotify_service.dart - ensure toTrack() method properly passes album art
+  SpotifyTrack toTrack() => SpotifyTrack(
+        title:     currentTrackTitle ?? '',
+        artist:    currentArtist ?? '',
+        artPixels: albumArtPixels,
+        artWidth:  albumArtPixels != null ? albumArtSize : 0,
+        artHeight: albumArtPixels != null ? albumArtSize : 0,
+        progress:  progress,
+        isPlaying: isPlaying,
+      );
 
-SpotifyTrack toTrack() {
-  return SpotifyTrack(
-    title: currentTrackTitle ?? '',
-    artist: currentArtist ?? '',
-    artPixels: albumArtPixels,  // Make sure this is Uint32List? 
-    artWidth: albumArtSize,
-    artHeight: albumArtSize,
-    progress: progress,
-    isPlaying: isPlaying,
-  );
-}
-
-   SpotifyState copyWith({
+  SpotifyState copyWith({
     SpotifyConnectionStatus? status,
     String?     currentTrackTitle,
     String?     currentArtist,
@@ -80,10 +76,11 @@ SpotifyTrack toTrack() {
     String?     trackId,
     Duration?   currentPosition,
     Duration?   currentDuration,
+    bool?       isShuffling,
     bool        clearError = false,
     bool        clearArt   = false,
-    bool? isShuffling,
-  }) => SpotifyState(
+  }) =>
+      SpotifyState(
         status:            status            ?? this.status,
         currentTrackTitle: currentTrackTitle ?? this.currentTrackTitle,
         currentArtist:     currentArtist     ?? this.currentArtist,
@@ -97,7 +94,7 @@ SpotifyTrack toTrack() {
         trackId:           trackId           ?? this.trackId,
         currentPosition:   currentPosition   ?? this.currentPosition,
         currentDuration:   currentDuration   ?? this.currentDuration,
-        isShuffling: isShuffling ?? this.isShuffling,
+        isShuffling:       isShuffling       ?? this.isShuffling,
       );
 }
 
@@ -109,6 +106,8 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   final _auth   = SpotifyAuth();
   final _client = SpotifyApiClient();
   Timer? _pollTimer;
+  // Ticks every second to interpolate progress between API polls
+  Timer? _progressTimer;
 
   static const _pollInterval = Duration(seconds: 5);
 
@@ -153,53 +152,69 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   void _startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
+
+    // Interpolate progress every second so matrix preview bar moves smoothly
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!state.isPlaying) return;
+      if (state.currentDuration.inMilliseconds == 0) return;
+      final newPos = state.currentPosition + const Duration(seconds: 1);
+      if (newPos > state.currentDuration) return;
+      final newProgress =
+          newPos.inMilliseconds / state.currentDuration.inMilliseconds;
+      state = state.copyWith(
+        currentPosition: newPos,
+        progress: newProgress.clamp(0.0, 1.0),
+      );
+    });
   }
 
   void _stopPolling() {
     _pollTimer?.cancel();
     _pollTimer = null;
+    _progressTimer?.cancel();
+    _progressTimer = null;
   }
 
   // ── Now playing ───────────────────────────────────────────────────────────
 
-Future<void> refresh() async {
-  final token = await _auth.validAccessToken;
-  if (token == null) return;
+  Future<void> refresh() async {
+    final token = await _auth.validAccessToken;
+    if (token == null) return;
 
-  final np = await _client.getNowPlaying(token);
-  if (np == null) {
+    final np = await _client.getNowPlaying(token);
+    if (np == null) {
+      state = state.copyWith(
+        status:    SpotifyConnectionStatus.connected,
+        isPlaying: false,
+      );
+      return;
+    }
+
+    final trackChanged = np.trackId != state.trackId;
     state = state.copyWith(
-      status:    SpotifyConnectionStatus.connected,
-      isPlaying: false,
+      status:            SpotifyConnectionStatus.connected,
+      currentTrackTitle: np.title,
+      currentArtist:     np.artist,
+      currentAlbum:      np.album,
+      albumArtUrl:       np.albumArtUrl,
+      progress:          np.progress,
+      isPlaying:         np.isPlaying,
+      trackId:           np.trackId,
+      currentPosition:   np.currentPosition,
+      currentDuration:   np.currentDuration,
+      clearArt:          trackChanged,
     );
-    return;
-  }
 
-  final trackChanged = np.trackId != state.trackId;
-  state = state.copyWith(
-    status:            SpotifyConnectionStatus.connected,
-    currentTrackTitle: np.title,
-    currentArtist:     np.artist,
-    currentAlbum:      np.album,
-    albumArtUrl:       np.albumArtUrl,
-    progress:          np.progress,
-    isPlaying:         np.isPlaying,
-    trackId:           np.trackId,
-    currentPosition:   np.currentPosition,
-    currentDuration:   np.currentDuration,
-    clearArt:          trackChanged,
-  );
+    final shuffleState = await _client.getShuffleState(token);
+    if (shuffleState != null) {
+      state = state.copyWith(isShuffling: shuffleState);
+    }
 
-  // Fetch shuffle state separately
-  final shuffleState = await _client.getShuffleState(token);
-  if (shuffleState != null) {
-    state = state.copyWith(isShuffling: shuffleState);
+    if (trackChanged && np.albumArtUrl != null) {
+      _fetchAlbumArt(np.albumArtUrl!);
+    }
   }
-
-  if (trackChanged && np.albumArtUrl != null) {
-    _fetchAlbumArt(np.albumArtUrl!);
-  }
-}
 
   Future<void> _fetchAlbumArt(String url) async {
     final result = await _client.fetchAlbumArt(url);
@@ -218,13 +233,24 @@ Future<void> refresh() async {
     } else {
       await _doAction((t) => _client.play(t));
     }
-  }  
+  }
 
-  Future<void> skipNext() =>
-      _doAction((t) => _client.skipNext(t), delay: const Duration(milliseconds: 600));
+  Future<void> skipNext() => _doAction(
+        (t) => _client.skipNext(t),
+        delay: const Duration(milliseconds: 600),
+      );
 
-  Future<void> skipPrevious() =>
-      _doAction((t) => _client.skipPrevious(t), delay: const Duration(milliseconds: 600));
+  Future<void> skipPrevious() => _doAction(
+        (t) => _client.skipPrevious(t),
+        delay: const Duration(milliseconds: 600),
+      );
+
+  Future<void> toggleShuffle() async {
+    final token = await _auth.validAccessToken;
+    if (token == null) return;
+    await _client.toggleShuffle(token, !state.isShuffling);
+    await refresh();
+  }
 
   Future<void> _doAction(
     Future<bool> Function(String token) action, {
@@ -237,18 +263,9 @@ Future<void> refresh() async {
     await refresh();
   }
 
-  Future<void> toggleShuffle() async {
-  final token = await _auth.validAccessToken;
-  if (token == null) return;
-  await _client.toggleShuffle(token, !state.isShuffling);
-  await refresh();
-}
-  
-
   @override
   void dispose() => _stopPolling();
 }
-
 
 final spotifyServiceProvider =
     NotifierProvider<SpotifyServiceNotifier, SpotifyState>(

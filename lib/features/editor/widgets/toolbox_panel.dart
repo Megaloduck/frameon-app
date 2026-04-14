@@ -61,8 +61,6 @@ class _ToolboxLeft extends ConsumerWidget {
               LayerType.clock    => _ClockLeft(layer: layer as ClockLayer, n: n),
               LayerType.gif      => _GifLeft(layer: layer as GifLayer, n: n),
               LayerType.spotify  => _SpotifyLeft(layer: layer as SpotifyLayer),
-              // _PomodoroLeft fetches its own live layer via ref.watch —
-              // this is the key fix so color swatches update immediately.
               LayerType.pomodoro => const _PomodoroLeft(),
             },
           ),
@@ -329,11 +327,6 @@ class _TransportBtn extends StatelessWidget {
 }
 
 /// Color swatch button.
-///
-/// Fix: the old version re-wrapped the returned color with .withOpacity()
-/// which could zero out the alpha for certain hues (blue being most visible).
-/// Now we pass the picked color through unchanged — showColorPickerSheet
-/// already returns a fully valid Color with correct alpha.
 Widget _colorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =>
     GestureDetector(
       onTap: () async {
@@ -424,7 +417,6 @@ class _TextLeft extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Changed: Color picker as simple row with color box (like pomodoro)
           Row(children: [
             _colorBtn(context, layer.color, (c) => n.updateLayer(layer.copyWith(color: c))),
             const SizedBox(width: 8),
@@ -734,10 +726,6 @@ class _GifRight extends StatelessWidget {
 // SPOTIFY
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SPOTIFY
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _SpotifyLeft extends ConsumerWidget {
   final SpotifyLayer layer;
   const _SpotifyLeft({required this.layer});
@@ -750,7 +738,6 @@ class _SpotifyLeft extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Status / now-playing card ──────────────────────────────────
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -767,22 +754,16 @@ class _SpotifyLeft extends ConsumerWidget {
                       onConnect: service.connect,
                     ),
         ),
-
         const SizedBox(height: 12),
-
-        // ── Transport controls with shuffle and disconnect ─────────────
         if (spot.isConnected) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Shuffle button on the far left
               _TransportBtn(
                 icon: Icons.shuffle_rounded,
                 onTap: () => service.toggleShuffle(),
                 active: spot.isShuffling,
               ),
-              
-              // Centered transport buttons group using Expanded
               Expanded(
                 child: Center(
                   child: Row(
@@ -809,8 +790,6 @@ class _SpotifyLeft extends ConsumerWidget {
                   ),
                 ),
               ),
-              
-              // Disconnect button on the far right
               GestureDetector(
                 onTap: service.disconnect,
                 child: Container(
@@ -835,10 +814,7 @@ class _SpotifyLeft extends ConsumerWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
-          // ── Progress bar with timestamps ───────────────────────────
           Column(
             children: [
               ClipRRect(
@@ -878,9 +854,57 @@ class _SpotifyLeft extends ConsumerWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Card sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Album art thumbnail — FIXED: wrapped in SizedBox ─────────────────────────
+
+class _AlbumArtThumbnail extends StatelessWidget {
+  final Uint32List pixels;
+  final int size;
+
+  const _AlbumArtThumbnail({required this.pixels, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 60,
+      height: 60,
+      child: CustomPaint(
+        painter: _ArtPainter(pixels: pixels, size: size),
+      ),
+    );
+  }
+}
+
+class _ArtPainter extends CustomPainter {
+  final Uint32List pixels;
+  final int size;
+
+  const _ArtPainter({required this.pixels, required this.size});
+
+  @override
+  void paint(Canvas canvas, Size canvasSize) {
+    if (pixels.isEmpty || size == 0) return;
+    final paint = Paint()..isAntiAlias = false;
+    final dW = canvasSize.width / size;
+    final dH = canvasSize.height / size;
+    for (int y = 0; y < size; y++) {
+      for (int x = 0; x < size; x++) {
+        final int idx = y * size + x;
+        if (idx >= pixels.length) break;
+        paint.color = Color(pixels[idx] | 0xFF000000);
+        canvas.drawRect(
+          Rect.fromLTWH(x * dW, y * dH, dW + 0.5, dH + 0.5),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ArtPainter old) =>
+      old.pixels != pixels || old.size != size;
+}
+
+// ── Now playing card — UPDATED with fixed art size ───────────────────────────
 
 class _NowPlayingCard extends StatelessWidget {
   final SpotifyState spot;
@@ -889,15 +913,17 @@ class _NowPlayingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Album art with subtle shadow
           Container(
+            width: 60,
+            height: 60,
             decoration: BoxDecoration(
               borderRadius: const BorderRadius.all(kRadiusSm),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 4,
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
               ],
@@ -907,59 +933,64 @@ class _NowPlayingCard extends StatelessWidget {
               child: spot.albumArtPixels != null
                   ? _AlbumArtThumbnail(
                       pixels: spot.albumArtPixels!,
-                      size:   spot.albumArtSize,
+                      size: spot.albumArtSize,
                     )
                   : Container(
-                      width: 60, height: 60,
+                      width: 60,
+                      height: 60,
                       color: const Color(0xFF282828),
-                      child: const Icon(Icons.music_note_rounded,
-                          size: 20, color: Color(0xFF1DB954)),
+                      child: const Icon(
+                        Icons.music_note_rounded,
+                        size: 22,
+                        color: Color(0xFF1DB954),
+                      ),
                     ),
             ),
           ),
-          const SizedBox(width: 12),
-          
-          // Title + artist with better spacing
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   spot.currentTrackTitle ?? '—',
                   style: const TextStyle(
-                    fontSize: 13, 
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     height: 1.2,
                   ),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   spot.currentArtist ?? '',
                   style: const TextStyle(fontSize: 11, color: kTextMuted),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 if (spot.currentAlbum != null) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     spot.currentAlbum!,
                     style: const TextStyle(fontSize: 9, color: kTextDim),
                     overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ],
               ],
             ),
           ),
-          
-          // Refresh button with tooltip
           Tooltip(
             message: 'Refresh now playing',
-            child: IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              onPressed: onRefresh,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              padding: EdgeInsets.zero,
-              splashRadius: 20,
+            child: InkWell(
+              onTap: onRefresh,
+              borderRadius: const BorderRadius.all(kRadiusSm),
+              child: const Padding(
+                padding: EdgeInsets.all(6),
+                child: Icon(Icons.refresh_rounded, size: 15, color: kTextMuted),
+              ),
             ),
           ),
         ],
@@ -1035,45 +1066,6 @@ class _DisconnectedCard extends StatelessWidget {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Album art thumbnail — renders ARGB pixels via CustomPainter
-// (add this class anywhere in toolbox_panel.dart)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AlbumArtThumbnail extends StatelessWidget {
-  final Uint32List pixels;
-  final int        size;
-  const _AlbumArtThumbnail({required this.pixels, required this.size});
-
-  @override
-  Widget build(BuildContext context) => CustomPaint(
-        size: const Size(60, 60),
-        painter: _ArtPainter(pixels: pixels, size: size),
-      );
-}
-
-class _ArtPainter extends CustomPainter {
-  final Uint32List pixels;
-  final int        size;
-  const _ArtPainter({required this.pixels, required this.size});
-
-  @override
-  void paint(Canvas canvas, Size canvasSize) {
-    final paint = Paint();
-    final dW    = canvasSize.width  / size;
-    final dH    = canvasSize.height / size;
-    for (int y = 0; y < size; y++) {
-      for (int x = 0; x < size; x++) {
-        paint.color = Color(pixels[y * size + x] | 0xFF000000);
-        canvas.drawRect(Rect.fromLTWH(x * dW, y * dH, dW, dH), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ArtPainter old) => old.pixels != pixels;
-}
-
 class _SpotifyRight extends StatelessWidget {
   final SpotifyLayer layer; final SceneNotifier n;
   const _SpotifyRight({required this.layer, required this.n});
@@ -1097,13 +1089,6 @@ class _SpotifyRight extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POMODORO — LEFT
-//
-// Fix: reads layer via ref.watch(selectedLayerProvider) instead of accepting
-// it as a constructor prop. This guarantees the widget rebuilds after every
-// updateLayer() call, so the color swatch reflects the new value immediately.
-//
-// Additionally, _colorBtn no longer re-wraps the result with withOpacity(),
-// which was zeroing out alpha for blue and other saturated hues.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PomodoroLeft extends ConsumerWidget {
@@ -1134,7 +1119,6 @@ class _PomodoroLeft extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Phase + live countdown ─────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
@@ -1162,8 +1146,6 @@ class _PomodoroLeft extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 10),
-
-        // ── Focus ──────────────────────────────────────────────────────
         Row(children: [
           _colorBtn(context, layer.focusColor,
               (c) => n.updateLayer(layer.copyWith(focusColor: c))),
@@ -1177,8 +1159,6 @@ class _PomodoroLeft extends ConsumerWidget {
           ),
         ]),
         const SizedBox(height: 8),
-
-        // ── Short break ────────────────────────────────────────────────
         Row(children: [
           _colorBtn(context, layer.breakColor,
               (c) => n.updateLayer(layer.copyWith(breakColor: c))),
@@ -1192,8 +1172,6 @@ class _PomodoroLeft extends ConsumerWidget {
           ),
         ]),
         const SizedBox(height: 8),
-
-        // ── Long break ─────────────────────────────────────────────────
         Row(children: [
           _colorBtn(context, layer.longBreakColor,
               (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
@@ -1207,15 +1185,12 @@ class _PomodoroLeft extends ConsumerWidget {
           ),
         ]),
         const SizedBox(height: 8),
-
         _Stepper(
           label: 'Sessions before long break',
           value: layer.sessionsBeforeLongBreak,
           onChanged: (v) => n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
         ),
         const SizedBox(height: 10),
-
-        // ── Transport ──────────────────────────────────────────────────
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           _TransportBtn(icon: Icons.restart_alt_rounded, onTap: () => service.reset(layer)),
           const SizedBox(width: 8),
