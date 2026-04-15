@@ -1,7 +1,7 @@
 import 'dart:ui';
 
+import '../../engine/renderer/font_organizer.dart';
 import '../renderer/pixel_buffer.dart';
-import '../renderer/fonts/pixel_font.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
 
@@ -39,9 +39,15 @@ class PomodoroTimerState {
       );
 }
 
-/// Renders a [PomodoroLayer] into a [PixelBuffer] using the 5×7 [PixelFont].
+/// Renders a [PomodoroLayer] into a [PixelBuffer].
+///
+/// Pomodoro always uses the polymorph font — digits are clean and legible
+/// at the tight time-display sizes used here.
 class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   const PomodoroWidget();
+
+  // Pomodoro uses a fixed font regardless of layer settings.
+  static LedFont get _font => LedFontLibrary.get(LedFontId.polymorph);
 
   void renderWithState(
     PomodoroLayer layer,
@@ -53,7 +59,6 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
       if ((elapsedMs ~/ 500) % 2 == 1) return;
     }
 
-    // Use the live phase from the timer state, not the layer's stored state.
     final activeLayer = layer.copyWith(currentState: state.phase);
     _renderTime(buffer, state.remaining, activeLayer, elapsedMs);
     if (layer.showSession) {
@@ -69,30 +74,25 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
 
   // ── Private ───────────────────────────────────────────────────────────────
 
-  void _renderTime(
-      PixelBuffer buf, Duration d, PomodoroLayer layer, int t) {
+  void _renderTime(PixelBuffer buf, Duration d, PomodoroLayer layer, int t) {
+    final font = _font;
     final String text = _format(d, layer.showSeconds, t);
-    final int y =
-        (buf.height - PixelFont.glyphHeight) ~/ 2 + layer.offset.dy.round();
-    PixelFont.drawCentered(
-        buffer: buf,
-        text: text,
-        color: layer.activeColor,
-        bufferWidth: buf.width,
-        y: y,
-        opacity: layer.opacity);
+    final int y = (buf.height - font.charHeight) ~/ 2 + layer.offset.dy.round();
+    font.drawCentered(
+      buffer:      buf,
+      text:        text,
+      color:       layer.activeColor,
+      bufferWidth: buf.width,
+      y:           y,
+      opacity:     layer.opacity,
+    );
   }
 
-  /// Formats the remaining time.
-  /// Fixed: colon separator was using raw space instead of blinking ':'.
-  /// Fixed: showSeconds=false was rendering hardcoded '00' for seconds.
   String _format(Duration d, bool showSeconds, int elapsedMs) {
     final bool colonOn = (elapsedMs % 1000) < 500;
-    final String sep = colonOn ? ':' : ' ';
+    final String sep   = colonOn ? ':' : ' ';
     final int m = d.inMinutes.remainder(60);
     final int s = d.inSeconds.remainder(60);
-    // When not showing seconds, just show MM:SS with seconds fixed to 00
-    // so the layout width stays constant.
     return showSeconds ? '${_pad(m)}$sep${_pad(s)}' : '${_pad(m)}$sep${_pad(00)}';
   }
 

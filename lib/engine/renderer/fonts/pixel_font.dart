@@ -6,17 +6,28 @@ import '../pixel_buffer.dart';
 // 5×7 bitmap font atlas
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Each glyph is 5 bytes — one per column, left→right.
-// Bit 0 = top row, bit 6 = bottom row (7 rows used).
+// Glyph format
+// ────────────
+// Each glyph is a List<int> of column bitmasks, left→right.
+// Column count sets the glyph's pixel width (variable — see space below).
+// Bit 0 = top row, bit 6 = bottom row (7 rows used, 8th bit unused).
+//
+// Spacing rules (applies to ALL font styles)
+// ──────────────────────────────────────────
+//   Letter spacing : 1px  — added after every glyph  (_kS = 1)
+//   Word spacing   : 4px total = 3px glyph + 1px letter gap
+//                    achieved by giving the space glyph 3 blank columns
+//                    instead of the standard 5, so the advance is 3+1 = 4px.
+//
 // Printable ASCII 0x20–0x7E (95 glyphs). Index = codeUnit - 0x20.
 
-const int _kW = 5;
-const int _kH = 7;
-const int _kS = 1; // inter-glyph spacing
+const int _kW = 5; // standard glyph width (all chars except space)
+const int _kH = 7; // glyph height
+const int _kS = 1; // inter-glyph spacing (added after every glyph)
 
 // ignore_for_file: lines_longer_than_80_chars
 const List<List<int>> _kGlyphs = [
-  [0x00,0x00,0x00,0x00,0x00], // 0x20 space
+  [0x00,0x00,0x00],            // 0x20 SPACE — 3 cols → 3+1 = 4px total word gap
   [0x00,0x00,0x5F,0x00,0x00], // !
   [0x00,0x07,0x00,0x07,0x00], // "
   [0x14,0x7F,0x14,0x7F,0x14], // #
@@ -42,7 +53,7 @@ const List<List<int>> _kGlyphs = [
   [0x01,0x71,0x09,0x05,0x03], // 7
   [0x36,0x49,0x49,0x49,0x36], // 8
   [0x06,0x49,0x49,0x29,0x1E], // 9
- [0x00,0x36,0x36,0x00,0x00] , // :
+  [0x00,0x36,0x36,0x00,0x00], // :
   [0x00,0x56,0x36,0x00,0x00], // ;
   [0x00,0x08,0x14,0x22,0x41], // <
   [0x14,0x14,0x14,0x14,0x14], // =
@@ -118,15 +129,32 @@ const List<List<int>> _kGlyphs = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Renders 5×7 bitmap text into a [PixelBuffer].
+///
+/// Spacing contract (shared by all font styles):
+///   • Letter gap : 1px  (_kS)
+///   • Word gap   : 4px total — the space glyph is 3 columns wide, so the
+///                  advance becomes 3 + 1 = 4px automatically.
+///   • Max glyph width : 5px  (_kW)
 class PixelFont {
   const PixelFont._();
 
   static const int glyphHeight = _kH;
-  static const int glyphWidth  = _kW;
+  static const int glyphWidth  = _kW; // max; space is narrower
   static const int spacing     = _kS;
 
-  static int measureWidth(String text) =>
-      text.isEmpty ? 0 : text.length * (_kW + _kS) - _kS;
+  /// Total pixel width of [text], honouring variable glyph widths.
+  static int measureWidth(String text) {
+    if (text.isEmpty) return 0;
+    int total = 0;
+    for (int i = 0; i < text.length; i++) {
+      final int idx = text.codeUnitAt(i) - 0x20;
+      final int w = (idx >= 0 && idx < _kGlyphs.length)
+          ? _kGlyphs[idx].length
+          : _kW;
+      total += w + _kS;
+    }
+    return total - _kS; // no trailing gap after the last glyph
+  }
 
   static void draw({
     required PixelBuffer buffer,
@@ -142,14 +170,17 @@ class PixelFont {
       final int idx = text.codeUnitAt(ci) - 0x20;
       if (idx >= 0 && idx < _kGlyphs.length) {
         final cols = _kGlyphs[idx];
-        for (int col = 0; col < _kW; col++) {
+        final int glyphW = cols.length; // 3 for space, 5 for everything else
+        for (int col = 0; col < glyphW; col++) {
           final int bits = cols[col];
           for (int row = 0; row < _kH; row++) {
             if ((bits >> row) & 1 == 1) buffer.setPixel(cx + col, y + row, argb);
           }
         }
+        cx += glyphW + _kS;
+      } else {
+        cx += _kW + _kS; // unknown char: advance by standard width
       }
-      cx += _kW + _kS;
     }
   }
 
@@ -161,8 +192,14 @@ class PixelFont {
     required int y,
     double opacity = 1.0,
   }) {
-    draw(buffer: buffer, text: text, color: color,
-        x: (bufferWidth - measureWidth(text)) ~/ 2, y: y, opacity: opacity);
+    draw(
+      buffer: buffer,
+      text: text,
+      color: color,
+      x: (bufferWidth - measureWidth(text)) ~/ 2,
+      y: y,
+      opacity: opacity,
+    );
   }
 
   static void drawRight({
@@ -173,8 +210,14 @@ class PixelFont {
     required int y,
     double opacity = 1.0,
   }) {
-    draw(buffer: buffer, text: text, color: color,
-        x: rightEdge - measureWidth(text), y: y, opacity: opacity);
+    draw(
+      buffer: buffer,
+      text: text,
+      color: color,
+      x: rightEdge - measureWidth(text),
+      y: y,
+      opacity: opacity,
+    );
   }
 
   static int _applyOpacity(Color color, double opacity) {

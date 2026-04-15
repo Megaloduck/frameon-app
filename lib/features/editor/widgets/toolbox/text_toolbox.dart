@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../engine/renderer/font_organizer.dart';
 import '../../../../engine/scene/layer.dart';
 import '../../../../shared/providers/providers.dart';
 import 'toolbox_shared.dart';
@@ -24,10 +25,12 @@ class TextToolboxLeft extends StatelessWidget {
           const SizedBox(height: 10),
           const TbLabel('Font Style'),
           const SizedBox(height: 4),
-          TbDropdown(
-              values: PixelFontStyle.values,
-              current: layer.fontStyle,
-              onChange: (v) => n.updateLayer(layer.copyWith(fontStyle: v))),
+          TbDropdown<LedFontId>(
+            values: LedFontId.values,
+            current: layer.fontId,
+            onChange: (v) => n.updateLayer(layer.copyWith(fontId: v)),
+            labelFor: (v) => LedFontLibrary.get(v).name,
+          ),
           const SizedBox(height: 8),
           const TbLabel('Display Text'),
           const SizedBox(height: 4),
@@ -63,7 +66,13 @@ class TextToolboxRight extends StatelessWidget {
           TbSegAlign(
               current: layer.alignment,
               onChange: (v) => n.updateLayer(layer.copyWith(alignment: v))),
-          const SizedBox(height: 12),        
+          const SizedBox(height: 12),
+          const TbLabel('Opacity'),
+          Slider(
+              value: layer.opacity,
+              min: 0,
+              max: 1,
+              onChanged: (v) => n.updateLayer(layer.copyWith(opacity: v))),
         ],
       );
 }

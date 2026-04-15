@@ -1,15 +1,16 @@
 import 'dart:ui';
 
+import '../../engine/renderer/font_organizer.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
 // ─────────────────────────────────────────────────────────────────────────────
 
+export '../../engine/renderer/font_organizer.dart' show LedFontId;
+
 enum LayerType { text, clock, gif, spotify, pomodoro }
 
 enum AnimationEffect { none, blink, scrollLeft, scrollRight }
-
-/// Renamed from FontStyle to avoid clashing with dart:ui's FontStyle.
-enum PixelFontStyle { matrixType, led }
 
 enum TextAlignment { left, center, right }
 
@@ -22,7 +23,6 @@ enum MediaLayout { letterbox, fill, stretch }
 enum SpotifyLayout { artAndText, textOnly, artOnly }
 
 /// Active state of a running Pomodoro session.
-/// Stored on PomodoroLayer so the renderer can pick the correct color.
 enum PomodoroState { focus, shortBreak, longBreak }
 
 enum PomodoroLayout { defaultTimer }
@@ -31,10 +31,6 @@ enum PomodoroLayout { defaultTimer }
 // Base Layer
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Abstract base for every compositable layer in the scene.
-///
-/// All fields are [final] — mutations go through [copyWith], which ensures
-/// every change flows through Riverpod's state tracking correctly.
 abstract class Layer {
   final String id;
   final String name;
@@ -72,7 +68,8 @@ abstract class Layer {
 class TextLayer extends Layer {
   final String text;
   final Color color;
-  final PixelFontStyle fontStyle;
+  // fontStyle replaced by fontId — uses LedFontId from font_organizer.dart
+  final LedFontId fontId;
   final double fontSize;
   final TextAlignment alignment;
   final AnimationEffect effect;
@@ -83,7 +80,7 @@ class TextLayer extends Layer {
     required super.name,
     required this.text,
     this.color = const Color(0xFF21C32C),
-    this.fontStyle = PixelFontStyle.matrixType,
+    this.fontId = LedFontId.polymorph,
     this.fontSize = 8,
     this.alignment = TextAlignment.center,
     this.effect = AnimationEffect.none,
@@ -103,7 +100,7 @@ class TextLayer extends Layer {
     String? name,
     String? text,
     Color? color,
-    PixelFontStyle? fontStyle,
+    LedFontId? fontId,
     double? fontSize,
     TextAlignment? alignment,
     AnimationEffect? effect,
@@ -118,7 +115,7 @@ class TextLayer extends Layer {
         name: name ?? this.name,
         text: text ?? this.text,
         color: color ?? this.color,
-        fontStyle: fontStyle ?? this.fontStyle,
+        fontId: fontId ?? this.fontId,
         fontSize: fontSize ?? this.fontSize,
         alignment: alignment ?? this.alignment,
         effect: effect ?? this.effect,
@@ -136,7 +133,7 @@ class TextLayer extends Layer {
         'name': name,
         'text': text,
         'color': color.value,
-        'fontStyle': fontStyle.name,
+        'fontId': fontId.name,
         'fontSize': fontSize,
         'alignment': alignment.name,
         'effect': effect.name,
@@ -153,13 +150,14 @@ class TextLayer extends Layer {
         name: j['name'] as String,
         text: j['text'] as String,
         color: Color(j['color'] as int),
-        fontStyle: PixelFontStyle.values
-            .byName(j['fontStyle'] as String? ?? 'matrixType'),
+        fontId: LedFontId.values.byName(
+          // graceful fallback: old saves used 'fontStyle' key with values
+          // like 'matrixType' / 'led' — map those to polymorph.
+          _migrateFontId(j['fontId'] as String? ?? j['fontStyle'] as String? ?? 'polymorph'),
+        ),
         fontSize: (j['fontSize'] as num?)?.toDouble() ?? 8,
-        alignment:
-            TextAlignment.values.byName(j['alignment'] as String? ?? 'center'),
-        effect:
-            AnimationEffect.values.byName(j['effect'] as String? ?? 'none'),
+        alignment: TextAlignment.values.byName(j['alignment'] as String? ?? 'center'),
+        effect: AnimationEffect.values.byName(j['effect'] as String? ?? 'none'),
         effectSpeedMs: j['effectSpeedMs'] as int? ?? 100,
         visible: j['visible'] as bool? ?? true,
         zIndex: j['zIndex'] as int? ?? 0,
@@ -171,12 +169,23 @@ class TextLayer extends Layer {
       );
 }
 
+/// Maps old PixelFontStyle names to LedFontId names for backward compat.
+String _migrateFontId(String raw) {
+  switch (raw) {
+    case 'matrixType': return 'polymorph';
+    case 'led':        return 'brickwork';
+    default:
+      // Already a valid LedFontId name, or unknown → fall back to polymorph.
+      return LedFontId.values.any((e) => e.name == raw) ? raw : 'polymorph';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Clock Layer
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ClockLayer extends Layer {
-  final Color color; // Keep for backward compatibility
+  final Color color;
   final Color hoursColor;
   final Color minutesColor;
   final Color secondsColor;
@@ -188,6 +197,8 @@ class ClockLayer extends Layer {
   final bool showSeconds;
   final bool blinkColon;
   final String timezone;
+  // Clock always uses polymorph — could be extended later
+  final LedFontId fontId;
 
   const ClockLayer({
     required super.id,
@@ -204,6 +215,7 @@ class ClockLayer extends Layer {
     this.showSeconds = false,
     this.blinkColon = true,
     this.timezone = 'local',
+    this.fontId = LedFontId.polymorph,
     super.visible,
     super.zIndex,
     super.opacity,
@@ -229,6 +241,7 @@ class ClockLayer extends Layer {
     bool? showSeconds,
     bool? blinkColon,
     String? timezone,
+    LedFontId? fontId,
     bool? visible,
     int? zIndex,
     double? opacity,
@@ -249,6 +262,7 @@ class ClockLayer extends Layer {
         showSeconds: showSeconds ?? this.showSeconds,
         blinkColon: blinkColon ?? this.blinkColon,
         timezone: timezone ?? this.timezone,
+        fontId: fontId ?? this.fontId,
         visible: visible ?? this.visible,
         zIndex: zIndex ?? this.zIndex,
         opacity: opacity ?? this.opacity,
@@ -272,6 +286,7 @@ class ClockLayer extends Layer {
         'showSeconds': showSeconds,
         'blinkColon': blinkColon,
         'timezone': timezone,
+        'fontId': fontId.name,
         'visible': visible,
         'zIndex': zIndex,
         'opacity': opacity,
@@ -289,12 +304,14 @@ class ClockLayer extends Layer {
         dateColor: Color(j['dateColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         colonColor: Color(j['colonColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         format: ClockFormat.values.byName(j['format'] as String? ?? 'h24'),
-        alignment: ClockAlignment.values
-            .byName(j['alignment'] as String? ?? 'center'),
+        alignment: ClockAlignment.values.byName(j['alignment'] as String? ?? 'center'),
         showDate: j['showDate'] as bool? ?? false,
         showSeconds: j['showSeconds'] as bool? ?? false,
         blinkColon: j['blinkColon'] as bool? ?? true,
         timezone: j['timezone'] as String? ?? 'local',
+        fontId: LedFontId.values.byName(
+          _migrateFontId(j['fontId'] as String? ?? 'polymorph'),
+        ),
         visible: j['visible'] as bool? ?? true,
         zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
@@ -306,7 +323,7 @@ class ClockLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GIF / Image Layer
+// GIF / Image Layer  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GifLayer extends Layer {
@@ -340,7 +357,6 @@ class GifLayer extends Layer {
     String? id,
     String? name,
     String? filePath,
-    /// Set to true to explicitly clear filePath back to null.
     bool clearFilePath = false,
     MediaLayout? layout,
     bool? dithering,
@@ -389,8 +405,7 @@ class GifLayer extends Layer {
         id: j['id'] as String,
         name: j['name'] as String,
         filePath: j['filePath'] as String?,
-        layout:
-            MediaLayout.values.byName(j['layout'] as String? ?? 'letterbox'),
+        layout: MediaLayout.values.byName(j['layout'] as String? ?? 'letterbox'),
         dithering: j['dithering'] as bool? ?? true,
         grayscale: j['grayscale'] as bool? ?? false,
         invertColor: j['invertColor'] as bool? ?? false,
@@ -406,7 +421,7 @@ class GifLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify Layer
+// Spotify Layer  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyLayer extends Layer {
@@ -486,8 +501,7 @@ class SpotifyLayer extends Layer {
   factory SpotifyLayer.fromJson(Map<String, dynamic> j) => SpotifyLayer(
         id: j['id'] as String,
         name: j['name'] as String,
-        layout: SpotifyLayout.values
-            .byName(j['layout'] as String? ?? 'artAndText'),
+        layout: SpotifyLayout.values.byName(j['layout'] as String? ?? 'artAndText'),
         showTitle: j['showTitle'] as bool? ?? true,
         showArtist: j['showArtist'] as bool? ?? true,
         showProgress: j['showProgress'] as bool? ?? true,
@@ -504,10 +518,8 @@ class SpotifyLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pomodoro Layer
+// Pomodoro Layer  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
-
-// In layer.dart - PomodoroLayer class
 
 class PomodoroLayer extends Layer {
   final int focusDurationMinutes;
@@ -520,9 +532,8 @@ class PomodoroLayer extends Layer {
   final bool blinkColor;
   final Color focusColor;
   final Color breakColor;
-  final Color longBreakColor;  // ADD THIS
+  final Color longBreakColor;
   final double fps;
-  /// Current timer state — used by the renderer to pick the right color.
   final PomodoroState currentState;
 
   const PomodoroLayer({
@@ -538,7 +549,7 @@ class PomodoroLayer extends Layer {
     this.blinkColor = true,
     this.focusColor = const Color(0xFFFFCC00),
     this.breakColor = const Color(0xFF21C32C),
-    this.longBreakColor = const Color.fromARGB(255, 40, 86, 185),  
+    this.longBreakColor = const Color.fromARGB(255, 40, 86, 185),
     this.fps = 10,
     this.currentState = PomodoroState.focus,
     super.visible,
@@ -550,17 +561,11 @@ class PomodoroLayer extends Layer {
   @override
   LayerType get type => LayerType.pomodoro;
 
-  /// Returns the color appropriate for [currentState].
-  Color get activeColor {
-    switch (currentState) {
-      case PomodoroState.focus:
-        return focusColor;
-      case PomodoroState.shortBreak:
-        return breakColor;
-      case PomodoroState.longBreak:
-        return longBreakColor;
-    }
-  }
+  Color get activeColor => switch (currentState) {
+        PomodoroState.focus      => focusColor,
+        PomodoroState.shortBreak => breakColor,
+        PomodoroState.longBreak  => longBreakColor,
+      };
 
   @override
   PomodoroLayer copyWith({
@@ -576,7 +581,7 @@ class PomodoroLayer extends Layer {
     bool? blinkColor,
     Color? focusColor,
     Color? breakColor,
-    Color? longBreakColor,  // ADD THIS
+    Color? longBreakColor,
     double? fps,
     PomodoroState? currentState,
     bool? visible,
@@ -590,15 +595,14 @@ class PomodoroLayer extends Layer {
         focusDurationMinutes: focusDurationMinutes ?? this.focusDurationMinutes,
         shortBreakMinutes: shortBreakMinutes ?? this.shortBreakMinutes,
         longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
-        sessionsBeforeLongBreak:
-            sessionsBeforeLongBreak ?? this.sessionsBeforeLongBreak,
+        sessionsBeforeLongBreak: sessionsBeforeLongBreak ?? this.sessionsBeforeLongBreak,
         layout: layout ?? this.layout,
         showSeconds: showSeconds ?? this.showSeconds,
         showSession: showSession ?? this.showSession,
         blinkColor: blinkColor ?? this.blinkColor,
         focusColor: focusColor ?? this.focusColor,
         breakColor: breakColor ?? this.breakColor,
-        longBreakColor: longBreakColor ?? this.longBreakColor,  // ADD THIS
+        longBreakColor: longBreakColor ?? this.longBreakColor,
         fps: fps ?? this.fps,
         currentState: currentState ?? this.currentState,
         visible: visible ?? this.visible,
@@ -622,7 +626,7 @@ class PomodoroLayer extends Layer {
         'blinkColor': blinkColor,
         'focusColor': focusColor.value,
         'breakColor': breakColor.value,
-        'longBreakColor': longBreakColor.value,  // ADD THIS
+        'longBreakColor': longBreakColor.value,
         'fps': fps,
         'currentState': currentState.name,
         'visible': visible,
@@ -639,17 +643,15 @@ class PomodoroLayer extends Layer {
         shortBreakMinutes: j['shortBreakMinutes'] as int? ?? 5,
         longBreakMinutes: j['longBreakMinutes'] as int? ?? 15,
         sessionsBeforeLongBreak: j['sessionsBeforeLongBreak'] as int? ?? 4,
-        layout: PomodoroLayout.values
-            .byName(j['layout'] as String? ?? 'defaultTimer'),
+        layout: PomodoroLayout.values.byName(j['layout'] as String? ?? 'defaultTimer'),
         showSeconds: j['showSeconds'] as bool? ?? true,
         showSession: j['showSession'] as bool? ?? false,
         blinkColor: j['blinkColor'] as bool? ?? true,
         focusColor: Color(j['focusColor'] as int? ?? 0xFFFFCC00),
         breakColor: Color(j['breakColor'] as int? ?? 0xFF21C32C),
-        longBreakColor: Color(j['longBreakColor'] as int? ?? 0xFF21C32C),  // ADD THIS
+        longBreakColor: Color(j['longBreakColor'] as int? ?? 0xFF2856B9),
         fps: (j['fps'] as num?)?.toDouble() ?? 10,
-        currentState: PomodoroState.values
-            .byName(j['currentState'] as String? ?? 'focus'),
+        currentState: PomodoroState.values.byName(j['currentState'] as String? ?? 'focus'),
         visible: j['visible'] as bool? ?? true,
         zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
@@ -666,17 +668,11 @@ class PomodoroLayer extends Layer {
 
 Layer layerFromJson(Map<String, dynamic> j) {
   switch (j['type'] as String) {
-    case 'text':
-      return TextLayer.fromJson(j);
-    case 'clock':
-      return ClockLayer.fromJson(j);
-    case 'gif':
-      return GifLayer.fromJson(j);
-    case 'spotify':
-      return SpotifyLayer.fromJson(j);
-    case 'pomodoro':
-      return PomodoroLayer.fromJson(j);
-    default:
-      throw ArgumentError('Unknown layer type: ${j['type']}');
+    case 'text':     return TextLayer.fromJson(j);
+    case 'clock':    return ClockLayer.fromJson(j);
+    case 'gif':      return GifLayer.fromJson(j);
+    case 'spotify':  return SpotifyLayer.fromJson(j);
+    case 'pomodoro': return PomodoroLayer.fromJson(j);
+    default:         throw ArgumentError('Unknown layer type: ${j['type']}');
   }
 }

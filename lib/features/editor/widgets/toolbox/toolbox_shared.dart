@@ -4,17 +4,8 @@ import '../../../../engine/scene/layer.dart';
 import '../color_picker.dart';
 import '../ui_primitives.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared helper widgets used across all toolbox files.
-// Previously private (_) in toolbox_panel.dart — now public so each
-// *_toolbox.dart file can import this instead.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Green-tinted enum dropdown used in every right-panel.
 Widget tbGreenDropdown<T extends Enum>(
-  List<T> values,
-  T current,
-  ValueChanged<T> onChange,
+  List<T> values, T current, ValueChanged<T> onChange,
 ) =>
     Container(
       decoration: BoxDecoration(
@@ -25,28 +16,20 @@ Widget tbGreenDropdown<T extends Enum>(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
-          value: current,
-          isExpanded: true,
-          isDense: true,
+          value: current, isExpanded: true, isDense: true,
           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kGreen),
           dropdownColor: kSurface,
           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: kGreen),
-          items: values
-              .map((e) => DropdownMenuItem(value: e, child: Text(e.name.toUpperCase())))
-              .toList(),
-          onChanged: (v) {
-            if (v != null) onChange(v);
-          },
+          items: values.map((e) => DropdownMenuItem(value: e, child: Text(e.name.toUpperCase()))).toList(),
+          onChanged: (v) { if (v != null) onChange(v); },
         ),
       ),
     );
 
-/// Segmented alignment control for TextAlignment.
 class TbSegAlign extends StatelessWidget {
   final TextAlignment current;
   final ValueChanged<TextAlignment> onChange;
   const TbSegAlign({super.key, required this.current, required this.onChange});
-
   @override
   Widget build(BuildContext context) => Row(
         children: TextAlignment.values.map((v) {
@@ -66,9 +49,7 @@ class TbSegAlign extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Text(v.name.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
                         color: active ? Colors.white : kTextMuted)),
               ),
             ),
@@ -77,42 +58,28 @@ class TbSegAlign extends StatelessWidget {
       );
 }
 
-/// Label + switch row.
 class TbToggleRow extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  const TbToggleRow(
-      {super.key, required this.label, required this.value, required this.onChanged});
-
+  final String label; final bool value; final ValueChanged<bool> onChanged;
+  const TbToggleRow({super.key, required this.label, required this.value, required this.onChanged});
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
-          Expanded(
-              child: Text(label,
-                  style: const TextStyle(fontSize: 12, color: kTextPrimary))),
-          Transform.scale(
-            scale: 0.75,
-            alignment: Alignment.centerRight,
-            child: Switch(value: value, onChanged: onChanged),
-          ),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 12, color: kTextPrimary))),
+          Transform.scale(scale: 0.75, alignment: Alignment.centerRight,
+              child: Switch(value: value, onChanged: onChanged)),
         ]),
       );
 }
 
-/// FPS / speed slider with 10 ms–500 ms range labels.
 class TbSpeedSlider extends StatelessWidget {
-  final double value;
-  final ValueChanged<double> onChanged;
+  final double value; final ValueChanged<double> onChanged;
   const TbSpeedSlider({super.key, required this.value, required this.onChanged});
-
   @override
   Widget build(BuildContext context) => Column(children: [
         SliderTheme(
           data: SliderTheme.of(context).copyWith(trackHeight: 3),
-          child: Slider(
-              value: value.clamp(10, 500), min: 10, max: 500, onChanged: onChanged),
+          child: Slider(value: value.clamp(10, 500), min: 10, max: 500, onChanged: onChanged),
         ),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: const [
           Text('10ms fast', style: TextStyle(fontSize: 9, color: kTextDim)),
@@ -121,118 +88,65 @@ class TbSpeedSlider extends StatelessWidget {
       ]);
 }
 
-/// Label + decrement/value/increment row.
 class TbStepper extends StatelessWidget {
-  final String label;
-  final int value;
-  final String unit;
-  final ValueChanged<int> onChanged;
-  final int min, max;
-  const TbStepper({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.onChanged,
-    this.unit = '',
-    this.min = 1,
-    this.max = 99,
-  });
-
+  final String label; final int value; final String unit;
+  final ValueChanged<int> onChanged; final int min, max;
+  const TbStepper({super.key, required this.label, required this.value,
+      required this.onChanged, this.unit = '', this.min = 1, this.max = 99});
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
-          Expanded(
-              child: Text(label,
-                  style: const TextStyle(fontSize: 12, color: kTextPrimary))),
-          TbStepBtn(
-              icon: Icons.remove_rounded,
-              enabled: value > min,
-              onTap: () => onChanged(value - 1)),
-          SizedBox(
-              width: 40,
-              child: Text('$value$unit',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-          TbStepBtn(
-              icon: Icons.add_rounded,
-              enabled: value < max,
-              onTap: () => onChanged(value + 1)),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 12, color: kTextPrimary))),
+          TbStepBtn(icon: Icons.remove_rounded, enabled: value > min, onTap: () => onChanged(value - 1)),
+          SizedBox(width: 40, child: Text('$value$unit', textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+          TbStepBtn(icon: Icons.add_rounded, enabled: value < max, onTap: () => onChanged(value + 1)),
         ]),
       );
 }
 
-/// Compact +/− icon button used inside steppers.
 class TbStepBtn extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-  const TbStepBtn(
-      {super.key, required this.icon, required this.enabled, required this.onTap});
-
+  final IconData icon; final bool enabled; final VoidCallback onTap;
+  const TbStepBtn({super.key, required this.icon, required this.enabled, required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: enabled ? onTap : null,
         child: Container(
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-              border: Border.all(color: kBorder),
-              borderRadius: const BorderRadius.all(kRadiusSm),
-              color: kSurface),
+          width: 22, height: 22,
+          decoration: BoxDecoration(border: Border.all(color: kBorder),
+              borderRadius: const BorderRadius.all(kRadiusSm), color: kSurface),
           child: Icon(icon, size: 13, color: enabled ? kTextMuted : kTextDim),
         ),
       );
 }
 
-/// Circular play/pause/skip/shuffle transport button.
 class TbTransportBtn extends StatelessWidget {
-  final IconData icon;
-  final bool filled;
-  final bool active;
-  final VoidCallback onTap;
-
-  const TbTransportBtn({
-    super.key,
-    required this.icon,
-    required this.onTap,
-    this.filled = false,
-    this.active = false,
-  });
-
+  final IconData icon; final bool filled; final bool active; final VoidCallback onTap;
+  const TbTransportBtn({super.key, required this.icon, required this.onTap,
+      this.filled = false, this.active = false});
   @override
   Widget build(BuildContext context) {
     final isActive = active && !filled;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 34,
-        height: 34,
+        width: 34, height: 34,
         decoration: BoxDecoration(
-          color: filled
-              ? const Color(0xFF1DB954)
-              : (isActive ? const Color(0xFF1DB954).withOpacity(0.15) : kSurface),
+          color: filled ? const Color(0xFF1DB954) : (isActive ? const Color(0xFF1DB954).withOpacity(0.15) : kSurface),
           shape: BoxShape.circle,
           border: Border.all(
-            color: filled
-                ? const Color(0xFF1DB954)
-                : (isActive ? const Color(0xFF1DB954) : kBorder),
+            color: filled ? const Color(0xFF1DB954) : (isActive ? const Color(0xFF1DB954) : kBorder),
             width: isActive ? 1.5 : 1,
           ),
         ),
-        child: Icon(
-          icon,
-          size: filled ? 17 : 16,
-          color: filled
-              ? Colors.white
-              : (isActive ? const Color(0xFF1DB954) : kTextMuted),
-        ),
+        child: Icon(icon, size: filled ? 17 : 16,
+            color: filled ? Colors.white : (isActive ? const Color(0xFF1DB954) : kTextMuted)),
       ),
     );
   }
 }
 
-/// Small colour-swatch button that opens the colour picker sheet.
 Widget tbColorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =>
     GestureDetector(
       onTap: () async {
@@ -240,111 +154,78 @@ Widget tbColorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =
         if (picked != null) onChange(picked);
       },
       child: Container(
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: const BorderRadius.all(kRadiusSm),
-          border: Border.all(color: Colors.black.withOpacity(0.15)),
-        ),
+        width: 26, height: 26,
+        decoration: BoxDecoration(color: color,
+            borderRadius: const BorderRadius.all(kRadiusSm),
+            border: Border.all(color: Colors.black.withOpacity(0.15))),
       ),
     );
 
-/// ALL-CAPS section label.
 class TbLabel extends StatelessWidget {
   final String text;
   const TbLabel(this.text, {super.key});
   @override
   Widget build(BuildContext context) => Text(text.toUpperCase(),
-      style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.1,
-          color: kTextDim));
+      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+          letterSpacing: 0.1, color: kTextDim));
 }
 
-/// Plain enum dropdown (non-green, used for font style etc.).
+/// Plain enum dropdown.
+/// [labelFor] supplies a human-readable label per value; defaults to [Enum.name].
 class TbDropdown<T extends Enum> extends StatelessWidget {
   final List<T> values;
   final T current;
   final ValueChanged<T> onChange;
-  const TbDropdown(
-      {super.key, required this.values, required this.current, required this.onChange});
-
+  final String Function(T)? labelFor;
+  const TbDropdown({super.key, required this.values, required this.current,
+      required this.onChange, this.labelFor});
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<T>(
-        value: current,
-        isDense: true,
+        value: current, isDense: true,
         decoration: InputDecoration(
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          border: OutlineInputBorder(
-              borderRadius: const BorderRadius.all(kRadiusSm),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          border: OutlineInputBorder(borderRadius: const BorderRadius.all(kRadiusSm),
               borderSide: const BorderSide(color: kBorder)),
-          enabledBorder: OutlineInputBorder(
-              borderRadius: const BorderRadius.all(kRadiusSm),
+          enabledBorder: OutlineInputBorder(borderRadius: const BorderRadius.all(kRadiusSm),
               borderSide: const BorderSide(color: kBorder)),
         ),
         style: const TextStyle(fontSize: 12, color: kTextPrimary),
-        items: values
-            .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
-            .toList(),
-        onChanged: (v) {
-          if (v != null) onChange(v);
-        },
+        items: values.map((e) => DropdownMenuItem(
+              value: e,
+              child: Text(labelFor != null ? labelFor!(e) : e.name),
+            )).toList(),
+        onChanged: (v) { if (v != null) onChange(v); },
       );
 }
 
-/// Single-line text field that notifies on submit / editing complete.
 class TbTextField extends StatefulWidget {
-  final String value;
-  final ValueChanged<String> onSubmitted;
+  final String value; final ValueChanged<String> onSubmitted;
   const TbTextField({super.key, required this.value, required this.onSubmitted});
-
   @override
   State<TbTextField> createState() => _TbTextFieldState();
 }
 
 class _TbTextFieldState extends State<TbTextField> {
   late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.value);
-  }
-
-  @override
-  void didUpdateWidget(TbTextField old) {
+  @override void initState() { super.initState(); _ctrl = TextEditingController(text: widget.value); }
+  @override void didUpdateWidget(TbTextField old) {
     super.didUpdateWidget(old);
-    if (old.value != widget.value && _ctrl.text != widget.value) {
-      _ctrl.text = widget.value;
-    }
+    if (old.value != widget.value && _ctrl.text != widget.value) _ctrl.text = widget.value;
   }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => TextField(
         controller: _ctrl,
         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          border: OutlineInputBorder(
-              borderRadius: const BorderRadius.all(kRadiusSm),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          border: OutlineInputBorder(borderRadius: const BorderRadius.all(kRadiusSm),
               borderSide: const BorderSide(color: kBorder)),
-          enabledBorder: OutlineInputBorder(
-              borderRadius: const BorderRadius.all(kRadiusSm),
+          enabledBorder: OutlineInputBorder(borderRadius: const BorderRadius.all(kRadiusSm),
               borderSide: const BorderSide(color: kBorder)),
-          focusedBorder: OutlineInputBorder(
-              borderRadius: const BorderRadius.all(kRadiusSm),
+          focusedBorder: OutlineInputBorder(borderRadius: const BorderRadius.all(kRadiusSm),
               borderSide: const BorderSide(color: kGreen, width: 1.5)),
         ),
         onSubmitted: widget.onSubmitted,
@@ -352,41 +233,19 @@ class _TbTextFieldState extends State<TbTextField> {
       );
 }
 
-/// Stepper with a unit suffix, compact layout (no leading label).
-/// Used by pomodoro duration rows.
 class TbDurationStepper extends StatelessWidget {
-  final int value;
-  final String unit;
-  final ValueChanged<int> onChanged;
-  final int min, max;
-
-  const TbDurationStepper({
-    super.key,
-    required this.value,
-    required this.onChanged,
-    this.unit = '',
-    this.min = 1,
-    this.max = 99,
-  });
-
+  final int value; final String unit;
+  final ValueChanged<int> onChanged; final int min, max;
+  const TbDurationStepper({super.key, required this.value, required this.onChanged,
+      this.unit = '', this.min = 1, this.max = 99});
   @override
   Widget build(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TbStepBtn(
-              icon: Icons.remove_rounded,
-              enabled: value > min,
-              onTap: () => onChanged(value - 1)),
-          SizedBox(
-            width: 50,
-            child: Text('$value $unit',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          ),
-          TbStepBtn(
-              icon: Icons.add_rounded,
-              enabled: value < max,
-              onTap: () => onChanged(value + 1)),
+          TbStepBtn(icon: Icons.remove_rounded, enabled: value > min, onTap: () => onChanged(value - 1)),
+          SizedBox(width: 50, child: Text('$value $unit', textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+          TbStepBtn(icon: Icons.add_rounded, enabled: value < max, onTap: () => onChanged(value + 1)),
         ],
       );
 }
