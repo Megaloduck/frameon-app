@@ -426,6 +426,9 @@ class GifLayer extends Layer {
 // Spotify Layer  
 // ─────────────────────────────────────────────────────────────────────────────
 
+// NOTE: SpotifyTextEffect is defined in spotify_widget.dart and re-exported.
+// Import it from there. This layer file imports it via the widget export below.
+
 class SpotifyLayer extends Layer {
   final SpotifyLayout layout;
   final bool showTitle;
@@ -434,7 +437,8 @@ class SpotifyLayer extends Layer {
   final Color textColor;
   final double fps;
   final ArtLayoutMode? artLayoutMode;
-
+  final LedFontId fontId;
+  final SpotifyTextEffect textEffect;
 
   const SpotifyLayer({
     required super.id,
@@ -450,6 +454,8 @@ class SpotifyLayer extends Layer {
     super.opacity,
     super.offset,
     this.artLayoutMode,
+    this.fontId = LedFontId.polymorph,
+    this.textEffect = SpotifyTextEffect.scroll,
   });
 
   @override
@@ -470,6 +476,8 @@ class SpotifyLayer extends Layer {
     double? opacity,
     Offset? offset,
     ArtLayoutMode? artLayoutMode,
+    LedFontId? fontId,
+    SpotifyTextEffect? textEffect,
   }) =>
       SpotifyLayer(
         id: id ?? this.id,
@@ -485,6 +493,8 @@ class SpotifyLayer extends Layer {
         opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
         artLayoutMode: artLayoutMode ?? this.artLayoutMode,
+        fontId: fontId ?? this.fontId,
+        textEffect: textEffect ?? this.textEffect,
       );
 
   @override
@@ -503,6 +513,8 @@ class SpotifyLayer extends Layer {
         'opacity': opacity,
         'offsetX': offset.dx,
         'offsetY': offset.dy,
+        'fontId': fontId.name,
+        'textEffect': textEffect.name,
       };
 
   factory SpotifyLayer.fromJson(Map<String, dynamic> j) => SpotifyLayer(
@@ -520,6 +532,12 @@ class SpotifyLayer extends Layer {
         offset: Offset(
           (j['offsetX'] as num?)?.toDouble() ?? 0,
           (j['offsetY'] as num?)?.toDouble() ?? 0,
+        ),
+        fontId: LedFontId.values.byName(
+          _migrateFontId(j['fontId'] as String? ?? 'polymorph'),
+        ),
+        textEffect: SpotifyTextEffect.values.byName(
+          j['textEffect'] as String? ?? 'scroll',
         ),
       );
 }

@@ -1,9 +1,9 @@
 import '../scene/layer.dart';
 import '../renderer/pixel_buffer.dart';
 import 'effects/base_effect.dart';
-import 'effects/blink.dart';
-import 'effects/scroll_left.dart';
-import 'effects/scroll_right.dart';
+import 'effects/blink_effect.dart';
+import 'effects/leftscroll_effect.dart';
+import 'effects/rightscroll_effect.dart';
 
 /// Resolves the correct [AnimationEffectProcessor] for a given [Layer]
 /// and applies it during rendering.

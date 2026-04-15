@@ -73,17 +73,14 @@ class TbToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 28, // ↓ reduce row height (default ~48)
+      height: 28,
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11), // ↓ smaller text
-            ),
+            child: Text(label, style: const TextStyle(fontSize: 11)),
           ),
           Transform.scale(
-            scale: 0.5, // ↓ main size reduction
+            scale: 0.5,
             child: Switch(
               value: value,
               onChanged: onChanged,
@@ -171,6 +168,10 @@ class TbTransportBtn extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// tbColorBtn — standalone color swatch button (used in clock, text, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
 Widget tbColorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =>
     GestureDetector(
       onTap: () async {
@@ -185,6 +186,193 @@ Widget tbColorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =
       ),
     );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TbColorAnimRow — combined color swatch + animation effect picker
+//
+// Shows a single compact row:
+//   [color swatch]  [label text]          [effect chip ▾]
+//
+// Tapping the swatch opens the color picker.
+// Tapping the effect chip shows a mini dropdown of animation options.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TbColorAnimRow<T extends Enum> extends StatelessWidget {
+  /// Row label, e.g. "Text Color"
+  final String label;
+
+  /// Current color value.
+  final Color color;
+
+  /// All available effect enum values.
+  final List<T> effectValues;
+
+  /// Currently selected effect.
+  final T currentEffect;
+
+  /// Human-readable label for each effect value.
+  final String Function(T) effectLabel;
+
+  final ValueChanged<Color> onColorChanged;
+  final ValueChanged<T> onEffectChanged;
+
+  const TbColorAnimRow({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.effectValues,
+    required this.currentEffect,
+    required this.effectLabel,
+    required this.onColorChanged,
+    required this.onEffectChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: kSurfaceLow,
+        borderRadius: const BorderRadius.all(kRadiusSm),
+        border: Border.all(color: kBorder),
+      ),
+      child: Row(
+        children: [
+          // Color swatch
+          GestureDetector(
+            onTap: () async {
+              final picked = await showColorPickerSheet(context, initialColor: color);
+              if (picked != null) onColorChanged(picked);
+            },
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: const BorderRadius.all(kRadiusSm),
+                border: Border.all(color: Colors.black.withOpacity(0.18)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Label
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: kTextMuted),
+            ),
+          ),
+
+          // Effect picker chip
+          _EffectChip<T>(
+            values: effectValues,
+            current: currentEffect,
+            labelFor: effectLabel,
+            onChanged: onEffectChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A compact dropdown chip that shows the current effect name and lets the
+/// user pick from all available effects via a PopupMenu.
+class _EffectChip<T extends Enum> extends StatelessWidget {
+  final List<T> values;
+  final T current;
+  final String Function(T) labelFor;
+  final ValueChanged<T> onChanged;
+
+  const _EffectChip({
+    required this.values,
+    required this.current,
+    required this.labelFor,
+    required this.onChanged,
+  });
+
+  // Map effect name → icon for visual identification
+  static const Map<String, IconData> _icons = {
+    'none':    Icons.crop_square_rounded,
+    'static_': Icons.crop_square_rounded,
+    'static':  Icons.crop_square_rounded,
+    'blink':   Icons.flash_on_rounded,
+    'scroll':  Icons.swap_horiz_rounded,
+    'scrollLeft':  Icons.arrow_back_rounded,
+    'scrollRight': Icons.arrow_forward_rounded,
+    'pulse':   Icons.water_rounded,
+    'fade':    Icons.gradient_rounded,
+    'burst':   Icons.flash_auto_rounded,
+  };
+
+  IconData _iconFor(T value) =>
+      _icons[value.name] ?? Icons.auto_awesome_rounded;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<T>(
+      tooltip: 'Text animation',
+      offset: const Offset(0, 28),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(kRadiusMd)),
+      color: kSurface,
+      elevation: 4,
+      itemBuilder: (_) => values.map((v) {
+        final active = v == current;
+        return PopupMenuItem<T>(
+          value: v,
+          height: 32,
+          child: Row(children: [
+            Icon(_iconFor(v),
+                size: 13,
+                color: active ? kGreen : kTextMuted),
+            const SizedBox(width: 8),
+            Text(
+              labelFor(v),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                color: active ? kGreen : kTextPrimary,
+              ),
+            ),
+            if (active) ...[
+              const Spacer(),
+              const Icon(Icons.check_rounded, size: 12, color: kGreen),
+            ],
+          ]),
+        );
+      }).toList(),
+      onSelected: onChanged,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: BoxDecoration(
+          color: kSurface,
+          borderRadius: const BorderRadius.all(kRadiusSm),
+          border: Border.all(color: kBorder),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(_iconFor(current), size: 11, color: kGreen),
+          const SizedBox(width: 4),
+          Text(
+            labelFor(current),
+            style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: kGreen),
+          ),
+          const SizedBox(width: 3),
+          const Icon(Icons.keyboard_arrow_down_rounded,
+              size: 12, color: kGreen),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TbLabel
+// ─────────────────────────────────────────────────────────────────────────────
+
 class TbLabel extends StatelessWidget {
   final String text;
   const TbLabel(this.text, {super.key});
@@ -194,8 +382,10 @@ class TbLabel extends StatelessWidget {
           letterSpacing: 0.1, color: kTextDim));
 }
 
-/// Plain enum dropdown.
-/// [labelFor] supplies a human-readable label per value; defaults to [Enum.name].
+// ─────────────────────────────────────────────────────────────────────────────
+// TbDropdown — plain enum dropdown
+// ─────────────────────────────────────────────────────────────────────────────
+
 class TbDropdown<T extends Enum> extends StatelessWidget {
   final List<T> values;
   final T current;
@@ -222,6 +412,10 @@ class TbDropdown<T extends Enum> extends StatelessWidget {
         onChanged: (v) { if (v != null) onChange(v); },
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TbTextField
+// ─────────────────────────────────────────────────────────────────────────────
 
 class TbTextField extends StatefulWidget {
   final String value; final ValueChanged<String> onSubmitted;
@@ -256,6 +450,10 @@ class _TbTextFieldState extends State<TbTextField> {
         onEditingComplete: () => widget.onSubmitted(_ctrl.text),
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TbDurationStepper
+// ─────────────────────────────────────────────────────────────────────────────
 
 class TbDurationStepper extends StatelessWidget {
   final int value; final String unit;
