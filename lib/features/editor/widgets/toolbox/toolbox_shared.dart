@@ -83,7 +83,7 @@ class TbToggleRow extends StatelessWidget {
             ),
           ),
           Transform.scale(
-            scale: 0.75, // ↓ main size reduction
+            scale: 0.5, // ↓ main size reduction
             child: Switch(
               value: value,
               onChanged: onChanged,
