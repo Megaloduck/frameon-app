@@ -29,6 +29,13 @@ class SpotifyTrack {
   static const SpotifyTrack empty = SpotifyTrack(title: '', artist: '');
 }
 
+/// Album art scaling mode for art-only layout
+enum ArtLayoutMode {
+  stretch,   // Stretch to fill entire screen (may distort aspect ratio)
+  letterbox, // Fit within screen, add black bars
+  fill,      // Fill screen while preserving aspect ratio (crops edges)
+}
+
 /// Renders a [SpotifyLayer] into a [PixelBuffer].
 ///
 /// Layout modes:
@@ -51,7 +58,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       case SpotifyLayout.textOnly:
         _renderTextOnly(layer, buffer, elapsedMs, track);
       case SpotifyLayout.artOnly:
-        _blitArt(buffer, track, 0, 0, buffer.width, buffer.height);
+        _renderArtOnly(layer, buffer, track);
     }
   }
 
@@ -70,13 +77,13 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
   ) {
     // Art occupies a square on the left equal to the canvas height.
     final int artSize = buffer.height; // 32px
-    _blitArt(buffer, track, 0, 0, artSize, artSize);
+    _blitArt(buffer, track, 0, 0, artSize, artSize, ArtLayoutMode.stretch);
 
-    final int textX  = artSize + 1;
-    final int textW  = buffer.width - textX;
-    final int titleY  = 2;
+    final int textX = artSize + 1;
+    final int textW = buffer.width - textX;
+    final int titleY = 2;
     final int artistY = titleY + PixelFont.glyphHeight + 2;
-    final int barY    = buffer.height - 3;
+    final int barY = buffer.height - 3;
 
     if (layer.showTitle && track.title.isNotEmpty) {
       _scrollText(buffer, track.title, layer.textColor, textX, titleY,
@@ -87,7 +94,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
           textW, elapsedMs + 300, layer.opacity);
     }
     if (layer.showProgress) {
-      _drawProgressBar(buffer, track.progress, textX, barY, textW);
+      _drawProgressBar(buffer, track.progress, textX, barY, buffer.width - textX - 1);
     }
   }
 
@@ -97,7 +104,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int elapsedMs,
     SpotifyTrack track,
   ) {
-    final int titleY  = (buffer.height - PixelFont.glyphHeight * 2 - 2) ~/ 2;
+    final int titleY = (buffer.height - PixelFont.glyphHeight * 2 - 2) ~/ 2;
     final int artistY = titleY + PixelFont.glyphHeight + 2;
 
     if (layer.showTitle && track.title.isNotEmpty) {
@@ -109,20 +116,26 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
           buffer.width, elapsedMs + 300, layer.opacity);
     }
     if (layer.showProgress) {
-      _drawProgressBar(buffer, track.progress, 0, buffer.height - 2, buffer.width);
+      _drawProgressBar(buffer, track.progress, 0, buffer.height - 2, buffer.width - 1);
     }
+  }
+
+  void _renderArtOnly(
+    SpotifyLayer layer,
+    PixelBuffer buffer,
+    SpotifyTrack track,
+  ) {
+    final mode = layer.artLayoutMode ?? ArtLayoutMode.stretch;
+    _blitArt(buffer, track, 0, 0, buffer.width, buffer.height, mode);
   }
 
   // ── Drawing helpers ───────────────────────────────────────────────────────
 
-  /// Blit album art into the destination buffer.
+  /// Blit album art into the destination buffer with specified scaling mode.
   ///
   /// The art pixels arrive as ARGB (0xAARRGGBB) with A typically 0xFF.
   /// We force full opacity (OR with 0xFF000000) so the pixel is never
   /// treated as transparent during compositing.
-  ///
-  /// Previous bug: `opacity.toInt()` always returns 0 for 0.0 < opacity < 1.0,
-  /// making every pixel transparent. Fixed by using integer multiply instead.
   void _blitArt(
     PixelBuffer dst,
     SpotifyTrack track,
@@ -130,6 +143,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int y,
     int w,
     int h,
+    ArtLayoutMode mode,
   ) {
     if (track.artPixels == null ||
         track.artWidth == 0 ||
@@ -139,19 +153,86 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       return;
     }
 
-    final Uint32List src   = track.artPixels!;
-    final int        srcW  = track.artWidth;
-    final int        srcH  = track.artHeight;
-    final double     scaleX = srcW / w;
-    final double     scaleY = srcH / h;
+    final Uint32List src = track.artPixels!;
+    final int srcW = track.artWidth;
+    final int srcH = track.artHeight;
 
-    for (int dy = 0; dy < h; dy++) {
-      final int srcY = (dy * scaleY).toInt().clamp(0, srcH - 1);
-      for (int dx = 0; dx < w; dx++) {
-        final int srcX = (dx * scaleX).toInt().clamp(0, srcW - 1);
+    // Calculate source and destination rectangles based on mode
+    int srcX = 0;
+    int srcY = 0;
+    int srcWidth = srcW;
+    int srcHeight = srcH;
+    int dstX = x;
+    int dstY = y;
+    int dstWidth = w;
+    int dstHeight = h;
+
+    switch (mode) {
+      case ArtLayoutMode.stretch:
+        // Stretch to fill entire destination
+        break;
+
+      case ArtLayoutMode.letterbox:
+        // Fit within destination while preserving aspect ratio
+        final double srcAspect = srcW / srcH;
+        final double dstAspect = w / h;
+        
+        if (srcAspect > dstAspect) {
+          // Source is wider - fit to width
+          dstWidth = w;
+          dstHeight = (w / srcAspect).round();
+          dstY = y + ((h - dstHeight) ~/ 2);
+        } else {
+          // Source is taller - fit to height
+          dstHeight = h;
+          dstWidth = (h * srcAspect).round();
+          dstX = x + ((w - dstWidth) ~/ 2);
+        }
+        break;
+
+      case ArtLayoutMode.fill:
+        // Fill destination while preserving aspect ratio (crops if needed)
+        final double srcAspect = srcW / srcH;
+        final double dstAspect = w / h;
+        
+        if (srcAspect > dstAspect) {
+          // Source is wider - crop horizontally
+          srcWidth = (srcH * dstAspect).round();
+          srcX = (srcW - srcWidth) ~/ 2;
+        } else {
+          // Source is taller - crop vertically
+          srcHeight = (srcW / dstAspect).round();
+          srcY = (srcH - srcHeight) ~/ 2;
+        }
+        break;
+    }
+
+    final double scaleX = srcWidth / dstWidth;
+    final double scaleY = srcHeight / dstHeight;
+
+    // Fill background with black for letterbox/pillarbox areas
+    if (mode == ArtLayoutMode.letterbox) {
+      if (dstY > y) {
+        dst.fillRect(x, y, w, dstY - y, const Color(0xFF000000));
+      }
+      if (dstY + dstHeight < y + h) {
+        dst.fillRect(x, dstY + dstHeight, w, y + h - (dstY + dstHeight), const Color(0xFF000000));
+      }
+      if (dstX > x) {
+        dst.fillRect(x, dstY, dstX - x, dstHeight, const Color(0xFF000000));
+      }
+      if (dstX + dstWidth < x + w) {
+        dst.fillRect(dstX + dstWidth, dstY, x + w - (dstX + dstWidth), dstHeight, const Color(0xFF000000));
+      }
+    }
+
+    for (int dy = 0; dy < dstHeight; dy++) {
+      final int srcYPos = srcY + (dy * scaleY).toInt().clamp(0, srcHeight - 1);
+      for (int dx = 0; dx < dstWidth; dx++) {
+        final int srcXPos = srcX + (dx * scaleX).toInt().clamp(0, srcWidth - 1);
         // Force alpha to 0xFF — art is always fully opaque on the matrix
-        final int pixel = src[srcY * srcW + srcX] | 0xFF000000;
-        dst.setPixel(x + dx, y + dy, pixel);
+        final int pixel = src[srcYPos * srcW + srcXPos] | 0xFF000000;
+        dst.setPixel(dstX + dx, dstY + dy, pixel);
       }
     }
   }

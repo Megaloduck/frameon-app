@@ -1,6 +1,8 @@
 import 'dart:ui';
 
 import '../../engine/renderer/font_organizer.dart';
+import '../../engine/widgets/spotify_widget.dart';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -421,7 +423,7 @@ class GifLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify Layer  (unchanged)
+// Spotify Layer  
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyLayer extends Layer {
@@ -431,6 +433,8 @@ class SpotifyLayer extends Layer {
   final bool showProgress;
   final Color textColor;
   final double fps;
+  final ArtLayoutMode? artLayoutMode;
+
 
   const SpotifyLayer({
     required super.id,
@@ -445,6 +449,7 @@ class SpotifyLayer extends Layer {
     super.zIndex,
     super.opacity,
     super.offset,
+    this.artLayoutMode,
   });
 
   @override
@@ -464,6 +469,7 @@ class SpotifyLayer extends Layer {
     int? zIndex,
     double? opacity,
     Offset? offset,
+    ArtLayoutMode? artLayoutMode,
   }) =>
       SpotifyLayer(
         id: id ?? this.id,
@@ -478,6 +484,7 @@ class SpotifyLayer extends Layer {
         zIndex: zIndex ?? this.zIndex,
         opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
+        artLayoutMode: artLayoutMode ?? this.artLayoutMode,
       );
 
   @override

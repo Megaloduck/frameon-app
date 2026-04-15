@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../engine/scene/layer.dart';
+import '../../../../engine/widgets/spotify_widget.dart';
 import '../../../../shared/providers/providers.dart';
 import 'toolbox_shared.dart';
 import '../ui_primitives.dart';
@@ -151,9 +152,21 @@ class SpotifyToolboxRight extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tbGreenDropdown<SpotifyLayout>(SpotifyLayout.values, layer.layout,
-              (v) => n.updateLayer(layer.copyWith(layout: v))),
+          tbGreenDropdown<SpotifyLayout>(
+            SpotifyLayout.values,
+            layer.layout,
+            (v) => n.updateLayer(layer.copyWith(layout: v)),
+          ),
           const SizedBox(height: 10),
+          // Show art layout mode dropdown only when artOnly is selected
+          if (layer.layout == SpotifyLayout.artOnly) ...[
+            tbGreenDropdown<ArtLayoutMode>(
+              ArtLayoutMode.values,
+              layer.artLayoutMode ?? ArtLayoutMode.stretch,
+              (v) => n.updateLayer(layer.copyWith(artLayoutMode: v)),
+            ),
+            const SizedBox(height: 10),
+          ],
           TbToggleRow(
               label: 'Show title',
               value: layer.showTitle,
