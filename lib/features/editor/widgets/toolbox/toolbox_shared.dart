@@ -59,17 +59,41 @@ class TbSegAlign extends StatelessWidget {
 }
 
 class TbToggleRow extends StatelessWidget {
-  final String label; final bool value; final ValueChanged<bool> onChanged;
-  const TbToggleRow({super.key, required this.label, required this.value, required this.onChanged});
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const TbToggleRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12, color: kTextPrimary))),
-          Transform.scale(scale: 0.75, alignment: Alignment.centerRight,
-              child: Switch(value: value, onChanged: onChanged)),
-        ]),
-      );
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 28, // ↓ reduce row height (default ~48)
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11), // ↓ smaller text
+            ),
+          ),
+          Transform.scale(
+            scale: 0.75, // ↓ main size reduction
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class TbSpeedSlider extends StatelessWidget {

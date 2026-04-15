@@ -23,7 +23,7 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
   @override
   void render(ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
     final font = LedFontLibrary.get(layer.fontId);
-    final DateTime now = _getCurrentTime();
+    final DateTime now = _getTimeForZone(layer.timezone);
 
     final bool colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
     final double colonAlpha = colonOn ? layer.opacity : 0.0;
@@ -103,10 +103,37 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Time resolution ───────────────────────────────────────────────────────
 
-  DateTime _getCurrentTime() =>
+  /// Return the current wall-clock time adjusted to [timezone].
+  ///
+  /// Strategy:
+  ///   - 'local'  → device local time (no conversion needed)
+  ///   - 'UTC'    → UTC
+  ///   - anything else → look up in the offset table and apply offset to UTC
+  ///
+  /// Note: DST is not modelled — offsets use the standard (winter) offset for
+  /// the zone. For a real app you would pull in the `timezone` package; for an
+  /// LED panel this is accurate enough and keeps dependencies minimal.
+  DateTime _getTimeForZone(String timezone) {
+    final DateTime base = _rawNow();
+
+    if (timezone == 'local') return base;
+
+    final DateTime utc = base.toUtc();
+    if (timezone == 'UTC') return utc;
+
+    final double? offset = _kTzOffsets[timezone];
+    if (offset == null) return base; // unknown id → fall back to local
+
+    final int offsetMinutes = (offset * 60).round();
+    return utc.add(Duration(minutes: offsetMinutes));
+  }
+
+  DateTime _rawNow() =>
       _container != null ? _container!.read(timeServiceProvider) : DateTime.now();
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   String _buildHoursStr(DateTime now, ClockLayer layer) {
     if (layer.format == ClockFormat.h24) return _pad(now.hour);
@@ -164,3 +191,67 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 
   String _pad(int n) => n.toString().padLeft(2, '0');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTC offset table — standard (non-DST) offsets in fractional hours.
+//
+// These match the _kTimezones list in clock_toolbox.dart.
+// DST transitions are NOT modelled; offset is the standard offset.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Map<String, double> _kTzOffsets = {
+  'UTC':                  0,
+  'Europe/London':        0,
+  'Europe/Lisbon':        0,
+  'Europe/Paris':         1,
+  'Europe/Berlin':        1,
+  'Europe/Rome':          1,
+  'Europe/Amsterdam':     1,
+  'Europe/Madrid':        1,
+  'Europe/Warsaw':        1,
+  'Europe/Athens':        2,
+  'Europe/Bucharest':     2,
+  'Europe/Helsinki':      2,
+  'Europe/Istanbul':      3,
+  'Europe/Moscow':        3,
+  'Asia/Riyadh':          3,
+  'Asia/Dubai':           4,
+  'Asia/Baku':            4,
+  'Asia/Kabul':           4.5,
+  'Asia/Karachi':         5,
+  'Asia/Tashkent':        5,
+  'Asia/Kolkata':         5.5,
+  'Asia/Colombo':         5.5,
+  'Asia/Kathmandu':       5.75,
+  'Asia/Dhaka':           6,
+  'Asia/Almaty':          6,
+  'Asia/Rangoon':         6.5,
+  'Asia/Bangkok':         7,
+  'Asia/Jakarta':         7,
+  'Asia/Ho_Chi_Minh':     7,
+  'Asia/Singapore':       8,
+  'Asia/Shanghai':        8,
+  'Asia/Taipei':          8,
+  'Asia/Kuala_Lumpur':    8,
+  'Asia/Manila':          8,
+  'Asia/Seoul':           9,
+  'Asia/Tokyo':           9,
+  'Australia/Darwin':     9.5,
+  'Australia/Brisbane':   10,
+  'Australia/Adelaide':   9.5,
+  'Australia/Sydney':     10,
+  'Pacific/Auckland':     12,
+  'Pacific/Fiji':         12,
+  'Pacific/Honolulu':    -10,
+  'America/Anchorage':   -9,
+  'America/Los_Angeles': -8,
+  'America/Denver':      -7,
+  'America/Phoenix':     -7,
+  'America/Chicago':     -6,
+  'America/New_York':    -5,
+  'America/Toronto':     -5,
+  'America/Halifax':     -4,
+  'America/Sao_Paulo':   -3,
+  'America/Buenos_Aires':-3,
+  'Atlantic/Azores':     -1,
+};
