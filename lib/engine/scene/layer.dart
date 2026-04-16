@@ -12,7 +12,7 @@ export '../../engine/renderer/font_organizer.dart' show LedFontId;
 
 enum LayerType { text, clock, gif, spotify, pomodoro }
 
-enum AnimationEffect { none, blink, scrollLeft, scrollRight }
+enum AnimationEffect { none, blink, scrollLeft, scrollRight, pulse, fade, burst }
 
 enum TextAlignment { left, center, right }
 

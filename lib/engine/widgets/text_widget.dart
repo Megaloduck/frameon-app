@@ -7,9 +7,24 @@ import 'matrix_widget.dart';
 
 /// Renders a [TextLayer] into a [PixelBuffer] using the active [LedFont].
 ///
-/// Scroll behaviour: text enters from off-screen and exits fully before
-/// repeating. Period = contentWidth + canvasWidth, so there is always a
-/// full canvas gap between repetitions.
+/// ## Effect responsibilities
+///
+/// | Effect          | Handled by          | How                                    |
+/// |-----------------|---------------------|----------------------------------------|
+/// | none            | TextWidget          | Draw static text                       |
+/// | blink           | TextWidget          | Early-exit on odd 500 ms tick          |
+/// | scrollLeft      | TextWidget          | Marquee x-offset calculation           |
+/// | scrollRight     | TextWidget          | Marquee x-offset calculation           |
+/// | pulse           | Animator (post)     | TextWidget draws at full opacity;      |
+/// |                 |                     | Animator modulates alpha per-pixel     |
+/// | fade            | Animator (post)     | Same — linear fade applied post-draw   |
+/// | burst           | Animator (post)     | Same — exponential decay post-draw     |
+///
+/// For pulse / fade / burst, TextWidget draws the text normally at full
+/// opacity. The [Animator] then runs [AnimationEffectProcessor.apply] on the
+/// resulting [PixelBuffer], modulating per-pixel alpha to produce the effect.
+/// This clean split means the text layout logic never needs to know about
+/// opacity math.
 class TextWidget extends MatrixWidget<TextLayer> {
   const TextWidget();
 
@@ -17,7 +32,7 @@ class TextWidget extends MatrixWidget<TextLayer> {
   void render(TextLayer layer, PixelBuffer buffer, int elapsedMs) {
     final font = LedFontLibrary.get(layer.fontId);
 
-    // ── Blink ─────────────────────────────────────────────────────────────
+    // ── Blink — early exit so the Animator sees a blank src buffer ─────────
     if (layer.effect == AnimationEffect.blink) {
       if ((elapsedMs ~/ 500) % 2 == 1) return;
     }
@@ -29,7 +44,7 @@ class TextWidget extends MatrixWidget<TextLayer> {
     final int yOff =
         layer.offset.dy.round() + (buffer.height - font.charHeight) ~/ 2;
 
-    // ── Marquee scroll ────────────────────────────────────────────────────
+    // ── Marquee scroll (scrollLeft / scrollRight) ─────────────────────────
     if (layer.effect == AnimationEffect.scrollLeft ||
         layer.effect == AnimationEffect.scrollRight) {
       final int speed  = layer.effectSpeedMs.clamp(20, 500);
@@ -55,7 +70,10 @@ class TextWidget extends MatrixWidget<TextLayer> {
       return;
     }
 
-    // ── Static alignment ──────────────────────────────────────────────────
+    // ── Static draw (none / blink-visible / pulse / fade / burst) ─────────
+    //
+    // For pulse, fade and burst, we draw at full layer.opacity here.
+    // The Animator post-processes the buffer to apply the alpha modulation.
     final int xOff = layer.offset.dx.round();
 
     switch (layer.alignment) {

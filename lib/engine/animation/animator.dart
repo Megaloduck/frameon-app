@@ -2,7 +2,10 @@ import '../scene/layer.dart';
 import '../renderer/pixel_buffer.dart';
 import 'effects/base_effect.dart';
 import 'effects/blink_effect.dart';
+import 'effects/burst_effect.dart';
+import 'effects/fade_effect.dart';
 import 'effects/leftscroll_effect.dart';
+import 'effects/pulse_effect.dart';
 import 'effects/rightscroll_effect.dart';
 
 /// Resolves the correct [AnimationEffectProcessor] for a given [Layer]
@@ -16,8 +19,6 @@ class Animator {
   /// Return the [AnimationEffectProcessor] for [layer], or `null` if
   /// the layer has no animation effect.
   AnimationEffectProcessor? effectFor(Layer layer) {
-    // Currently only TextLayer exposes an effect field.
-    // Other layers (e.g. SpotifyLayer) may add effects in future iterations.
     if (layer is TextLayer) {
       return _resolve(layer.effect);
     }
@@ -53,6 +54,12 @@ class Animator {
         return const ScrollLeftEffect(pixelsPerSecond: 20);
       case AnimationEffect.scrollRight:
         return const ScrollRightEffect(pixelsPerSecond: 20);
+      case AnimationEffect.pulse:
+        return const PulseEffect(periodMs: 2000, minOpacity: 0.08);
+      case AnimationEffect.fade:
+        return const FadeEffect(holdMs: 1200, fadeMs: 600);
+      case AnimationEffect.burst:
+        return const BurstEffect(periodMs: 1500, flashMs: 400, dimOpacity: 0.12);
     }
   }
 }
