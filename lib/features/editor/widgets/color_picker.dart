@@ -100,8 +100,7 @@ class _ColorPickerState extends State<ColorPicker> {
         const SizedBox(height: 12),
         // ── Hue strip ─────────────────────────────────────────────────
         Row(
-          children: [
-            const Text('Hue', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          children: [         
             const SizedBox(width: 8),
             Expanded(
               child: _HueStrip(
@@ -114,8 +113,7 @@ class _ColorPickerState extends State<ColorPicker> {
         const SizedBox(height: 8),
         // ── Opacity strip ─────────────────────────────────────────────
         Row(
-          children: [
-            const Text('Alpha', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          children: [            
             const SizedBox(width: 8),
             Expanded(
               child: _OpacityStrip(
@@ -400,12 +398,7 @@ class _OpacityPainter extends CustomPainter {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Shows the color picker in a modal bottom sheet.
-///
-/// Fix: removed the `result.withOpacity(result.opacity > 0 ? result.opacity : 1.0)`
-/// re-wrapping in the Apply handler. That call was applying the opacity value
-/// *twice* (once during HSV→Color conversion, once again here), which for
-/// certain hues (most visibly blue) produced a near-zero alpha, making the
-/// color appear black. Now we return the color exactly as the picker produced it.
+
 Future<Color?> showColorPickerSheet(
   BuildContext context, {
   required Color initialColor,
