@@ -2,8 +2,8 @@
   import 'package:flutter_riverpod/flutter_riverpod.dart';
 
   import '../../../engine/scene/layer.dart';
-  import '../../../features/device/connection_state.dart';
-  import '../../../features/device/device_controller.dart';
+  import '../../device/connection_state.dart';
+  import '../../device/device_controller.dart';
   import '../../../shared/providers/providers.dart';
   import 'ui_primitives.dart';
 

@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../engine/scene/layer.dart';
 import '../../../shared/providers/providers.dart';
-import '../widgets/toolbox/clock_toolbox.dart';
-import '../widgets/toolbox/gif_toolbox.dart';
-import '../widgets/toolbox/pomodoro_toolbox.dart';
-import '../widgets/toolbox/spotify_toolbox.dart';
-import '../widgets/toolbox/text_toolbox.dart';
+import 'toolbox/clock_toolbox.dart';
+import 'toolbox/gif_toolbox.dart';
+import 'toolbox/pomodoro_toolbox.dart';
+import 'toolbox/spotify_toolbox.dart';
+import 'toolbox/text_toolbox.dart';
 import 'ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -8,9 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app.dart' show themeModeProvider;
 import '../../../shared/providers/providers.dart';
 import '../../../shared/providers/zoom_provider.dart';
-import '../../../features/device/connection_state.dart';
-import '../../../features/device/device_controller.dart';
-import '../../../features/editor/presentation/controller.dart';
+import '../../device/connection_state.dart';
+import '../../device/device_controller.dart';
+import '../presentation/controller.dart';
 import '../../../services/storage/project_service.dart';
 import 'ui_primitives.dart';
 

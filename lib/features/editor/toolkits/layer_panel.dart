@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../engine/scene/layer.dart';
 import '../../../shared/providers/providers.dart';
-import '../../../features/editor/presentation/controller.dart';
+import '../presentation/controller.dart';
 import 'ui_primitives.dart';
 
 class LayerPanel extends ConsumerWidget {

@@ -1,12 +1,13 @@
 // lib/features/editor/widgets/toolbox/spotify_toolbox.dart
 //
-// Changes vs previous version:
-//   • SpotifyToolboxRight: replaced TbToggleRow for title/artist/progress
-//     with TbPropertiesToggleRow — a new widget that shows a color swatch
-//     opening showPropertiesCustomizer, plus the existing toggle.
-//   • Removed Custom FPS section entirely.
-//   • TbColorAnimRow for "Text Color" is kept only for artAndText/textOnly
-//     global text color — it now also opens PropertiesCustomizer.
+// Right panel shows ONLY:
+//   • Layout dropdown
+//   • Art layout mode dropdown (artOnly only)
+//   • Show title   [color swatch → PropertiesCustomizer] [toggle]
+//   • Show artist  [color swatch → PropertiesCustomizer] [toggle]
+//   • Show progress [color swatch → PropertiesCustomizer] [toggle]
+//
+// Font/color/animation are all inside PropertiesCustomizer, no duplication.
 
 import 'dart:typed_data';
 
@@ -20,6 +21,10 @@ import '../../../../shared/providers/providers.dart';
 import '../properties_customizer.dart';
 import 'toolbox_shared.dart';
 import '../ui_primitives.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Left panel — Spotify connection controls (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyToolboxLeft extends ConsumerWidget {
   final SpotifyLayer layer;
@@ -88,8 +93,7 @@ class SpotifyToolboxLeft extends ConsumerWidget {
               GestureDetector(
                 onTap: service.disconnect,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1DB954).withOpacity(0.15),
                     borderRadius: const BorderRadius.all(kRadiusSm),
@@ -103,8 +107,8 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                           size: 12, color: Color(0xFF1DB954)),
                       SizedBox(width: 4),
                       Text('Disconnect',
-                          style: TextStyle(
-                              fontSize: 10, color: Color(0xFF1DB954))),
+                          style:
+                              TextStyle(fontSize: 10, color: Color(0xFF1DB954))),
                     ],
                   ),
                 ),
@@ -120,8 +124,8 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                   value: spot.progress,
                   minHeight: 4,
                   backgroundColor: kBorder,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFF1DB954)),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Color(0xFF1DB954)),
                 ),
               ),
               const SizedBox(height: 6),
@@ -129,11 +133,9 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatDuration(spot.currentPosition),
-                      style: const TextStyle(
-                          fontSize: 10, color: kTextDim)),
+                      style: const TextStyle(fontSize: 10, color: kTextDim)),
                   Text(_formatDuration(spot.currentDuration),
-                      style: const TextStyle(
-                          fontSize: 10, color: kTextDim)),
+                      style: const TextStyle(fontSize: 10, color: kTextDim)),
                 ],
               ),
             ],
@@ -143,12 +145,16 @@ class SpotifyToolboxLeft extends ConsumerWidget {
     );
   }
 
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds.remainder(60);
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds.remainder(60);
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Right panel — layout + three visibility rows only
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyToolboxRight extends StatelessWidget {
   final SpotifyLayer layer;
@@ -172,7 +178,7 @@ class SpotifyToolboxRight extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // ── Art layout mode (artOnly only) ──────────────────────────
+          // ── Art layout mode (artOnly only) ───────────────────────────
           if (layer.layout == SpotifyLayout.artOnly) ...[
             tbGreenDropdown<ArtLayoutMode>(
               ArtLayoutMode.values,
@@ -182,58 +188,47 @@ class SpotifyToolboxRight extends StatelessWidget {
             const SizedBox(height: 8),
           ],
 
-          // ── Text-layout controls ─────────────────────────────────────
-          if (_hasText) ...[
-            const TbLabel('Font Style'),
-            const SizedBox(height: 4),
-            TbDropdown<LedFontId>(
-              values: LedFontId.values,
-              current: layer.fontId,
-              onChange: (v) => n.updateLayer(layer.copyWith(fontId: v)),
-              labelFor: (v) => LedFontLibrary.get(v).name,
-            ),
-            const SizedBox(height: 8),
+          const SizedBox(height: 4),
 
-            // Text color + effect row (global — for artAndText/textOnly)
-            TbColorAnimRow<SpotifyTextEffect>(
-              label: 'Text Color',
-              color: layer.textColor,
-              effectValues: SpotifyTextEffect.values,
-              currentEffect: layer.textEffect,
-              effectLabel: _effectLabel,
-              onColorChanged: (c) => n.updateLayer(layer.copyWith(textColor: c)),
-              onEffectChanged: (e) => n.updateLayer(layer.copyWith(textEffect: e)),
-            ),
-            const SizedBox(height: 8),
-          ],
-
-          // ── Visibility toggles with per-element color pickers ────────
-          if (_hasText) ...[
+          // ── Show title ───────────────────────────────────────────────
+          if (_hasText)
             _PropertiesToggleRow(
               label: 'Show title',
               color: layer.titleColor,
               value: layer.showTitle,
               initialFontId: layer.fontId,
               initialEffect: AnimationEffect.scrollLeft,
-              onPropertiesChanged: (result) => n.updateLayer(layer.copyWith(
-                titleColor: result.color,
-                fontId: result.fontId,
+              showFont: true,
+              showFontEffect: true,
+              showLightingEffect: true,
+              onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
+                titleColor: r.color,
+                fontId: r.fontId,
+                textEffect: _toSpotifyEffect(r.effect),
               )),
               onToggled: (v) => n.updateLayer(layer.copyWith(showTitle: v)),
             ),
+
+          // ── Show artist ──────────────────────────────────────────────
+          if (_hasText)
             _PropertiesToggleRow(
               label: 'Show artist',
               color: layer.artistColor,
               value: layer.showArtist,
               initialFontId: layer.fontId,
               initialEffect: AnimationEffect.scrollLeft,
-              onPropertiesChanged: (result) => n.updateLayer(layer.copyWith(
-                artistColor: result.color,
-                fontId: result.fontId,
+              showFont: true,
+              showFontEffect: true,
+              showLightingEffect: true,
+              onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
+                artistColor: r.color,
+                fontId: r.fontId,
+                textEffect: _toSpotifyEffect(r.effect),
               )),
               onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),
             ),
-          ],
+
+          // ── Show progress (always) ───────────────────────────────────
           _PropertiesToggleRow(
             label: 'Show progress',
             color: layer.progressColor,
@@ -243,28 +238,25 @@ class SpotifyToolboxRight extends StatelessWidget {
             showFont: false,
             showFontEffect: false,
             showLightingEffect: false,
-            onPropertiesChanged: (result) => n.updateLayer(layer.copyWith(
-              progressColor: result.color,
-            )),
+            onPropertiesChanged: (r) =>
+                n.updateLayer(layer.copyWith(progressColor: r.color)),
             onToggled: (v) => n.updateLayer(layer.copyWith(showProgress: v)),
           ),
         ],
       );
 
-  String _effectLabel(SpotifyTextEffect e) => switch (e) {
-        SpotifyTextEffect.scroll  => 'Scroll',
-        SpotifyTextEffect.static_ => 'Static',
-        SpotifyTextEffect.blink   => 'Blink',
-        SpotifyTextEffect.pulse   => 'Pulse',
-        SpotifyTextEffect.fade    => 'Fade',
+  SpotifyTextEffect _toSpotifyEffect(AnimationEffect e) => switch (e) {
+        AnimationEffect.scrollLeft  => SpotifyTextEffect.scroll,
+        AnimationEffect.scrollRight => SpotifyTextEffect.scroll,
+        AnimationEffect.blink       => SpotifyTextEffect.blink,
+        AnimationEffect.pulse       => SpotifyTextEffect.pulse,
+        AnimationEffect.fade        => SpotifyTextEffect.fade,
+        _                           => SpotifyTextEffect.static_,
       };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _PropertiesToggleRow
-//
-// Combines a color swatch (opens PropertiesCustomizer) + label + Switch.
-// Replaces the old plain TbToggleRow for title/artist/progress rows.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PropertiesToggleRow extends StatelessWidget {
@@ -293,58 +285,53 @@ class _PropertiesToggleRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 32,
-      child: Row(
-        children: [
-          // Color swatch — opens PropertiesCustomizer
-          GestureDetector(
-            onTap: () async {
-              final result = await showPropertiesCustomizer(
-                context,
-                initialColor: color,
-                initialFontId: initialFontId,
-                initialEffect: initialEffect,
-                showFont: showFont,
-                showFontEffect: showFontEffect,
-                showLightingEffect: showLightingEffect,
-              );
-              if (result != null) onPropertiesChanged(result);
-            },
-            child: Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: const BorderRadius.all(kRadiusSm),
-                border: Border.all(color: Colors.black.withOpacity(0.18)),
+  Widget build(BuildContext context) => SizedBox(
+        height: 34,
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () async {
+                final result = await showPropertiesCustomizer(
+                  context,
+                  initialColor: color,
+                  initialFontId: initialFontId,
+                  initialEffect: initialEffect,
+                  showFont: showFont,
+                  showFontEffect: showFontEffect,
+                  showLightingEffect: showLightingEffect,
+                );
+                if (result != null) onPropertiesChanged(result);
+              },
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: const BorderRadius.all(kRadiusSm),
+                  border: Border.all(color: Colors.black.withOpacity(0.18)),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          // Label
-          Expanded(
-            child: Text(label,
-                style: const TextStyle(fontSize: 11, color: kTextMuted)),
-          ),
-          // Toggle
-          Transform.scale(
-            scale: 0.5,
-            child: Switch(
-              value: value,
-              onChanged: onToggled,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(label,
+                  style: const TextStyle(fontSize: 12, color: kTextMuted)),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+            Transform.scale(
+              scale: 0.5,
+              child: Switch(
+                value: value,
+                onChanged: onToggled,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Private helpers (unchanged from original)
+// Private card widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AlbumArtThumbnail extends StatelessWidget {
@@ -356,8 +343,7 @@ class _AlbumArtThumbnail extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         width: 60,
         height: 60,
-        child: CustomPaint(
-            painter: _ArtPainter(pixels: pixels, size: size)),
+        child: CustomPaint(painter: _ArtPainter(pixels: pixels, size: size)),
       );
 }
 
@@ -433,23 +419,19 @@ class _NowPlayingCard extends StatelessWidget {
                 Text(
                   spot.currentTrackTitle ?? '—',
                   style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2),
+                      fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
                 const SizedBox(height: 2),
                 Text(spot.currentArtist ?? '',
-                    style: const TextStyle(
-                        fontSize: 11, color: kTextMuted),
+                    style: const TextStyle(fontSize: 11, color: kTextMuted),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1),
                 if (spot.currentAlbum != null) ...[
                   const SizedBox(height: 1),
                   Text(spot.currentAlbum!,
-                      style: const TextStyle(
-                          fontSize: 9, color: kTextDim),
+                      style: const TextStyle(fontSize: 9, color: kTextDim),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1),
                 ],
@@ -463,8 +445,7 @@ class _NowPlayingCard extends StatelessWidget {
               borderRadius: const BorderRadius.all(kRadiusSm),
               child: const Padding(
                 padding: EdgeInsets.all(6),
-                child: Icon(Icons.refresh_rounded,
-                    size: 15, color: kTextMuted),
+                child: Icon(Icons.refresh_rounded, size: 15, color: kTextMuted),
               ),
             ),
           ),
@@ -497,8 +478,7 @@ class _ConnectingCard extends StatelessWidget {
 class _DisconnectedCard extends StatelessWidget {
   final String? errorMessage;
   final Future<void> Function() onConnect;
-  const _DisconnectedCard(
-      {this.errorMessage, required this.onConnect});
+  const _DisconnectedCard({this.errorMessage, required this.onConnect});
 
   @override
   Widget build(BuildContext context) => Column(
@@ -508,13 +488,11 @@ class _DisconnectedCard extends StatelessWidget {
               size: 28, color: Color(0xFF1DB954)),
           const SizedBox(height: 6),
           const Text('Connect to Spotify',
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           if (errorMessage != null)
             Text(errorMessage!,
-                style: TextStyle(
-                    fontSize: 10, color: Colors.red.shade400),
+                style: TextStyle(fontSize: 10, color: Colors.red.shade400),
                 textAlign: TextAlign.center)
           else
             const Text('Sign in to display the current track',
@@ -539,4 +517,4 @@ class _DisconnectedCard extends StatelessWidget {
           ),
         ],
       );
-}
+} 

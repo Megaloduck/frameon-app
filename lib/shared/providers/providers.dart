@@ -11,7 +11,7 @@ import '../../engine/scene/timeline.dart';
 import '../../services/spotify/spotify_service.dart';
 import '../../services/pomodoro/pomodoro_service.dart';
 
-import '../../features/editor/widgets/gif_bytes_provider.dart';
+import '../../features/editor/toolkits/gif_bytes_provider.dart';
 import 'time_service.dart';
 
 export '../../services/spotify/spotify_service.dart'

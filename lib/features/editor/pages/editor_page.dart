@@ -13,12 +13,12 @@ import '../../../services/storage/project_service.dart';
 import '../../../shared/providers/preset_provider.dart';
 import '../../../shared/providers/providers.dart';
 import '../../../shared/providers/zoom_provider.dart';
-import '../widgets/layer_panel.dart' show LayerPanel;
-import '../widgets/matrix_preview.dart' show MatrixPreview;
-import '../widgets/output_panel.dart' show OutputPanel;
-import '../widgets/toolbox_panel.dart' show ToolboxLeftPanel, ToolboxRightPanel;
-import '../widgets/ui_primitives.dart';
-import '../widgets/widget_palette.dart' show WidgetPalette;
+import '../toolkits/layer_panel.dart' show LayerPanel;
+import '../toolkits/matrix_preview.dart' show MatrixPreview;
+import '../toolkits/output_panel.dart' show OutputPanel;
+import '../toolkits/toolbox_panel.dart' show ToolboxLeftPanel, ToolboxRightPanel;
+import '../toolkits/ui_primitives.dart';
+import '../toolkits/widget_palette.dart' show WidgetPalette;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EditorPage
