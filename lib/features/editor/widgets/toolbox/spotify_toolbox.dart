@@ -1,3 +1,13 @@
+// lib/features/editor/widgets/toolbox/spotify_toolbox.dart
+//
+// Changes vs previous version:
+//   • SpotifyToolboxRight: replaced TbToggleRow for title/artist/progress
+//     with TbPropertiesToggleRow — a new widget that shows a color swatch
+//     opening showPropertiesCustomizer, plus the existing toggle.
+//   • Removed Custom FPS section entirely.
+//   • TbColorAnimRow for "Text Color" is kept only for artAndText/textOnly
+//     global text color — it now also opens PropertiesCustomizer.
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,6 +17,7 @@ import '../../../../engine/renderer/font_organizer.dart';
 import '../../../../engine/scene/layer.dart';
 import '../../../../engine/widgets/spotify_widget.dart';
 import '../../../../shared/providers/providers.dart';
+import '../properties_customizer.dart';
 import 'toolbox_shared.dart';
 import '../ui_primitives.dart';
 
@@ -145,7 +156,6 @@ class SpotifyToolboxRight extends StatelessWidget {
   const SpotifyToolboxRight(
       {super.key, required this.layer, required this.n});
 
-  // Layouts that show text (and thus need font/effect controls)
   bool get _hasText =>
       layer.layout == SpotifyLayout.artAndText ||
       layer.layout == SpotifyLayout.textOnly;
@@ -184,7 +194,7 @@ class SpotifyToolboxRight extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            // Color + text effect combined row
+            // Text color + effect row (global — for artAndText/textOnly)
             TbColorAnimRow<SpotifyTextEffect>(
               label: 'Text Color',
               color: layer.textColor,
@@ -197,32 +207,47 @@ class SpotifyToolboxRight extends StatelessWidget {
             const SizedBox(height: 8),
           ],
 
-          // ── Visibility toggles ───────────────────────────────────────
+          // ── Visibility toggles with per-element color pickers ────────
           if (_hasText) ...[
-            TbToggleRow(
-                label: 'Show title',
-                value: layer.showTitle,
-                onChanged: (v) =>
-                    n.updateLayer(layer.copyWith(showTitle: v))),
-            TbToggleRow(
-                label: 'Show artist',
-                value: layer.showArtist,
-                onChanged: (v) =>
-                    n.updateLayer(layer.copyWith(showArtist: v))),
+            _PropertiesToggleRow(
+              label: 'Show title',
+              color: layer.titleColor,
+              value: layer.showTitle,
+              initialFontId: layer.fontId,
+              initialEffect: AnimationEffect.scrollLeft,
+              onPropertiesChanged: (result) => n.updateLayer(layer.copyWith(
+                titleColor: result.color,
+                fontId: result.fontId,
+              )),
+              onToggled: (v) => n.updateLayer(layer.copyWith(showTitle: v)),
+            ),
+            _PropertiesToggleRow(
+              label: 'Show artist',
+              color: layer.artistColor,
+              value: layer.showArtist,
+              initialFontId: layer.fontId,
+              initialEffect: AnimationEffect.scrollLeft,
+              onPropertiesChanged: (result) => n.updateLayer(layer.copyWith(
+                artistColor: result.color,
+                fontId: result.fontId,
+              )),
+              onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),
+            ),
           ],
-          TbToggleRow(
-              label: 'Show progress',
-              value: layer.showProgress,
-              onChanged: (v) =>
-                  n.updateLayer(layer.copyWith(showProgress: v))),
-          const SizedBox(height: 8),
-
-          // ── FPS ──────────────────────────────────────────────────────
-          const TbLabel('Custom FPS'),
-          TbSpeedSlider(
-              value: (1000 / layer.fps).clamp(10, 500),
-              onChanged: (v) =>
-                  n.updateLayer(layer.copyWith(fps: 1000 / v))),
+          _PropertiesToggleRow(
+            label: 'Show progress',
+            color: layer.progressColor,
+            value: layer.showProgress,
+            initialFontId: layer.fontId,
+            initialEffect: AnimationEffect.none,
+            showFont: false,
+            showFontEffect: false,
+            showLightingEffect: false,
+            onPropertiesChanged: (result) => n.updateLayer(layer.copyWith(
+              progressColor: result.color,
+            )),
+            onToggled: (v) => n.updateLayer(layer.copyWith(showProgress: v)),
+          ),
         ],
       );
 
@@ -236,7 +261,90 @@ class SpotifyToolboxRight extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Private helpers
+// _PropertiesToggleRow
+//
+// Combines a color swatch (opens PropertiesCustomizer) + label + Switch.
+// Replaces the old plain TbToggleRow for title/artist/progress rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PropertiesToggleRow extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool value;
+  final LedFontId initialFontId;
+  final AnimationEffect initialEffect;
+  final bool showFont;
+  final bool showFontEffect;
+  final bool showLightingEffect;
+  final ValueChanged<PropertiesResult> onPropertiesChanged;
+  final ValueChanged<bool> onToggled;
+
+  const _PropertiesToggleRow({
+    required this.label,
+    required this.color,
+    required this.value,
+    required this.initialFontId,
+    required this.initialEffect,
+    this.showFont = true,
+    this.showFontEffect = true,
+    this.showLightingEffect = false,
+    required this.onPropertiesChanged,
+    required this.onToggled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: Row(
+        children: [
+          // Color swatch — opens PropertiesCustomizer
+          GestureDetector(
+            onTap: () async {
+              final result = await showPropertiesCustomizer(
+                context,
+                initialColor: color,
+                initialFontId: initialFontId,
+                initialEffect: initialEffect,
+                showFont: showFont,
+                showFontEffect: showFontEffect,
+                showLightingEffect: showLightingEffect,
+              );
+              if (result != null) onPropertiesChanged(result);
+            },
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: const BorderRadius.all(kRadiusSm),
+                border: Border.all(color: Colors.black.withOpacity(0.18)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Label
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(fontSize: 11, color: kTextMuted)),
+          ),
+          // Toggle
+          Transform.scale(
+            scale: 0.5,
+            child: Switch(
+              value: value,
+              onChanged: onToggled,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Private helpers (unchanged from original)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AlbumArtThumbnail extends StatelessWidget {

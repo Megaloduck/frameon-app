@@ -426,15 +426,15 @@ class GifLayer extends Layer {
 // Spotify Layer  
 // ─────────────────────────────────────────────────────────────────────────────
 
-// NOTE: SpotifyTextEffect is defined in spotify_widget.dart and re-exported.
-// Import it from there. This layer file imports it via the widget export below.
-
 class SpotifyLayer extends Layer {
   final SpotifyLayout layout;
   final bool showTitle;
   final bool showArtist;
   final bool showProgress;
-  final Color textColor;
+  final Color textColor;      // kept for backward compat / artAndText global text
+  final Color titleColor;
+  final Color artistColor;
+  final Color progressColor;
   final double fps;
   final ArtLayoutMode? artLayoutMode;
   final LedFontId fontId;
@@ -448,6 +448,9 @@ class SpotifyLayer extends Layer {
     this.showArtist = true,
     this.showProgress = true,
     this.textColor = const Color(0xFFFFFFFF),
+    this.titleColor =const Color(0xFFFFFFFF),
+    this.artistColor = const Color(0xFFFFFFFF),
+    this.progressColor = const Color(0xFF21C32C),
     this.fps = 10,
     super.visible,
     super.zIndex,
@@ -470,6 +473,9 @@ class SpotifyLayer extends Layer {
     bool? showArtist,
     bool? showProgress,
     Color? textColor,
+    Color? titleColor,
+    Color? artistColor,
+    Color? progressColor,
     double? fps,
     bool? visible,
     int? zIndex,
@@ -487,6 +493,9 @@ class SpotifyLayer extends Layer {
         showArtist: showArtist ?? this.showArtist,
         showProgress: showProgress ?? this.showProgress,
         textColor: textColor ?? this.textColor,
+        titleColor: titleColor ?? this.titleColor,
+        artistColor: artistColor ?? this.artistColor,
+        progressColor: progressColor ?? this.progressColor,
         fps: fps ?? this.fps,
         visible: visible ?? this.visible,
         zIndex: zIndex ?? this.zIndex,
@@ -507,6 +516,9 @@ class SpotifyLayer extends Layer {
         'showArtist': showArtist,
         'showProgress': showProgress,
         'textColor': textColor.value,
+        'titleColor': titleColor.value,
+        'artistColor': artistColor.value,
+        'progressColor': progressColor.value,
         'fps': fps,
         'visible': visible,
         'zIndex': zIndex,
@@ -525,6 +537,9 @@ class SpotifyLayer extends Layer {
         showArtist: j['showArtist'] as bool? ?? true,
         showProgress: j['showProgress'] as bool? ?? true,
         textColor: Color(j['textColor'] as int? ?? 0xFFFFFFFF),
+        titleColor: Color(j['titleColor'] as int? ?? 0xFFFFFFFF),
+        artistColor: Color(j['artistColor'] as int? ?? 0xFFFFFFFF),
+        progressColor: Color(j['progressColor'] as int? ?? 0xFF21C32C),
         fps: (j['fps'] as num?)?.toDouble() ?? 10,
         visible: j['visible'] as bool? ?? true,
         zIndex: j['zIndex'] as int? ?? 0,
@@ -540,7 +555,7 @@ class SpotifyLayer extends Layer {
           j['textEffect'] as String? ?? 'scroll',
         ),
       );
-}
+} 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pomodoro Layer  (unchanged)
