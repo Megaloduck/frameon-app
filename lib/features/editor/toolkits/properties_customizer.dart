@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../engine/renderer/font_organizer.dart';
+
 import '../../../../engine/scene/layer.dart';
 import 'ui_primitives.dart';
 
@@ -14,11 +15,7 @@ import 'ui_primitives.dart';
 //   • Font style dropdown
 //   • Font effect (scroll direction toggle + animation dropdown + speed slider)
 //   • Lighting effect (dropdown + speed slider)
-//
-// Replaces the old ColorPicker sheet for text layers.
-// For layers that have no animation/font (e.g. clock sub-colors), pass
-// showEffects: false to render only the color picker half.
-// ─────────────────────────────────────────────────────────────────────────────
+
 
 class PropertiesCustomizer extends StatefulWidget {
   // ── Color ──────────────────────────────────────────────────────────────────
@@ -183,9 +180,7 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
   String _lightingLabel(AnimationEffect e) => switch (e) {
         AnimationEffect.none => 'Static',
         AnimationEffect.pulse => 'Breathing',
-        AnimationEffect.fade => 'Fade',
-        AnimationEffect.burst => 'Burst',
-        AnimationEffect.blink => 'Blink',
+        AnimationEffect.fade => 'Fading',
         _ => e.name,
       };
 

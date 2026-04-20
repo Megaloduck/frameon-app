@@ -1,11 +1,8 @@
 import '../../renderer/pixel_buffer.dart';
 import 'base_effect.dart';
 
-/// Marquee scroll — content enters from the right and exits to the left.
-/// Unlike the old wrap-around version, this shifts the entire buffer left by
-/// [offset] pixels and fills the vacated right side with transparent black.
-/// The [TextWidget] already draws the text at its natural position; this
-/// effect then slides that rendered content across the canvas.
+/// Marquee scroll with wrap-around — content scrolls left and re-enters from the right.
+/// This creates an endless looping effect like a classic LED marquee.
 class ScrollLeftEffect extends AnimationEffectProcessor {
   final double pixelsPerSecond;
 
@@ -21,14 +18,19 @@ class ScrollLeftEffect extends AnimationEffectProcessor {
       return;
     }
 
+    // Calculate how many pixels to shift left
     final int shift = ((elapsedMs * pixelsPerSecond) / 1000).floor();
+    
+    // Normalize shift to wrap around the buffer width
+    final int effectiveShift = shift % w;
 
-    dst.clear(); // fill with transparent black first
+    dst.clear();
 
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        final int srcX = x + shift;
-        if (srcX < 0 || srcX >= w) continue; // out of source — leave black
+        // Source pixel comes from the right side (shifted left)
+        // With wrap-around: (x + effectiveShift) % w
+        final int srcX = (x + effectiveShift) % w;
         dst.setPixel(x, y, src.getPixel(srcX, y));
       }
     }

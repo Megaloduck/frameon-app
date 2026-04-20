@@ -1,20 +1,8 @@
-// lib/features/editor/widgets/toolbox/spotify_toolbox.dart
-//
-// Right panel shows ONLY:
-//   • Layout dropdown
-//   • Art layout mode dropdown (artOnly only)
-//   • Show title   [color swatch → PropertiesCustomizer] [toggle]
-//   • Show artist  [color swatch → PropertiesCustomizer] [toggle]
-//   • Show progress [color swatch → PropertiesCustomizer] [toggle]
-//
-// Font/color/animation are all inside PropertiesCustomizer, no duplication.
-
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../engine/renderer/font_organizer.dart';
 import '../../../../engine/scene/layer.dart';
 import '../../../../engine/widgets/spotify_widget.dart';
 import '../../../../shared/providers/providers.dart';
