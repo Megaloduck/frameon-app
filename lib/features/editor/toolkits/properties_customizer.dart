@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../engine/renderer/font_organizer.dart';
+import '../../../../engine/animation/effects/leftscroll_effect.dart';
+import '../../../../engine/animation/effects/rightscroll_effect.dart';
+
 
 import '../../../../engine/scene/layer.dart';
 import 'ui_primitives.dart';
