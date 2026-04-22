@@ -11,7 +11,7 @@ import 'toolbox_shared.dart';
 import '../ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Left panel — Spotify connection controls (unchanged)
+// Left panel — Spotify connection controls
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyToolboxLeft extends ConsumerWidget {
@@ -81,12 +81,16 @@ class SpotifyToolboxLeft extends ConsumerWidget {
               GestureDetector(
                 onTap: service.disconnect,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1DB954).withOpacity(0.15),
-                    borderRadius: const BorderRadius.all(kRadiusSm),
+                    color:
+                        const Color(0xFF1DB954).withOpacity(0.15),
+                    borderRadius:
+                        const BorderRadius.all(kRadiusSm),
                     border: Border.all(
-                        color: const Color(0xFF1DB954).withOpacity(0.5)),
+                        color: const Color(0xFF1DB954)
+                            .withOpacity(0.5)),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
@@ -95,8 +99,9 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                           size: 12, color: Color(0xFF1DB954)),
                       SizedBox(width: 4),
                       Text('Disconnect',
-                          style:
-                              TextStyle(fontSize: 10, color: Color(0xFF1DB954))),
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF1DB954))),
                     ],
                   ),
                 ),
@@ -112,8 +117,8 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                   value: spot.progress,
                   minHeight: 4,
                   backgroundColor: kBorder,
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Color(0xFF1DB954)),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF1DB954)),
                 ),
               ),
               const SizedBox(height: 6),
@@ -121,9 +126,11 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatDuration(spot.currentPosition),
-                      style: const TextStyle(fontSize: 10, color: kTextDim)),
+                      style: const TextStyle(
+                          fontSize: 10, color: kTextDim)),
                   Text(_formatDuration(spot.currentDuration),
-                      style: const TextStyle(fontSize: 10, color: kTextDim)),
+                      style: const TextStyle(
+                          fontSize: 10, color: kTextDim)),
                 ],
               ),
             ],
@@ -141,7 +148,7 @@ class SpotifyToolboxLeft extends ConsumerWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Right panel — layout + three visibility rows only
+// Right panel — layout + visibility rows
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyToolboxRight extends StatelessWidget {
@@ -158,7 +165,7 @@ class SpotifyToolboxRight extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Layout ──────────────────────────────────────────────────
+          // ── Layout dropdown ──────────────────────────────────────────
           tbGreenDropdown<SpotifyLayout>(
             SpotifyLayout.values,
             layer.layout,
@@ -189,12 +196,14 @@ class SpotifyToolboxRight extends StatelessWidget {
               showFont: true,
               showFontEffect: true,
               showLightingEffect: true,
+              // FIX: writes titleColor for the title row
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
                 titleColor: r.color,
                 fontId: r.fontId,
                 textEffect: _toSpotifyEffect(r.effect),
               )),
-              onToggled: (v) => n.updateLayer(layer.copyWith(showTitle: v)),
+              onToggled: (v) =>
+                  n.updateLayer(layer.copyWith(showTitle: v)),
             ),
 
           // ── Show artist ──────────────────────────────────────────────
@@ -208,15 +217,17 @@ class SpotifyToolboxRight extends StatelessWidget {
               showFont: true,
               showFontEffect: true,
               showLightingEffect: true,
+              // FIX: was incorrectly writing titleColor — now writes artistColor
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
                 artistColor: r.color,
                 fontId: r.fontId,
                 textEffect: _toSpotifyEffect(r.effect),
               )),
-              onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),
+              onToggled: (v) =>
+                  n.updateLayer(layer.copyWith(showArtist: v)),
             ),
 
-          // ── Show progress (always) ───────────────────────────────────
+          // ── Show progress ────────────────────────────────────────────
           _PropertiesToggleRow(
             label: 'Show progress',
             color: layer.progressColor,
@@ -228,18 +239,19 @@ class SpotifyToolboxRight extends StatelessWidget {
             showLightingEffect: false,
             onPropertiesChanged: (r) =>
                 n.updateLayer(layer.copyWith(progressColor: r.color)),
-            onToggled: (v) => n.updateLayer(layer.copyWith(showProgress: v)),
+            onToggled: (v) =>
+                n.updateLayer(layer.copyWith(showProgress: v)),
           ),
         ],
       );
 
   SpotifyTextEffect _toSpotifyEffect(AnimationEffect e) => switch (e) {
-        AnimationEffect.scrollLeft  => SpotifyTextEffect.scroll,
+        AnimationEffect.scrollLeft => SpotifyTextEffect.scroll,
         AnimationEffect.scrollRight => SpotifyTextEffect.scroll,
-        AnimationEffect.blink       => SpotifyTextEffect.blink,
-        AnimationEffect.pulse       => SpotifyTextEffect.pulse,
-        AnimationEffect.fade        => SpotifyTextEffect.fade,
-        _                           => SpotifyTextEffect.static_,
+        AnimationEffect.blink => SpotifyTextEffect.blink,
+        AnimationEffect.pulse => SpotifyTextEffect.pulse,
+        AnimationEffect.fade => SpotifyTextEffect.fade,
+        _ => SpotifyTextEffect.static_,
       };
 }
 
@@ -295,22 +307,26 @@ class _PropertiesToggleRow extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   color: color,
-                  borderRadius: const BorderRadius.all(kRadiusSm),
-                  border: Border.all(color: Colors.black.withOpacity(0.18)),
+                  borderRadius:
+                      const BorderRadius.all(kRadiusSm),
+                  border: Border.all(
+                      color: Colors.black.withOpacity(0.18)),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(label,
-                  style: const TextStyle(fontSize: 12, color: kTextMuted)),
+                  style: const TextStyle(
+                      fontSize: 12, color: kTextMuted)),
             ),
             Transform.scale(
               scale: 0.5,
               child: Switch(
                 value: value,
                 onChanged: onToggled,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                materialTapTargetSize:
+                    MaterialTapTargetSize.shrinkWrap,
               ),
             ),
           ],
@@ -331,7 +347,8 @@ class _AlbumArtThumbnail extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         width: 60,
         height: 60,
-        child: CustomPaint(painter: _ArtPainter(pixels: pixels, size: size)),
+        child:
+            CustomPaint(painter: _ArtPainter(pixels: pixels, size: size)),
       );
 }
 
@@ -365,7 +382,8 @@ class _ArtPainter extends CustomPainter {
 class _NowPlayingCard extends StatelessWidget {
   final SpotifyState spot;
   final VoidCallback onRefresh;
-  const _NowPlayingCard({required this.spot, required this.onRefresh});
+  const _NowPlayingCard(
+      {required this.spot, required this.onRefresh});
 
   @override
   Widget build(BuildContext context) => Row(
@@ -407,19 +425,23 @@ class _NowPlayingCard extends StatelessWidget {
                 Text(
                   spot.currentTrackTitle ?? '—',
                   style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
                 const SizedBox(height: 2),
                 Text(spot.currentArtist ?? '',
-                    style: const TextStyle(fontSize: 11, color: kTextMuted),
+                    style: const TextStyle(
+                        fontSize: 11, color: kTextMuted),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1),
                 if (spot.currentAlbum != null) ...[
                   const SizedBox(height: 1),
                   Text(spot.currentAlbum!,
-                      style: const TextStyle(fontSize: 9, color: kTextDim),
+                      style: const TextStyle(
+                          fontSize: 9, color: kTextDim),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1),
                 ],
@@ -433,7 +455,8 @@ class _NowPlayingCard extends StatelessWidget {
               borderRadius: const BorderRadius.all(kRadiusSm),
               child: const Padding(
                 padding: EdgeInsets.all(6),
-                child: Icon(Icons.refresh_rounded, size: 15, color: kTextMuted),
+                child: Icon(Icons.refresh_rounded,
+                    size: 15, color: kTextMuted),
               ),
             ),
           ),
@@ -457,7 +480,8 @@ class _ConnectingCard extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text('Opening Spotify in your browser…',
-                style: TextStyle(fontSize: 11, color: kTextMuted)),
+                style:
+                    TextStyle(fontSize: 11, color: kTextMuted)),
           ),
         ],
       );
@@ -466,7 +490,8 @@ class _ConnectingCard extends StatelessWidget {
 class _DisconnectedCard extends StatelessWidget {
   final String? errorMessage;
   final Future<void> Function() onConnect;
-  const _DisconnectedCard({this.errorMessage, required this.onConnect});
+  const _DisconnectedCard(
+      {this.errorMessage, required this.onConnect});
 
   @override
   Widget build(BuildContext context) => Column(
@@ -476,15 +501,19 @@ class _DisconnectedCard extends StatelessWidget {
               size: 28, color: Color(0xFF1DB954)),
           const SizedBox(height: 6),
           const Text('Connect to Spotify',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           if (errorMessage != null)
             Text(errorMessage!,
-                style: TextStyle(fontSize: 10, color: Colors.red.shade400),
+                style:
+                    TextStyle(fontSize: 10, color: Colors.red.shade400),
                 textAlign: TextAlign.center)
           else
-            const Text('Sign in to display the current track',
-                style: TextStyle(fontSize: 10, color: kTextMuted),
+            const Text(
+                'Sign in to display the current track',
+                style:
+                    TextStyle(fontSize: 10, color: kTextMuted),
                 textAlign: TextAlign.center),
           const SizedBox(height: 8),
           SizedBox(
@@ -497,12 +526,14 @@ class _DisconnectedCard extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF1DB954),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8),
                 shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(kRadiusSm)),
+                    borderRadius:
+                        BorderRadius.all(kRadiusSm)),
               ),
             ),
           ),
         ],
       );
-} 
+}
