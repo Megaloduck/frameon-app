@@ -432,8 +432,12 @@ class SpotifyLayer extends Layer {
   final double fps;
   final ArtLayoutMode? artLayoutMode;
   final LedFontId fontId;
-  final SpotifyTextEffect textEffect;
-  final int textEffectSpeedMs; // NEW: Speed for text effects
+
+  // Per-element effects — each property customizer writes independently
+  final AnimationEffect titleEffect;
+  final int titleEffectSpeedMs;
+  final AnimationEffect artistEffect;
+  final int artistEffectSpeedMs;
 
   const SpotifyLayer({
     required super.id,
@@ -453,8 +457,10 @@ class SpotifyLayer extends Layer {
     super.offset,
     this.artLayoutMode,
     this.fontId = LedFontId.polymorph,
-    this.textEffect = SpotifyTextEffect.scroll,
-    this.textEffectSpeedMs = 100, // NEW: Default speed
+    this.titleEffect = AnimationEffect.scrollLeft,
+    this.titleEffectSpeedMs = 100,
+    this.artistEffect = AnimationEffect.scrollLeft,
+    this.artistEffectSpeedMs = 100,
   });
 
   @override
@@ -479,8 +485,10 @@ class SpotifyLayer extends Layer {
     Offset? offset,
     ArtLayoutMode? artLayoutMode,
     LedFontId? fontId,
-    SpotifyTextEffect? textEffect,
-    int? textEffectSpeedMs, // NEW
+    AnimationEffect? titleEffect,
+    int? titleEffectSpeedMs,
+    AnimationEffect? artistEffect,
+    int? artistEffectSpeedMs,
   }) =>
       SpotifyLayer(
         id: id ?? this.id,
@@ -500,8 +508,10 @@ class SpotifyLayer extends Layer {
         offset: offset ?? this.offset,
         artLayoutMode: artLayoutMode ?? this.artLayoutMode,
         fontId: fontId ?? this.fontId,
-        textEffect: textEffect ?? this.textEffect,
-        textEffectSpeedMs: textEffectSpeedMs ?? this.textEffectSpeedMs,
+        titleEffect: titleEffect ?? this.titleEffect,
+        titleEffectSpeedMs: titleEffectSpeedMs ?? this.titleEffectSpeedMs,
+        artistEffect: artistEffect ?? this.artistEffect,
+        artistEffectSpeedMs: artistEffectSpeedMs ?? this.artistEffectSpeedMs,
       );
 
   @override
@@ -524,37 +534,63 @@ class SpotifyLayer extends Layer {
         'offsetX': offset.dx,
         'offsetY': offset.dy,
         'fontId': fontId.name,
-        'textEffect': textEffect.name,
-        'textEffectSpeedMs': textEffectSpeedMs, // NEW
+        'titleEffect': titleEffect.name,
+        'titleEffectSpeedMs': titleEffectSpeedMs,
+        'artistEffect': artistEffect.name,
+        'artistEffectSpeedMs': artistEffectSpeedMs,
       };
 
-  factory SpotifyLayer.fromJson(Map<String, dynamic> j) => SpotifyLayer(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        layout: SpotifyLayout.values.byName(j['layout'] as String? ?? 'artAndText'),
-        showTitle: j['showTitle'] as bool? ?? true,
-        showArtist: j['showArtist'] as bool? ?? true,
-        showProgress: j['showProgress'] as bool? ?? true,
-        textColor: Color(j['textColor'] as int? ?? 0xFFFFFFFF),
-        titleColor: Color(j['titleColor'] as int? ?? 0xFFFFFFFF),
-        artistColor: Color(j['artistColor'] as int? ?? 0xFFFFFFFF),
-        progressColor: Color(j['progressColor'] as int? ?? 0xFF21C32C),
-        fps: (j['fps'] as num?)?.toDouble() ?? 10,
-        visible: j['visible'] as bool? ?? true,
-        zIndex: j['zIndex'] as int? ?? 0,
-        opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset(
-          (j['offsetX'] as num?)?.toDouble() ?? 0,
-          (j['offsetY'] as num?)?.toDouble() ?? 0,
-        ),
-        fontId: LedFontId.values.byName(
-          _migrateFontId(j['fontId'] as String? ?? 'polymorph'),
-        ),
-        textEffect: SpotifyTextEffect.values.byName(
-          j['textEffect'] as String? ?? 'scroll',
-        ),
-        textEffectSpeedMs: j['textEffectSpeedMs'] as int? ?? 100, // NEW
-      );
+  factory SpotifyLayer.fromJson(Map<String, dynamic> j) {
+    // Migrate old shared textEffect → both title and artist
+    final legacy = _migrateSpotifyEffect(j['textEffect'] as String?);
+    final legacySpeed = j['textEffectSpeedMs'] as int? ?? 100;
+
+    return SpotifyLayer(
+      id: j['id'] as String,
+      name: j['name'] as String,
+      layout: SpotifyLayout.values.byName(j['layout'] as String? ?? 'artAndText'),
+      showTitle: j['showTitle'] as bool? ?? true,
+      showArtist: j['showArtist'] as bool? ?? true,
+      showProgress: j['showProgress'] as bool? ?? true,
+      textColor: Color(j['textColor'] as int? ?? 0xFFFFFFFF),
+      titleColor: Color(j['titleColor'] as int? ?? 0xFFFFFFFF),
+      artistColor: Color(j['artistColor'] as int? ?? 0xFFFFFFFF),
+      progressColor: Color(j['progressColor'] as int? ?? 0xFF21C32C),
+      fps: (j['fps'] as num?)?.toDouble() ?? 10,
+      visible: j['visible'] as bool? ?? true,
+      zIndex: j['zIndex'] as int? ?? 0,
+      opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
+      offset: Offset(
+        (j['offsetX'] as num?)?.toDouble() ?? 0,
+        (j['offsetY'] as num?)?.toDouble() ?? 0,
+      ),
+      fontId: LedFontId.values.byName(
+        _migrateFontId(j['fontId'] as String? ?? 'polymorph'),
+      ),
+      titleEffect: j.containsKey('titleEffect')
+          ? AnimationEffect.values.byName(j['titleEffect'] as String)
+          : legacy,
+      titleEffectSpeedMs: j['titleEffectSpeedMs'] as int? ?? legacySpeed,
+      artistEffect: j.containsKey('artistEffect')
+          ? AnimationEffect.values.byName(j['artistEffect'] as String)
+          : legacy,
+      artistEffectSpeedMs: j['artistEffectSpeedMs'] as int? ?? legacySpeed,
+    );
+  }
+}
+
+/// Maps old SpotifyTextEffect strings to AnimationEffect for backward compat.
+AnimationEffect _migrateSpotifyEffect(String? raw) {
+  switch (raw) {
+    case 'scroll':  return AnimationEffect.scrollLeft;
+    case 'blink':   return AnimationEffect.blink;
+    case 'pulse':   return AnimationEffect.pulse;
+    case 'fade':    return AnimationEffect.fade;
+    case 'static_': return AnimationEffect.none;
+    default:
+      try { return AnimationEffect.values.byName(raw ?? 'scrollLeft'); }
+      catch (_)  { return AnimationEffect.scrollLeft; }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

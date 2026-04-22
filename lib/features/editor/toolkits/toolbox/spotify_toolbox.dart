@@ -200,7 +200,7 @@ class SpotifyToolboxRight extends StatelessWidget {
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
                 titleColor: r.color,
                 fontId: r.fontId,
-                textEffect: _toSpotifyEffect(r.effect),
+              artistEffect: r.effect,
               )),
               onToggled: (v) =>
                   n.updateLayer(layer.copyWith(showTitle: v)),
@@ -209,22 +209,22 @@ class SpotifyToolboxRight extends StatelessWidget {
           // ── Show artist ──────────────────────────────────────────────
           if (_hasText)
             _PropertiesToggleRow(
-              label: 'Show artist',
-              color: layer.artistColor,
-              value: layer.showArtist,
-              initialFontId: layer.fontId,
-              initialEffect: AnimationEffect.scrollLeft,
-              showFont: true,
-              showFontEffect: true,
-              showLightingEffect: true,
-              // FIX: was incorrectly writing titleColor — now writes artistColor
-              onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
+                label: 'Show artist',
+                color: layer.artistColor,
+                value: layer.showArtist,
+                initialFontId: layer.fontId,
+                initialEffect: layer.artistEffect,          // ← own effect
+                initialEffectSpeedMs: layer.artistEffectSpeedMs,
+                showFont: true,
+                showFontEffect: true,
+                showLightingEffect: true,
+                onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
                 artistColor: r.color,
                 fontId: r.fontId,
-                textEffect: _toSpotifyEffect(r.effect),
+                artistEffect: r.effect,                   // ← saves to artist slot
+                artistEffectSpeedMs: r.effectSpeedMs,
               )),
-              onToggled: (v) =>
-                  n.updateLayer(layer.copyWith(showArtist: v)),
+              onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),
             ),
 
           // ── Show progress ────────────────────────────────────────────
@@ -245,14 +245,7 @@ class SpotifyToolboxRight extends StatelessWidget {
         ],
       );
 
-  SpotifyTextEffect _toSpotifyEffect(AnimationEffect e) => switch (e) {
-        AnimationEffect.scrollLeft => SpotifyTextEffect.scroll,
-        AnimationEffect.scrollRight => SpotifyTextEffect.scroll,
-        AnimationEffect.blink => SpotifyTextEffect.blink,
-        AnimationEffect.pulse => SpotifyTextEffect.pulse,
-        AnimationEffect.fade => SpotifyTextEffect.fade,
-        _ => SpotifyTextEffect.static_,
-      };
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +258,7 @@ class _PropertiesToggleRow extends StatelessWidget {
   final bool value;
   final LedFontId initialFontId;
   final AnimationEffect initialEffect;
+  final int initialEffectSpeedMs;        // ← add this
   final bool showFont;
   final bool showFontEffect;
   final bool showLightingEffect;
@@ -277,6 +271,7 @@ class _PropertiesToggleRow extends StatelessWidget {
     required this.value,
     required this.initialFontId,
     required this.initialEffect,
+    this.initialEffectSpeedMs = 100,     // ← add this
     this.showFont = true,
     this.showFontEffect = true,
     this.showLightingEffect = false,
@@ -296,6 +291,7 @@ class _PropertiesToggleRow extends StatelessWidget {
                   initialColor: color,
                   initialFontId: initialFontId,
                   initialEffect: initialEffect,
+                  initialEffectSpeedMs: initialEffectSpeedMs,  // ← pass it
                   showFont: showFont,
                   showFontEffect: showFontEffect,
                   showLightingEffect: showLightingEffect,
@@ -303,31 +299,21 @@ class _PropertiesToggleRow extends StatelessWidget {
                 if (result != null) onPropertiesChanged(result);
               },
               child: Container(
-                width: 28,
-                height: 28,
+                width: 28, height: 28,
                 decoration: BoxDecoration(
                   color: color,
-                  borderRadius:
-                      const BorderRadius.all(kRadiusSm),
-                  border: Border.all(
-                      color: Colors.black.withOpacity(0.18)),
+                  borderRadius: const BorderRadius.all(kRadiusSm),
+                  border: Border.all(color: Colors.black.withOpacity(0.18)),
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontSize: 12, color: kTextMuted)),
-            ),
+            Expanded(child: Text(label,
+                style: const TextStyle(fontSize: 12, color: kTextMuted))),
             Transform.scale(
               scale: 0.5,
-              child: Switch(
-                value: value,
-                onChanged: onToggled,
-                materialTapTargetSize:
-                    MaterialTapTargetSize.shrinkWrap,
-              ),
+              child: Switch(value: value, onChanged: onToggled,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
             ),
           ],
         ),
