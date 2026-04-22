@@ -197,11 +197,11 @@ class SpotifyToolboxRight extends StatelessWidget {
               showFont: true,
               showFontEffect: true,
               showLightingEffect: true,
-              // FIX: writes titleColor for the title row
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
-                titleColor: r.color,
-                fontId: r.fontId,
-              artistEffect: r.effect,
+              titleColor: r.color,
+              fontId: r.fontId,
+              titleEffect: r.effect,
+              titleEffectSpeedMs: r.effectSpeedMs,
               )),
               onToggled: (v) =>n.updateLayer(layer.copyWith(showTitle: v)),
             ),
@@ -258,7 +258,7 @@ class _PropertiesToggleRow extends StatelessWidget {
   final bool value;
   final LedFontId initialFontId;
   final AnimationEffect initialEffect;
-  final int initialEffectSpeedMs;        // ← add this
+  final int initialEffectSpeedMs;        
   final bool showFont;
   final bool showFontEffect;
   final bool showLightingEffect;
@@ -271,7 +271,7 @@ class _PropertiesToggleRow extends StatelessWidget {
     required this.value,
     required this.initialFontId,
     required this.initialEffect,
-    this.initialEffectSpeedMs = 100,     // ← add this
+    this.initialEffectSpeedMs = 100,     
     this.showFont = true,
     this.showFontEffect = true,
     this.showLightingEffect = false,
