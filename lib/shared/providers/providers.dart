@@ -161,8 +161,32 @@ int _calculateFrameCount(
     switch (layer.type) {
       case LayerType.clock:
       case LayerType.pomodoro:
-      case LayerType.spotify:
-        layerFrames = twoSecondFrames;
+      // AFTER:
+case LayerType.spotify:
+  final sp = layer as SpotifyLayer;
+  // Calculate the longest scroll loop for title or artist.
+  // Viewport width depends on layout: artAndText uses ~31px, others use 64px.
+  final int viewportW = sp.layout == SpotifyLayout.artAndText ? 31 : 64;
+  int maxSpotifyFrames = twoSecondFrames;
+
+  for (final pair in [
+    (sp.titleEffect, sp.titleEffectSpeedMs),
+    (sp.artistEffect, sp.artistEffectSpeedMs),
+  ]) {
+    final effect = pair.$1;
+    final speedMs = pair.$2;
+    if (effect == AnimationEffect.scrollLeft ||
+        effect == AnimationEffect.scrollRight) {
+      // Assume up to ~120px of text (generous estimate for long song titles).
+      // bufW = contentW + maxW; at pps = 1000/speedMs, loop duration = bufW * speedMs ms.
+      const int estimatedContentW = 120;
+      final int bufW = estimatedContentW + viewportW;
+      final int loopMs = bufW * speedMs;
+      final int frames = (loopMs / frameDurationMs).ceil();
+      if (frames > maxSpotifyFrames) maxSpotifyFrames = frames;
+    }
+  }
+  layerFrames = maxSpotifyFrames;
 
       case LayerType.text:
         final t = layer as TextLayer;
