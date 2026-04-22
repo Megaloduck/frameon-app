@@ -14,6 +14,17 @@ import 'pixel_buffer.dart';
 import 'rgb565_encoder.dart';
 
 /// Central compositing engine. No dart:io — runs on all platforms.
+///
+/// Two rendering modes:
+///
+///   1. [renderFrameBuffer] — renders a single frame at [elapsedMs] into a
+///      [PixelBuffer]. Used by the live preview. No RGB565 encoding, no frame
+///      count needed, no cap. Always reflects the current state of live layers
+///      (clock, Spotify, Pomodoro).
+///
+///   2. [render] — pre-renders a fixed-length [Timeline] of RGB565-encoded
+///      frames for device export. The ESP32 loops through these independently
+///      after receiving them over serial.
 class MatrixRenderer {
   MatrixRenderer();
 
@@ -43,15 +54,42 @@ class MatrixRenderer {
   void removeAsset(String key) => _assetCache.remove(key);
 
   // ── Live service state ────────────────────────────────────────────────────
-  // Simple public fields — no custom setters. The providers.dart TimelineNotifier
-  // pushes the latest SpotifyTrack (including album art pixels) directly here
-  // before each render call, so there is no need to suppress "unchanged" updates.
 
   SpotifyTrack?       currentTrack;
   PomodoroTimerState? currentPomodoroState;
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Live preview — single frame ───────────────────────────────────────────
 
+  /// Render one frame at [elapsedMs] directly into a [PixelBuffer].
+  ///
+  /// This is the fast path used by the matrix preview. It avoids:
+  ///   - RGB565 encoding then immediate decoding (wasteful round-trip)
+  ///   - Pre-computing a frame count or loop length
+  ///   - Any hard cap on animation length
+  ///
+  /// [currentTrack] and [currentPomodoroState] must be set before calling
+  /// this if Spotify or Pomodoro layers are present.
+  PixelBuffer renderFrameBuffer(Scene scene, int elapsedMs) {
+    _ensureEntries(scene);
+    final int w = scene.matrixWidth;
+    final int h = scene.matrixHeight;
+    final composite = PixelBuffer(width: w, height: h);
+    for (final layer in scene.visibleLayers) {
+      final lb = PixelBuffer(width: w, height: h);
+      _renderLayer(layer, lb, elapsedMs);
+      composite.blendOver(lb);
+    }
+    return composite;
+  }
+
+  // ── Device export — pre-rendered timeline ─────────────────────────────────
+
+  /// Pre-render [frameCount] frames into an RGB565-encoded [Timeline].
+  ///
+  /// Used exclusively for device export. The ESP32 receives this packet and
+  /// loops through it independently. Dynamic layers (clock, Spotify, Pomodoro)
+  /// are baked in at the moment of export — the device will show stale data
+  /// until the next send.
   Future<Timeline> render(
     Scene scene, {
     int frameDurationMs = 100,

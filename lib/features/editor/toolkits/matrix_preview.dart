@@ -3,10 +3,21 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../engine/renderer/pixel_buffer.dart';
-import '../../../engine/renderer/rgb565_encoder.dart';
 import '../../../engine/scene/timeline.dart';
 import '../../../shared/providers/providers.dart';
 import 'ui_primitives.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MatrixPreview
+//
+// Drives a continuous Ticker that increments previewElapsedMsProvider every
+// frame. previewFrameProvider watches that value and re-renders one PixelBuffer
+// frame per tick — no frame count, no cap, no encode/decode round-trip.
+//
+// The timelineProvider is still watched here solely for the info strip stats
+// (frame count, byte size) shown below the preview canvas. It is NOT used
+// for the actual preview rendering.
+// ─────────────────────────────────────────────────────────────────────────────
 
 class MatrixPreview extends ConsumerStatefulWidget {
   const MatrixPreview({super.key});
@@ -44,9 +55,14 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
 
   @override
   Widget build(BuildContext context) {
+    // Live PixelBuffer — one frame rendered at current elapsedMs.
+    final buffer = ref.watch(previewFrameProvider);
+
+    // Timeline is only needed for the stats strip (frame count, KB).
+    // It is no longer needed for rendering the preview.
     final timelineAsync = ref.watch(timelineProvider);
-    final elapsedMs     = ref.watch(previewElapsedMsProvider);
-    final scene         = ref.watch(sceneProvider);
+
+    final scene = ref.watch(sceneProvider);
 
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
@@ -54,10 +70,7 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
         children: [
           const _PreviewLabel(),
           Expanded(
-            child: _CanvasArea(
-              timelineAsync: timelineAsync,
-              elapsedMs: elapsedMs,
-            ),
+            child: _CanvasArea(buffer: buffer),
           ),
           _InfoStrip(
             width:         scene.matrixWidth,
@@ -70,6 +83,10 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preview label
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _PreviewLabel extends StatelessWidget {
   const _PreviewLabel();
@@ -89,10 +106,13 @@ class _PreviewLabel extends StatelessWidget {
       );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Canvas area
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _CanvasArea extends StatelessWidget {
-  final AsyncValue<Timeline> timelineAsync;
-  final int elapsedMs;
-  const _CanvasArea({required this.timelineAsync, required this.elapsedMs});
+  final PixelBuffer buffer;
+  const _CanvasArea({required this.buffer});
 
   @override
   Widget build(BuildContext context) {
@@ -120,11 +140,7 @@ class _CanvasArea extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: const BorderRadius.all(kRadiusSm),
-                  child: timelineAsync.when(
-                    loading: () => const _Loading(),
-                    error: (_, __) => const _Error(),
-                    data: (t) => _LedCanvas(timeline: t, elapsedMs: elapsedMs),
-                  ),
+                  child: _LedCanvas(buffer: buffer),
                 ),
               ),
             ),
@@ -134,6 +150,10 @@ class _CanvasArea extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dot grid background painter
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _DotGridPainter extends CustomPainter {
   final bool isDark;
@@ -158,87 +178,99 @@ class _DotGridPainter extends CustomPainter {
   bool shouldRepaint(_DotGridPainter old) => old.isDark != isDark;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LED canvas — wraps the painter in a LayoutBuilder
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _LedCanvas extends StatelessWidget {
-  final Timeline timeline;
-  final int elapsedMs;
-  const _LedCanvas({required this.timeline, required this.elapsedMs});
+  final PixelBuffer buffer;
+  const _LedCanvas({required this.buffer});
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (_, c) => CustomPaint(
           size: Size(c.maxWidth, c.maxHeight),
-          painter: _LedPainter(timeline: timeline, elapsedMs: elapsedMs),
+          painter: _LedPainter(buffer: buffer),
         ),
       );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LED painter
+//
+// Reads directly from the PixelBuffer — no RGB565 encode/decode round-trip.
+// Each pixel is checked per-channel so dim blues and greens render correctly
+// (the old single 24-bit threshold incorrectly dimmed pure-blue pixels).
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _LedPainter extends CustomPainter {
-  final Timeline timeline;
-  final int elapsedMs;
+  final PixelBuffer buffer;
 
-  static const int  _cols = 64;
-  static const int  _rows = 32;
-  static const _dec = Rgb565Encoder();
+  static const int _cols = 64;
+  static const int _rows = 32;
 
-  const _LedPainter({required this.timeline, required this.elapsedMs});
+  const _LedPainter({required this.buffer});
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Dark LED panel background.
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF0A0A0A));
 
-    final Frame? frame = timeline.frameAt(elapsedMs);
-    if (frame == null) return;
-
-    final PixelBuffer buf = _dec.decode(frame.data);
     final double dW = size.width  / _cols;
     final double dH = size.height / _rows;
+    // LED dot radius — 40% of the smaller cell dimension.
     final double r  = (dW < dH ? dW : dH) * 0.40;
     final paint = Paint()..isAntiAlias = true;
 
     for (int row = 0; row < _rows; row++) {
       for (int col = 0; col < _cols; col++) {
-        final int argb = buf.getPixel(col, row);
+        final int argb = buffer.getPixel(col, row);
 
-        // ── "LED is on" check ──────────────────────────────────────────
-        // Old check: (argb & 0x00FFFFFF) > 0x080808
-        // Bug: treats the RGB value as a single 24-bit integer, so pure
-        // blue (0x0000FF = 255) and any color where only the blue channel
-        // is lit would fail the threshold (0x080808 = 526) and render dark.
-        //
-        // Fix: check each channel independently — a pixel is "on" if ANY
-        // channel exceeds a small noise floor (8/255). This correctly
-        // handles pure blue, pure green, dim colors, and everything else.
+        // Check each channel independently so any single channel lighting
+        // a pixel (e.g. pure blue 0x0000FF) is correctly treated as "on".
         final int r8 = (argb >> 16) & 0xFF;
         final int g8 = (argb >> 8)  & 0xFF;
         final int b8 =  argb        & 0xFF;
         final bool on = r8 > 8 || g8 > 8 || b8 > 8;
 
-        paint.color = on ? Color(argb | 0xFF000000) : const Color(0xFF181818);
+        paint.color = on
+            ? Color(argb | 0xFF000000)   // lit LED — use pixel colour
+            : const Color(0xFF181818);   // unlit LED — dark grey
+
         canvas.drawCircle(
-          Offset(col * dW + dW / 2, row * dH + dH / 2), r, paint);
+          Offset(col * dW + dW / 2, row * dH + dH / 2),
+          r,
+          paint,
+        );
       }
     }
   }
 
   @override
-  bool shouldRepaint(_LedPainter old) =>
-      old.elapsedMs != elapsedMs || old.timeline != timeline;
+  bool shouldRepaint(_LedPainter old) => old.buffer != buffer;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Info strip — shows matrix dimensions and export stats
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _InfoStrip extends StatelessWidget {
   final int width, height;
   final double fps;
   final AsyncValue<Timeline> timelineAsync;
+
   const _InfoStrip({
-    required this.width, required this.height,
-    required this.fps, required this.timelineAsync,
+    required this.width,
+    required this.height,
+    required this.fps,
+    required this.timelineAsync,
   });
 
   @override
   Widget build(BuildContext context) {
     final right = timelineAsync.when(
-      loading: () => '—',
-      error: (_, __) => '!',
+      loading: () => 'rendering…',
+      error:   (_, __) => 'render error',
       data: (t) =>
           '${t.frameCount} frames · ${(t.totalBytes / 1024).toStringAsFixed(1)} KB',
     );
@@ -249,8 +281,12 @@ class _InfoStrip extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 7, height: 7,
-            decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle),
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: kGreen,
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 6),
           Text(
@@ -258,35 +294,12 @@ class _InfoStrip extends StatelessWidget {
             style: TextStyle(fontSize: 11, color: context.tTextMuted),
           ),
           const SizedBox(width: 12),
-          Text(right, style: TextStyle(fontSize: 11, color: context.tTextDim)),
+          Text(
+            right,
+            style: TextStyle(fontSize: 11, color: context.tTextDim),
+          ),
         ],
       ),
     );
   }
-}
-
-class _Loading extends StatelessWidget {
-  const _Loading();
-  @override
-  Widget build(BuildContext context) => Container(
-        color: const Color(0xFF0A0A0A),
-        child: const Center(
-          child: SizedBox(
-            width: 18, height: 18,
-            child: CircularProgressIndicator(strokeWidth: 1.5, color: kGreen),
-          ),
-        ),
-      );
-}
-
-class _Error extends StatelessWidget {
-  const _Error();
-  @override
-  Widget build(BuildContext context) => Container(
-        color: const Color(0xFF0A0A0A),
-        child: Center(
-          child: Text('render error',
-              style: TextStyle(color: Colors.red.shade400, fontSize: 10)),
-        ),
-      );
 }

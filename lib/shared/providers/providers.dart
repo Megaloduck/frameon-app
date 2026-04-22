@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../engine/renderer/matrix_renderer.dart';
+import '../../engine/renderer/pixel_buffer.dart';
 import '../../engine/scene/layer.dart';
 import '../../engine/scene/scene.dart';
 import '../../engine/scene/timeline.dart';
@@ -140,7 +141,57 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Frame count calculation
+// Live preview frame provider
+//
+// Renders exactly ONE frame at the current elapsedMs directly into a
+// PixelBuffer. No frame count estimation, no cap, no encode/decode round-trip.
+//
+// This is what drives the matrix preview widget. It re-computes whenever:
+//   - elapsedMs ticks (every ~16ms via the Ticker)
+//   - the scene changes (layer added/removed/edited)
+//   - Spotify state changes (track, art, progress)
+//   - Pomodoro state changes (remaining time, phase)
+//   - clock ticks (every second via timeServiceProvider)
+//   - GIF bytes change (new file uploaded)
+// ─────────────────────────────────────────────────────────────────────────────
+
+final previewFrameProvider = Provider<PixelBuffer>((ref) {
+  final scene     = ref.watch(sceneProvider);
+  final elapsedMs = ref.watch(previewElapsedMsProvider);
+  final renderer  = ref.read(matrixRendererProvider);
+
+  final visible = scene.visibleLayers;
+
+  // Wire live service state into renderer before rendering this frame.
+  if (visible.any((l) => l.type == LayerType.spotify)) {
+    final spotify = ref.watch(spotifyServiceProvider);
+    renderer.currentTrack = spotify.isConnected ? spotify.toTrack() : null;
+  }
+
+  if (visible.any((l) =>
+      l.type == LayerType.clock || l.type == LayerType.pomodoro)) {
+    // Watch both so a change in either triggers a re-render.
+    ref.watch(timeServiceProvider);
+    renderer.currentPomodoroState = ref.watch(pomodoroServiceProvider);
+  }
+
+  // Re-hydrate GIF assets into the renderer whenever the byte cache changes.
+  final gifBytes = ref.watch(gifBytesProvider);
+  for (final entry in gifBytes.entries) {
+    renderer.addAssetBytes(entry.key, entry.value);
+  }
+
+  return renderer.renderFrameBuffer(scene, elapsedMs);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame count calculation — used only for device export (Timeline)
+//
+// For the preview, frame count is irrelevant — previewFrameProvider renders
+// one frame at the current elapsedMs with no cap.
+//
+// For the device export we still need a loop length so the ESP32 knows when
+// to wrap. We calculate the worst-case loop duration across all visible layers.
 // ─────────────────────────────────────────────────────────────────────────────
 
 int _calculateFrameCount(
@@ -161,33 +212,35 @@ int _calculateFrameCount(
     switch (layer.type) {
       case LayerType.clock:
       case LayerType.pomodoro:
-      
+        // Clock and Pomodoro update every second; 2 seconds covers a full
+        // blink cycle. On the device these will be stale — see architecture note.
+        layerFrames = twoSecondFrames;
+
       case LayerType.spotify:
-  final sp = layer as SpotifyLayer;
-  // Calculate the longest scroll loop for title or artist.
-  // Viewport width depends on layout: artAndText uses ~31px, others use 64px.
-  final int viewportW = sp.layout == SpotifyLayout.artAndText ? 31 : 64;
-  int maxSpotifyFrames = twoSecondFrames;
+        final sp = layer as SpotifyLayer;
+        // Viewport width: artAndText uses ~31px (64 - 32art - 1gap), else 64.
+        final int viewportW = sp.layout == SpotifyLayout.artAndText ? 31 : 64;
+        int maxSpotifyFrames = twoSecondFrames;
 
-  for (final pair in [
-    (sp.titleEffect, sp.titleEffectSpeedMs),
-    (sp.artistEffect, sp.artistEffectSpeedMs),
-  ]) {
-    final effect = pair.$1;
-    final speedMs = pair.$2;
-    if (effect == AnimationEffect.scrollLeft ||
-        effect == AnimationEffect.scrollRight) {
-      // Assume up to ~120px of text (generous estimate for long song titles).
-      // bufW = contentW + maxW; at pps = 1000/speedMs, loop duration = bufW * speedMs ms.
-      const int estimatedContentW = 300;
-
-      final int bufW = estimatedContentW + viewportW;
-      final int loopMs = bufW * speedMs;
-      final int frames = (loopMs / frameDurationMs).ceil();
-      if (frames > maxSpotifyFrames) maxSpotifyFrames = frames;
-    }
-  }
-  layerFrames = maxSpotifyFrames;
+        for (final pair in [
+          (sp.titleEffect,  sp.titleEffectSpeedMs),
+          (sp.artistEffect, sp.artistEffectSpeedMs),
+        ]) {
+          final effect  = pair.$1;
+          final speedMs = pair.$2;
+          if (effect == AnimationEffect.scrollLeft ||
+              effect == AnimationEffect.scrollRight) {
+            // bufW = estimatedContentW + viewportW.
+            // One full loop takes bufW * speedMs milliseconds.
+            // 250px covers titles/artists up to ~40 chars in Polymorph font.
+            const int estimatedContentW = 250;
+            final int bufW   = estimatedContentW + viewportW;
+            final int loopMs = bufW * speedMs;
+            final int frames = (loopMs / frameDurationMs).ceil();
+            if (frames > maxSpotifyFrames) maxSpotifyFrames = frames;
+          }
+        }
+        layerFrames = maxSpotifyFrames;
 
       case LayerType.text:
         final t = layer as TextLayer;
@@ -216,11 +269,25 @@ int _calculateFrameCount(
     if (layerFrames > maxFrames) maxFrames = layerFrames;
   }
 
+  // Cap at 300 frames for the device export packet size.
+  // The preview is NOT subject to this cap.
   return maxFrames.clamp(1, 300);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timeline Notifier
+// Timeline Notifier — device export only
+//
+// This provider pre-renders a fixed loop of RGB565 frames for sending to the
+// ESP32. It intentionally does NOT watch timeServiceProvider or Pomodoro/Spotify
+// live state — those change constantly and would cause the entire timeline to
+// re-render every second, which is wasteful now that the preview is decoupled.
+//
+// The timeline re-renders when:
+//   - The scene structure changes (layers added/removed/edited)
+//   - GIF bytes change
+//   - The user explicitly triggers a re-export
+//
+// For the output panel stats display it remains reactive to scene changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TimelineNotifier extends AsyncNotifier<Timeline> {
@@ -231,25 +298,6 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
   Future<Timeline> build() async {
     final scene    = ref.watch(sceneProvider);
     final renderer = ref.read(matrixRendererProvider);
-
-    // Determine which live-data layers are visible
-    final hasTimeLayers = scene.visibleLayers.any((l) =>
-        l.type == LayerType.clock || l.type == LayerType.pomodoro);
-    final hasSpotifyLayers =
-        scene.visibleLayers.any((l) => l.type == LayerType.spotify);
-
-    if (hasTimeLayers) {
-      ref.watch(timeServiceProvider);
-      ref.watch(pomodoroServiceProvider);
-    }
-
-    // ── KEY FIX: watch Spotify state so album art + progress trigger re-render ──
-    if (hasSpotifyLayers) {
-      final spotifyState = ref.watch(spotifyServiceProvider);
-      // Push latest track data into renderer before rendering frames
-      renderer.currentTrack =
-          spotifyState.isConnected ? spotifyState.toTrack() : null;
-    }
 
     // Re-hydrate renderer asset cache from gifBytesProvider.
     final gifBytes = ref.watch(gifBytesProvider);
@@ -263,23 +311,26 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
       gifFrameCounts[entry.key] = decoder.countFrames(entry.value);
     }
 
-    // Debounce rapid scene changes (e.g. typing in text field).
-    // Skip debounce for live layers so clock/spotify update immediately.
-    final isLive = hasTimeLayers || hasSpotifyLayers;
-    if (!isLive) {
+    // Snapshot current live state at export time (not watched — intentional).
+    // The exported timeline captures whatever is playing right now on the device.
+    final spotifyState = ref.read(spotifyServiceProvider);
+    renderer.currentTrack =
+        spotifyState.isConnected ? spotifyState.toTrack() : null;
+    renderer.currentPomodoroState = ref.read(pomodoroServiceProvider);
+
+    // Debounce rapid scene changes (e.g. typing in a text field).
+    _debounce?.cancel();
+    final int gen = ++_generation;
+
+    final completer = Completer<void>();
+    _debounce = Timer(const Duration(milliseconds: 120), completer.complete);
+    ref.onDispose(() {
       _debounce?.cancel();
-      final int gen = ++_generation;
+      if (!completer.isCompleted) completer.complete();
+    });
 
-      final completer = Completer<void>();
-      _debounce = Timer(const Duration(milliseconds: 120), completer.complete);
-      ref.onDispose(() {
-        _debounce?.cancel();
-        if (!completer.isCompleted) completer.complete();
-      });
-
-      await completer.future;
-      if (gen != _generation) return state.value ?? Timeline();
-    }
+    await completer.future;
+    if (gen != _generation) return state.value ?? Timeline();
 
     final frameCount      = _calculateFrameCount(scene, gifFrameCounts);
     final frameDurationMs = (1000 / scene.fps).round();
@@ -321,8 +372,13 @@ class _FrameCounter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Preview playback
+// Preview playback state
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Continuously increasing elapsed time in milliseconds, driven by the
+/// Ticker in MatrixPreview. previewFrameProvider watches this to trigger
+/// re-renders at display refresh rate.
 final previewElapsedMsProvider = StateProvider<int>((ref) => 0);
-final previewPlayingProvider   = StateProvider<bool>((ref) => true);
+
+/// Whether the preview ticker is running.
+final previewPlayingProvider = StateProvider<bool>((ref) => true);
