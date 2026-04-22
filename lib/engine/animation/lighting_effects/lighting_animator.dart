@@ -12,7 +12,7 @@
 //     processor.apply(src, layerBuffer, elapsedMs);
 //   }
 
-import '../../../engine/scene/layer.dart';
+import '../../scene/layer.dart';
 import '../../renderer/pixel_buffer.dart';
 import 'base_lighting.dart';
 import 'breathing_lighting.dart';
