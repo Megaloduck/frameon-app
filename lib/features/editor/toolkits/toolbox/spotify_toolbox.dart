@@ -192,7 +192,8 @@ class SpotifyToolboxRight extends StatelessWidget {
               color: layer.titleColor,
               value: layer.showTitle,
               initialFontId: layer.fontId,
-              initialEffect: AnimationEffect.scrollLeft,
+              initialEffect: layer.titleEffect,
+              initialEffectSpeedMs: layer.titleEffectSpeedMs,
               showFont: true,
               showFontEffect: true,
               showLightingEffect: true,
@@ -202,8 +203,7 @@ class SpotifyToolboxRight extends StatelessWidget {
                 fontId: r.fontId,
               artistEffect: r.effect,
               )),
-              onToggled: (v) =>
-                  n.updateLayer(layer.copyWith(showTitle: v)),
+              onToggled: (v) =>n.updateLayer(layer.copyWith(showTitle: v)),
             ),
 
           // ── Show artist ──────────────────────────────────────────────
