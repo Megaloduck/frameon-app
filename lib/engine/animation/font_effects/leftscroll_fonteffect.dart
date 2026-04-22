@@ -1,5 +1,5 @@
 import '../../renderer/pixel_buffer.dart';
-import 'base_effect.dart';
+import 'base_fonteffect.dart';
 
 /// Marquee scroll with wrap-around — content scrolls left and re-enters from the right.
 /// This creates an endless looping effect like a classic LED marquee.

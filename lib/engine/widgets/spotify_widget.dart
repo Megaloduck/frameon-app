@@ -93,19 +93,45 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     final int artistY = titleY + fontH + 2;
     final int barY = buffer.height - 3;
 
-    // FIX: use layer.titleColor instead of layer.textColor for title
     if (layer.showTitle && track.title.isNotEmpty) {
-      _drawText(font, buffer, track.title, layer.titleColor, textX, titleY,
-          textW, elapsedMs, layer.opacity, layer.textEffect);
+      _drawText(
+        font,
+        buffer,
+        track.title,
+        layer.titleColor,
+        textX,
+        titleY,
+        textW,
+        elapsedMs,
+        layer.opacity,
+        layer.textEffect,
+        layer.textEffectSpeedMs,
+      );
     }
-    // FIX: use layer.artistColor instead of layer.textColor for artist
     if (layer.showArtist && track.artist.isNotEmpty) {
-      _drawText(font, buffer, track.artist, layer.artistColor, textX, artistY,
-          textW, elapsedMs + 300, layer.opacity, layer.textEffect);
+      _drawText(
+        font,
+        buffer,
+        track.artist,
+        layer.artistColor,
+        textX,
+        artistY,
+        textW,
+        elapsedMs + 300,
+        layer.opacity,
+        layer.textEffect,
+        layer.textEffectSpeedMs,
+      );
     }
     if (layer.showProgress) {
-      _drawProgressBar(buffer, track.progress, textX, barY,
-          buffer.width - textX - 1, layer.progressColor);
+      _drawProgressBar(
+        buffer,
+        track.progress,
+        textX,
+        barY,
+        buffer.width - textX - 1,
+        layer.progressColor,
+      );
     }
   }
 
@@ -120,19 +146,45 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     final int titleY = (buffer.height - fontH * 2 - 2) ~/ 2;
     final int artistY = titleY + fontH + 2;
 
-    // FIX: use layer.titleColor instead of layer.textColor for title
     if (layer.showTitle && track.title.isNotEmpty) {
-      _drawText(font, buffer, track.title, layer.titleColor, 0, titleY,
-          buffer.width, elapsedMs, layer.opacity, layer.textEffect);
+      _drawText(
+        font,
+        buffer,
+        track.title,
+        layer.titleColor,
+        0,
+        titleY,
+        buffer.width,
+        elapsedMs,
+        layer.opacity,
+        layer.textEffect,
+        layer.textEffectSpeedMs,
+      );
     }
-    // FIX: use layer.artistColor instead of layer.textColor for artist
     if (layer.showArtist && track.artist.isNotEmpty) {
-      _drawText(font, buffer, track.artist, layer.artistColor, 0, artistY,
-          buffer.width, elapsedMs + 300, layer.opacity, layer.textEffect);
+      _drawText(
+        font,
+        buffer,
+        track.artist,
+        layer.artistColor,
+        0,
+        artistY,
+        buffer.width,
+        elapsedMs + 300,
+        layer.opacity,
+        layer.textEffect,
+        layer.textEffectSpeedMs,
+      );
     }
     if (layer.showProgress) {
-      _drawProgressBar(buffer, track.progress, 0, buffer.height - 2,
-          buffer.width - 1, layer.progressColor);
+      _drawProgressBar(
+        buffer,
+        track.progress,
+        0,
+        buffer.height - 2,
+        buffer.width - 1,
+        layer.progressColor,
+      );
     }
   }
 
@@ -158,41 +210,83 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     int elapsedMs,
     double baseOpacity,
     SpotifyTextEffect effect,
+    int speedMs,
   ) {
     switch (effect) {
       case SpotifyTextEffect.scroll:
-        _scrollText(font, buffer, text, color, startX, y, maxW, elapsedMs,
-            baseOpacity);
+        _scrollText(
+          font,
+          buffer,
+          text,
+          color,
+          startX,
+          y,
+          maxW,
+          elapsedMs,
+          baseOpacity,
+          speedMs: speedMs,
+        );
 
       case SpotifyTextEffect.static_:
         final int tw = font.textWidth(text);
         final int x = startX + ((maxW - tw) ~/ 2).clamp(0, maxW);
         font.draw(
-            buffer: buffer,
-            text: text,
-            color: color,
-            x: x,
-            y: y,
-            opacity: baseOpacity);
+          buffer: buffer,
+          text: text,
+          color: color,
+          x: x,
+          y: y,
+          opacity: baseOpacity,
+        );
 
       case SpotifyTextEffect.blink:
         final bool on = (elapsedMs ~/ 500) % 2 == 0;
         if (!on) return;
-        _scrollText(font, buffer, text, color, startX, y, maxW, elapsedMs,
-            baseOpacity);
+        _scrollText(
+          font,
+          buffer,
+          text,
+          color,
+          startX,
+          y,
+          maxW,
+          elapsedMs,
+          baseOpacity,
+          speedMs: speedMs,
+        );
 
       case SpotifyTextEffect.pulse:
         final double phase = (elapsedMs % 2000) / 2000;
         final double op =
             (0.5 - 0.5 * _cos(phase * 2 * 3.14159)) * baseOpacity;
-        _scrollText(font, buffer, text, color, startX, y, maxW, elapsedMs,
-            op.clamp(0, 1));
+        _scrollText(
+          font,
+          buffer,
+          text,
+          color,
+          startX,
+          y,
+          maxW,
+          elapsedMs,
+          op.clamp(0, 1),
+          speedMs: speedMs,
+        );
 
       case SpotifyTextEffect.fade:
         final int t = elapsedMs % 3000;
         final double op = t < 1500 ? baseOpacity : 0.0;
-        _scrollText(font, buffer, text, color, startX, y, maxW, elapsedMs,
-            op);
+        _scrollText(
+          font,
+          buffer,
+          text,
+          color,
+          startX,
+          y,
+          maxW,
+          elapsedMs,
+          op,
+          speedMs: speedMs,
+        );
     }
   }
 
@@ -212,31 +306,34 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     if (contentW <= maxW) {
       final int x = startX + ((maxW - contentW) ~/ 2).clamp(0, maxW);
       font.draw(
-          buffer: buffer,
-          text: text,
-          color: color,
-          x: x,
-          y: y,
-          opacity: opacity);
+        buffer: buffer,
+        text: text,
+        color: color,
+        x: x,
+        y: y,
+        opacity: opacity,
+      );
       return;
     }
     final int period = contentW + maxW;
     final int offset = (elapsedMs ~/ speedMs) % period;
     font.draw(
+      buffer: buffer,
+      text: text,
+      color: color,
+      x: startX - offset,
+      y: y,
+      opacity: opacity,
+    );
+    if (offset > contentW) {
+      font.draw(
         buffer: buffer,
         text: text,
         color: color,
-        x: startX - offset,
+        x: startX - offset + period,
         y: y,
-        opacity: opacity);
-    if (offset > contentW) {
-      font.draw(
-          buffer: buffer,
-          text: text,
-          color: color,
-          x: startX - offset + period,
-          y: y,
-          opacity: opacity);
+        opacity: opacity,
+      );
     }
   }
 
@@ -307,16 +404,28 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     final double scaleY = srcHeight / dstHeight;
 
     if (mode == ArtLayoutMode.letterbox) {
-      if (dstY > y)
-        dst.fillRect(x, y, w, dstY - y, const Color(0xFF000000));
-      if (dstY + dstHeight < y + h)
-        dst.fillRect(x, dstY + dstHeight, w, y + h - (dstY + dstHeight),
-            const Color(0xFF000000));
-      if (dstX > x)
+      if (dstY > y) dst.fillRect(x, y, w, dstY - y, const Color(0xFF000000));
+      if (dstY + dstHeight < y + h) {
+        dst.fillRect(
+          x,
+          dstY + dstHeight,
+          w,
+          y + h - (dstY + dstHeight),
+          const Color(0xFF000000),
+        );
+      }
+      if (dstX > x) {
         dst.fillRect(x, dstY, dstX - x, dstHeight, const Color(0xFF000000));
-      if (dstX + dstWidth < x + w)
-        dst.fillRect(dstX + dstWidth, dstY, x + w - (dstX + dstWidth),
-            dstHeight, const Color(0xFF000000));
+      }
+      if (dstX + dstWidth < x + w) {
+        dst.fillRect(
+          dstX + dstWidth,
+          dstY,
+          x + w - (dstX + dstWidth),
+          dstHeight,
+          const Color(0xFF000000),
+        );
+      }
     }
 
     for (int dy = 0; dy < dstHeight; dy++) {
@@ -331,9 +440,14 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     }
   }
 
-  // FIX: progress bar now accepts layer.progressColor instead of hardcoded green
   void _drawProgressBar(
-      PixelBuffer buffer, double progress, int x, int y, int w, Color color) {
+    PixelBuffer buffer,
+    double progress,
+    int x,
+    int y,
+    int w,
+    Color color,
+  ) {
     buffer.fillRect(x, y, w, 2, const Color(0xFF333333));
     final int filled = (w * progress.clamp(0.0, 1.0)).round();
     if (filled > 0) {

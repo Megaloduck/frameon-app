@@ -1,5 +1,5 @@
 import '../../renderer/pixel_buffer.dart';
-import 'base_effect.dart';
+import 'base_fonteffect.dart';
 
 /// Linear fade-in / fade-out cycle.
 ///

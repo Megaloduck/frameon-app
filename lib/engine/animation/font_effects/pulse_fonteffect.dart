@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import '../../renderer/pixel_buffer.dart';
-import 'base_effect.dart';
+import 'base_fonteffect.dart';
 
 /// Sine-wave opacity pulse.
 ///

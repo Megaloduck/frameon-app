@@ -3,7 +3,6 @@ import 'dart:ui';
 import '../../engine/renderer/font_organizer.dart';
 import '../../engine/widgets/spotify_widget.dart';
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +69,6 @@ abstract class Layer {
 class TextLayer extends Layer {
   final String text;
   final Color color;
-  // fontStyle replaced by fontId — uses LedFontId from font_organizer.dart
   final LedFontId fontId;
   final double fontSize;
   final TextAlignment alignment;
@@ -153,8 +151,6 @@ class TextLayer extends Layer {
         text: j['text'] as String,
         color: Color(j['color'] as int),
         fontId: LedFontId.values.byName(
-          // graceful fallback: old saves used 'fontStyle' key with values
-          // like 'matrixType' / 'led' — map those to polymorph.
           _migrateFontId(j['fontId'] as String? ?? j['fontStyle'] as String? ?? 'polymorph'),
         ),
         fontSize: (j['fontSize'] as num?)?.toDouble() ?? 8,
@@ -177,7 +173,6 @@ String _migrateFontId(String raw) {
     case 'matrixType': return 'polymorph';
     case 'led':        return 'brickwork';
     default:
-      // Already a valid LedFontId name, or unknown → fall back to polymorph.
       return LedFontId.values.any((e) => e.name == raw) ? raw : 'polymorph';
   }
 }
@@ -199,7 +194,6 @@ class ClockLayer extends Layer {
   final bool showSeconds;
   final bool blinkColon;
   final String timezone;
-  // Clock always uses polymorph — could be extended later
   final LedFontId fontId;
 
   const ClockLayer({
@@ -325,7 +319,7 @@ class ClockLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GIF / Image Layer  (unchanged)
+// GIF / Image Layer
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GifLayer extends Layer {
@@ -423,7 +417,7 @@ class GifLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify Layer  
+// Spotify Layer (ENHANCED with speed support)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyLayer extends Layer {
@@ -431,7 +425,7 @@ class SpotifyLayer extends Layer {
   final bool showTitle;
   final bool showArtist;
   final bool showProgress;
-  final Color textColor;      // kept for backward compat / artAndText global text
+  final Color textColor;
   final Color titleColor;
   final Color artistColor;
   final Color progressColor;
@@ -439,6 +433,7 @@ class SpotifyLayer extends Layer {
   final ArtLayoutMode? artLayoutMode;
   final LedFontId fontId;
   final SpotifyTextEffect textEffect;
+  final int textEffectSpeedMs; // NEW: Speed for text effects
 
   const SpotifyLayer({
     required super.id,
@@ -448,7 +443,7 @@ class SpotifyLayer extends Layer {
     this.showArtist = true,
     this.showProgress = true,
     this.textColor = const Color(0xFFFFFFFF),
-    this.titleColor =const Color(0xFFFFFFFF),
+    this.titleColor = const Color(0xFFFFFFFF),
     this.artistColor = const Color(0xFFFFFFFF),
     this.progressColor = const Color(0xFF21C32C),
     this.fps = 10,
@@ -459,6 +454,7 @@ class SpotifyLayer extends Layer {
     this.artLayoutMode,
     this.fontId = LedFontId.polymorph,
     this.textEffect = SpotifyTextEffect.scroll,
+    this.textEffectSpeedMs = 100, // NEW: Default speed
   });
 
   @override
@@ -484,6 +480,7 @@ class SpotifyLayer extends Layer {
     ArtLayoutMode? artLayoutMode,
     LedFontId? fontId,
     SpotifyTextEffect? textEffect,
+    int? textEffectSpeedMs, // NEW
   }) =>
       SpotifyLayer(
         id: id ?? this.id,
@@ -504,6 +501,7 @@ class SpotifyLayer extends Layer {
         artLayoutMode: artLayoutMode ?? this.artLayoutMode,
         fontId: fontId ?? this.fontId,
         textEffect: textEffect ?? this.textEffect,
+        textEffectSpeedMs: textEffectSpeedMs ?? this.textEffectSpeedMs,
       );
 
   @override
@@ -527,6 +525,7 @@ class SpotifyLayer extends Layer {
         'offsetY': offset.dy,
         'fontId': fontId.name,
         'textEffect': textEffect.name,
+        'textEffectSpeedMs': textEffectSpeedMs, // NEW
       };
 
   factory SpotifyLayer.fromJson(Map<String, dynamic> j) => SpotifyLayer(
@@ -554,11 +553,12 @@ class SpotifyLayer extends Layer {
         textEffect: SpotifyTextEffect.values.byName(
           j['textEffect'] as String? ?? 'scroll',
         ),
+        textEffectSpeedMs: j['textEffectSpeedMs'] as int? ?? 100, // NEW
       );
-} 
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pomodoro Layer  (unchanged)
+// Pomodoro Layer
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PomodoroLayer extends Layer {
@@ -602,9 +602,9 @@ class PomodoroLayer extends Layer {
   LayerType get type => LayerType.pomodoro;
 
   Color get activeColor => switch (currentState) {
-        PomodoroState.focus      => focusColor,
+        PomodoroState.focus => focusColor,
         PomodoroState.shortBreak => breakColor,
-        PomodoroState.longBreak  => longBreakColor,
+        PomodoroState.longBreak => longBreakColor,
       };
 
   @override
@@ -708,11 +708,17 @@ class PomodoroLayer extends Layer {
 
 Layer layerFromJson(Map<String, dynamic> j) {
   switch (j['type'] as String) {
-    case 'text':     return TextLayer.fromJson(j);
-    case 'clock':    return ClockLayer.fromJson(j);
-    case 'gif':      return GifLayer.fromJson(j);
-    case 'spotify':  return SpotifyLayer.fromJson(j);
-    case 'pomodoro': return PomodoroLayer.fromJson(j);
-    default:         throw ArgumentError('Unknown layer type: ${j['type']}');
+    case 'text':
+      return TextLayer.fromJson(j);
+    case 'clock':
+      return ClockLayer.fromJson(j);
+    case 'gif':
+      return GifLayer.fromJson(j);
+    case 'spotify':
+      return SpotifyLayer.fromJson(j);
+    case 'pomodoro':
+      return PomodoroLayer.fromJson(j);
+    default:
+      throw ArgumentError('Unknown layer type: ${j['type']}');
   }
 }

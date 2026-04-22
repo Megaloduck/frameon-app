@@ -1,12 +1,12 @@
 import '../scene/layer.dart';
 import '../renderer/pixel_buffer.dart';
-import 'font_effects/base_effect.dart';
-import 'font_effects/blink_effect.dart';
-import 'font_effects/burst_effect.dart';
-import 'font_effects/fade_effect.dart';
-import 'font_effects/leftscroll_effect.dart';
-import 'font_effects/pulse_effect.dart';
-import 'font_effects/rightscroll_effect.dart';
+import 'font_effects/base_fonteffect.dart';
+import 'font_effects/blink_fonteffect.dart';
+import 'font_effects/burst_fonteffect.dart';
+import 'font_effects/fade_fonteffect.dart';
+import 'font_effects/leftscroll_fonteffect.dart';
+import 'font_effects/pulse_fonteffect.dart';
+import 'font_effects/rightscroll_fonteffect.dart';
 
 /// Resolves the correct [AnimationEffectProcessor] for a given [Layer]
 /// and applies it during rendering.

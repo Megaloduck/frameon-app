@@ -1,5 +1,5 @@
 import '../../renderer/pixel_buffer.dart';
-import 'base_effect.dart';
+import 'base_fonteffect.dart';
 
 /// Toggles the layer on/off at [periodMs] intervals.
 ///

@@ -2,6 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../../engine/animation/animator.dart';
+import '../../../../engine/renderer/font_effects.dart';
+import '../../../../engine/renderer/lighting_effects.dart';
 import '../../../../engine/renderer/font_organizer.dart';
 import '../../../../engine/scene/layer.dart';
 import 'ui_primitives.dart';
@@ -125,12 +128,12 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     AnimationEffect.burst,
   ];
 
+  // Only effects that have a real LightingEffectProcessor implementation.
+  // fade / burst / blink / scroll* have no lighting equivalent — excluded to
+  // avoid silently doing nothing when selected.
   static const _lightingEffects = [
     AnimationEffect.none,
     AnimationEffect.pulse,
-    AnimationEffect.fade,
-    AnimationEffect.burst,
-    AnimationEffect.blink,
   ];
 
   String _effectLabel(AnimationEffect e) => switch (e) {
@@ -143,11 +146,16 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
         AnimationEffect.burst => 'Burst',
       };
 
+  // Exhaustive — compiler will flag any new AnimationEffect values not handled.
   String _lightingLabel(AnimationEffect e) => switch (e) {
-        AnimationEffect.none => 'Static',
-        AnimationEffect.pulse => 'Breathing',
-        AnimationEffect.fade => 'Fading',
-        _ => e.name,
+        AnimationEffect.none        => 'Static',
+        AnimationEffect.pulse       => 'Breathing',
+        // Not exposed in _lightingEffects but required for exhaustiveness:
+        AnimationEffect.blink       => 'Blink',
+        AnimationEffect.fade        => 'Fading',
+        AnimationEffect.burst       => 'Burst',
+        AnimationEffect.scrollLeft  => 'Scroll Left',
+        AnimationEffect.scrollRight => 'Scroll Right',
       };
 
   @override
@@ -524,11 +532,14 @@ class _ControlsColumn extends StatelessWidget {
             surface: surface,
             border: border,
           ),
-          const SizedBox(height: 10),
-          _SpeedSlider(
-            value: effectSpeedMs,
-            onChanged: onEffectSpeedChanged,
-          ),
+          // Speed slider is only meaningful when an effect is active.
+          if (effect != AnimationEffect.none) ...[
+            const SizedBox(height: 10),
+            _SpeedSlider(
+              value: effectSpeedMs,
+              onChanged: onEffectSpeedChanged,
+            ),
+          ],
           const SizedBox(height: 14),
         ],
         if (showLighting) ...[
@@ -542,11 +553,14 @@ class _ControlsColumn extends StatelessWidget {
             surface: surface,
             border: border,
           ),
-          const SizedBox(height: 10),
-          _SpeedSlider(
-            value: lightingSpeedMs,
-            onChanged: onLightingSpeedChanged,
-          ),
+          // Speed slider is only meaningful when a lighting effect is active.
+          if (lightingEffect != AnimationEffect.none) ...[
+            const SizedBox(height: 10),
+            _SpeedSlider(
+              value: lightingSpeedMs,
+              onChanged: onLightingSpeedChanged,
+            ),
+          ],
         ],
         const Spacer(),
       ],

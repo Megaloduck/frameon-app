@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import '../../renderer/pixel_buffer.dart';
-import 'base_effect.dart';
+import 'base_fonteffect.dart';
 
 /// Burst — a quick bright flash followed by a slow exponential decay to dim.
 ///
