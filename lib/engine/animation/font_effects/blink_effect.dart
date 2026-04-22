@@ -20,4 +20,4 @@ class BlinkEffect extends AnimationEffectProcessor {
       dst.clear(); // transparent — layer hidden
     }
   }
-}
+} 

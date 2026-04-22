@@ -8,4 +8,4 @@ abstract class AnimationEffectProcessor {
   const AnimationEffectProcessor();
 
   void apply(PixelBuffer src, PixelBuffer dst, int elapsedMs);
-}
+} 

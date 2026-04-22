@@ -17,7 +17,6 @@ import '../../renderer/pixel_buffer.dart';
 import 'base_lighting.dart';
 import 'breathing_lighting.dart';
 
-
 class LightingAnimator {
   const LightingAnimator();
 
@@ -26,12 +25,17 @@ class LightingAnimator {
     switch (effect) {
       case AnimationEffect.none:
         return null;
+
       case AnimationEffect.pulse:
         // "Breathing" in the UI dropdown maps to AnimationEffect.pulse
         return const BreathingEffect(periodMs: 2000, minOpacity: 0.08);
- 
-      default:
-        // scrollLeft / scrollRight / burst → no lighting equivalent
+
+      // The following text effects have no lighting equivalent — treated as static.
+      case AnimationEffect.blink:
+      case AnimationEffect.fade:
+      case AnimationEffect.burst:
+      case AnimationEffect.scrollLeft:
+      case AnimationEffect.scrollRight:
         return null;
     }
   }

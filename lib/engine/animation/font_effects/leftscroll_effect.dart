@@ -18,18 +18,16 @@ class ScrollLeftEffect extends AnimationEffectProcessor {
       return;
     }
 
-    // Calculate how many pixels to shift left
+    // Calculate how many pixels to shift left, then wrap to buffer width
     final int shift = ((elapsedMs * pixelsPerSecond) / 1000).floor();
-    
-    // Normalize shift to wrap around the buffer width
     final int effectiveShift = shift % w;
 
     dst.clear();
 
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        // Source pixel comes from the right side (shifted left)
-        // With wrap-around: (x + effectiveShift) % w
+        // Source pixel comes from ahead (shifted left) with wrap-around:
+        // (x + effectiveShift) % w ensures seamless looping
         final int srcX = (x + effectiveShift) % w;
         dst.setPixel(x, y, src.getPixel(srcX, y));
       }

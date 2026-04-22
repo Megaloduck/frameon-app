@@ -1,12 +1,12 @@
 import '../scene/layer.dart';
 import '../renderer/pixel_buffer.dart';
-import 'effects/base_effect.dart';
-import 'effects/blink_effect.dart';
-import 'effects/burst_effect.dart';
-import 'effects/fade_effect.dart';
-import 'effects/leftscroll_effect.dart';
-import 'effects/pulse_effect.dart';
-import 'effects/rightscroll_effect.dart';
+import 'font_effects/base_effect.dart';
+import 'font_effects/blink_effect.dart';
+import 'font_effects/burst_effect.dart';
+import 'font_effects/fade_effect.dart';
+import 'font_effects/leftscroll_effect.dart';
+import 'font_effects/pulse_effect.dart';
+import 'font_effects/rightscroll_effect.dart';
 
 /// Resolves the correct [AnimationEffectProcessor] for a given [Layer]
 /// and applies it during rendering.
@@ -18,6 +18,10 @@ class Animator {
 
   /// Return the [AnimationEffectProcessor] for [layer], or `null` if
   /// the layer has no animation effect.
+  ///
+  /// Currently only [TextLayer] supports animation effects. Other layer
+  /// types return null intentionally.
+  /// TODO: extend this when ImageLayer or other layer types gain effect support.
   AnimationEffectProcessor? effectFor(Layer layer) {
     if (layer is TextLayer) {
       return _resolve(layer.effect);

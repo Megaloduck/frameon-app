@@ -40,4 +40,4 @@ class PulseEffect extends AnimationEffectProcessor {
       dst.pixels[i] = (outA << 24) | (px & 0x00FFFFFF);
     }
   }
-} 
+}

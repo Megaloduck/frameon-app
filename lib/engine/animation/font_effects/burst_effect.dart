@@ -11,6 +11,9 @@ import 'base_effect.dart';
 ///   • flashMs → periodMs — hold at [dimOpacity] until next burst
 ///
 /// This gives the feel of a strobe/camera-flash pulse.
+///
+/// [dimOpacity] must be > 0.0 — a value of 0.0 would cause log(0) which is
+/// undefined. Use a small positive value such as 0.01 for near-black.
 class BurstEffect extends AnimationEffectProcessor {
   /// Full cycle length in ms. Default: 1500 ms.
   final int periodMs;
@@ -18,14 +21,16 @@ class BurstEffect extends AnimationEffectProcessor {
   /// Duration of the decay phase in ms. Default: 400 ms.
   final int flashMs;
 
-  /// Opacity floor — how dim the layer rests between bursts. Default: 0.12.
+  /// Opacity floor — how dim the layer rests between bursts.
+  /// Must be > 0.0. Default: 0.12.
   final double dimOpacity;
 
   const BurstEffect({
     this.periodMs = 1500,
     this.flashMs = 400,
     this.dimOpacity = 0.12,
-  });
+  }) : assert(dimOpacity > 0.0,
+            'dimOpacity must be > 0.0 — a value of 0 causes log(0) which is undefined.');
 
   @override
   void apply(PixelBuffer src, PixelBuffer dst, int elapsedMs) {
@@ -36,7 +41,7 @@ class BurstEffect extends AnimationEffectProcessor {
       // Exponential decay from 1.0 down to dimOpacity over flashMs
       final double progress = t / flashMs; // 0 → 1
       // e^(−k·progress) shaped to hit dimOpacity at progress=1
-      final double k = -math.log(dimOpacity); // k > 0
+      final double k = -math.log(dimOpacity); // k > 0 (safe: dimOpacity > 0)
       opacity = math.exp(-k * progress);
     } else {
       opacity = dimOpacity;
@@ -56,4 +61,4 @@ class BurstEffect extends AnimationEffectProcessor {
       dst.pixels[i] = (outA << 24) | (px & 0x00FFFFFF);
     }
   }
-} 
+}
