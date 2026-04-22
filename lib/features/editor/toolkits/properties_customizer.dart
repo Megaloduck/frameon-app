@@ -3,41 +3,20 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../engine/renderer/font_organizer.dart';
-import '../../../../engine/animation/effects/leftscroll_effect.dart';
-import '../../../../engine/animation/effects/rightscroll_effect.dart';
-
-
 import '../../../../engine/scene/layer.dart';
 import 'ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PropertiesCustomizer
-//
-// A unified modal that combines:
-//   • HSV color picker (left column)
-//   • Font style dropdown
-//   • Font effect (scroll direction toggle + animation dropdown + speed slider)
-//   • Lighting effect (dropdown + speed slider)
-
+// ─────────────────────────────────────────────────────────────────────────────
 
 class PropertiesCustomizer extends StatefulWidget {
-  // ── Color ──────────────────────────────────────────────────────────────────
   final Color initialColor;
-
-  // ── Font ───────────────────────────────────────────────────────────────────
   final LedFontId? initialFontId;
-
-  // ── Font effect (AnimationEffect) ─────────────────────────────────────────
   final AnimationEffect? initialEffect;
   final int initialEffectSpeedMs;
-
-  // ── Lighting effect (future-ready; maps to AnimationEffect subset) ─────────
-  // We reuse AnimationEffect for the lighting slot so the data model stays
-  // unified. Only the "ambient" effects are offered: pulse, fade, burst, none.
   final AnimationEffect? initialLightingEffect;
   final int initialLightingSpeedMs;
-
-  // ── Visibility flags ───────────────────────────────────────────────────────
   final bool showFont;
   final bool showFontEffect;
   final bool showLightingEffect;
@@ -60,21 +39,14 @@ class PropertiesCustomizer extends StatefulWidget {
 }
 
 class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
-  // ── Color state ────────────────────────────────────────────────────────────
   late double _hue;
   late double _sat;
   late double _val;
   late double _opacity;
   late TextEditingController _hexCtrl;
-
-  // ── Font state ─────────────────────────────────────────────────────────────
   late LedFontId _fontId;
-
-  // ── Font effect state ──────────────────────────────────────────────────────
   late AnimationEffect _effect;
   late double _effectSpeedMs;
-
-  // ── Lighting effect state ──────────────────────────────────────────────────
   late AnimationEffect _lightingEffect;
   late double _lightingSpeedMs;
 
@@ -95,8 +67,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     _hexCtrl.dispose();
     super.dispose();
   }
-
-  // ── Color helpers ──────────────────────────────────────────────────────────
 
   void _fromColor(Color c) {
     final hsv = HSVColor.fromColor(c);
@@ -132,8 +102,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     } catch (_) {}
   }
 
-  // ── Result ─────────────────────────────────────────────────────────────────
-
   PropertiesResult get _result => PropertiesResult(
         color: _currentColor,
         fontId: _fontId,
@@ -143,14 +111,10 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
         lightingSpeedMs: _lightingSpeedMs.round(),
       );
 
-  // ── Scroll direction helpers ───────────────────────────────────────────────
-
   bool get _isScrollEffect =>
       _effect == AnimationEffect.scrollLeft ||
       _effect == AnimationEffect.scrollRight;
 
-  // ── Font effects available in the "Font Effect" slot ──────────────────────
-  // scrollLeft / scrollRight are set via the toggle buttons, not the dropdown.
   static const _fontEffects = [
     AnimationEffect.none,
     AnimationEffect.scrollLeft,
@@ -161,7 +125,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     AnimationEffect.burst,
   ];
 
-  // ── Lighting effects (ambient only) ───────────────────────────────────────
   static const _lightingEffects = [
     AnimationEffect.none,
     AnimationEffect.pulse,
@@ -187,8 +150,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
         _ => e.name,
       };
 
-  // ── Build ──────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -207,19 +168,16 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Title ─────────────────────────────────────────────────────────
           const Text(
             'Properties Customizer',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
-
-          // ── Two-column body ───────────────────────────────────────────────
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Left: Color picker
+                // ── Left: Color picker ──────────────────────────────────
                 SizedBox(
                   width: 220,
                   child: _ColorPickerColumn(
@@ -245,25 +203,18 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
                     onHexSubmitted: _applyHex,
                   ),
                 ),
-
                 const SizedBox(width: 16),
-
-                // Vertical divider
                 Container(width: 1, color: border),
-
                 const SizedBox(width: 16),
-
-                // Right: Controls
+                // ── Right: Controls ─────────────────────────────────────
                 Expanded(
                   child: _ControlsColumn(
                     isDark: isDark,
                     surface: surface,
                     border: border,
-                    // Font
                     showFont: widget.showFont,
                     fontId: _fontId,
                     onFontChanged: (v) => setState(() => _fontId = v),
-                    // Font effect
                     showFontEffect: widget.showFontEffect,
                     effect: _effect,
                     isScrollEffect: _isScrollEffect,
@@ -283,7 +234,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
                     onEffectChanged: (v) => setState(() => _effect = v),
                     onEffectSpeedChanged: (v) =>
                         setState(() => _effectSpeedMs = v),
-                    // Lighting
                     showLighting: widget.showLightingEffect,
                     lightingEffect: _lightingEffect,
                     lightingSpeedMs: _lightingSpeedMs,
@@ -298,10 +248,7 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
               ],
             ),
           ),
-
           const SizedBox(height: 20),
-
-          // ── Action buttons ────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -316,8 +263,8 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
                   backgroundColor: kGreen,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 10),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
                 ),
@@ -335,6 +282,8 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Left column: Color picker
+// FIX: Hue and Opacity strips now use LayoutBuilder so CustomPaint
+//      receives a real finite size and actually renders.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ColorPickerColumn extends StatelessWidget {
@@ -374,7 +323,7 @@ class _ColorPickerColumn extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-        // SV Square
+        // ── SV Square ───────────────────────────────────────────────────
         SizedBox(
           width: 220,
           height: 220,
@@ -388,16 +337,21 @@ class _ColorPickerColumn extends StatelessWidget {
 
         const SizedBox(height: 10),
 
-        // Hue strip
+        // ── Hue strip ───────────────────────────────────────────────────
+        // FIX: wrap in SizedBox with explicit width so CustomPaint
+        //      gets a finite constraint and renders visibly.
         SizedBox(
+          width: 220,
           height: 16,
           child: _HueStrip(hue: hue, onChanged: onHueChanged),
         ),
 
         const SizedBox(height: 6),
 
-        // Opacity strip
+        // ── Opacity strip ────────────────────────────────────────────────
+        // FIX: same explicit size fix as hue strip above.
         SizedBox(
+          width: 220,
           height: 16,
           child: _OpacityStrip(
             hue: hue,
@@ -410,7 +364,7 @@ class _ColorPickerColumn extends StatelessWidget {
 
         const SizedBox(height: 10),
 
-        // Swatch + hex input
+        // ── Swatch + hex input ───────────────────────────────────────────
         Row(
           children: [
             Container(
@@ -428,7 +382,8 @@ class _ColorPickerColumn extends StatelessWidget {
                 height: 32,
                 child: TextField(
                   controller: hexCtrl,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  style:
+                      const TextStyle(fontFamily: 'monospace', fontSize: 12),
                   decoration: InputDecoration(
                     isDense: true,
                     prefixText: '#',
@@ -469,13 +424,9 @@ class _ColorPickerColumn extends StatelessWidget {
 class _ControlsColumn extends StatelessWidget {
   final bool isDark;
   final Color surface, border;
-
-  // Font
   final bool showFont;
   final LedFontId fontId;
   final ValueChanged<LedFontId> onFontChanged;
-
-  // Font effect
   final bool showFontEffect;
   final AnimationEffect effect;
   final bool isScrollEffect;
@@ -486,8 +437,6 @@ class _ControlsColumn extends StatelessWidget {
   final VoidCallback onScrollRight;
   final ValueChanged<AnimationEffect> onEffectChanged;
   final ValueChanged<double> onEffectSpeedChanged;
-
-  // Lighting
   final bool showLighting;
   final AnimationEffect lightingEffect;
   final double lightingSpeedMs;
@@ -527,7 +476,6 @@ class _ControlsColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Font Style ────────────────────────────────────────────────────
         if (showFont) ...[
           _ControlLabel('Font Style'),
           const SizedBox(height: 6),
@@ -541,13 +489,9 @@ class _ControlsColumn extends StatelessWidget {
           ),
           const SizedBox(height: 14),
         ],
-
-        // ── Font Effect ───────────────────────────────────────────────────
         if (showFontEffect) ...[
           _ControlLabel('Font Effect'),
           const SizedBox(height: 6),
-
-          // Scroll direction toggle (shown when scroll effects are relevant)
           Row(
             children: [
               Expanded(
@@ -568,8 +512,6 @@ class _ControlsColumn extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-
-          // Animation effect dropdown (excludes scroll — handled by toggle)
           _StyledDropdown<AnimationEffect>(
             value: isScrollEffect ? AnimationEffect.none : effect,
             items: fontEffects
@@ -582,23 +524,16 @@ class _ControlsColumn extends StatelessWidget {
             surface: surface,
             border: border,
           ),
-
           const SizedBox(height: 10),
-
-          // Speed slider
           _SpeedSlider(
             value: effectSpeedMs,
             onChanged: onEffectSpeedChanged,
           ),
-
           const SizedBox(height: 14),
         ],
-
-        // ── Lighting Effect ───────────────────────────────────────────────
         if (showLighting) ...[
           _ControlLabel('Lighting Effect'),
           const SizedBox(height: 6),
-
           _StyledDropdown<AnimationEffect>(
             value: lightingEffect,
             items: lightingEffects,
@@ -607,15 +542,12 @@ class _ControlsColumn extends StatelessWidget {
             surface: surface,
             border: border,
           ),
-
           const SizedBox(height: 10),
-
           _SpeedSlider(
             value: lightingSpeedMs,
             onChanged: onLightingSpeedChanged,
           ),
         ],
-
         const Spacer(),
       ],
     );
@@ -634,9 +566,7 @@ class _ControlLabel extends StatelessWidget {
   Widget build(BuildContext context) => Text(
         text,
         style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: kTextMuted),
+            fontSize: 11, fontWeight: FontWeight.w600, color: kTextMuted),
       );
 }
 
@@ -756,12 +686,10 @@ class _SpeedSlider extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: const [
-                Text('Slow',
-                    style: TextStyle(fontSize: 9, color: kTextDim)),
+                Text('Slow', style: TextStyle(fontSize: 9, color: kTextDim)),
                 Text('Normal',
                     style: TextStyle(fontSize: 9, color: kTextDim)),
-                Text('Fast',
-                    style: TextStyle(fontSize: 9, color: kTextDim)),
+                Text('Fast', style: TextStyle(fontSize: 9, color: kTextDim)),
               ],
             ),
           ),
@@ -824,7 +752,10 @@ class _SVPainter extends CustomPainter {
         rect,
         Paint()
           ..shader = LinearGradient(
-            colors: [Colors.white, HSVColor.fromAHSV(1, hue, 1, 1).toColor()],
+            colors: [
+              Colors.white,
+              HSVColor.fromAHSV(1, hue, 1, 1).toColor()
+            ],
           ).createShader(rect));
     canvas.drawRect(
         rect,
@@ -837,12 +768,16 @@ class _SVPainter extends CustomPainter {
 
     final cx = sat * size.width;
     final cy = (1 - val) * size.height;
-    canvas.drawCircle(Offset(cx, cy), 7,
+    canvas.drawCircle(
+        Offset(cx, cy),
+        7,
         Paint()
           ..color = Colors.white
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5);
-    canvas.drawCircle(Offset(cx, cy), 5,
+    canvas.drawCircle(
+        Offset(cx, cy),
+        5,
         Paint()
           ..color = Colors.black.withOpacity(0.25)
           ..style = PaintingStyle.stroke
@@ -856,6 +791,8 @@ class _SVPainter extends CustomPainter {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hue Strip
+// FIX: GestureDetector now wraps a Container with explicit size, then
+//      CustomPaint fills it — ensures painter always gets finite constraints.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HueStrip extends StatelessWidget {
@@ -870,7 +807,12 @@ class _HueStrip extends StatelessWidget {
         onTapDown: (d) => _update(d.localPosition, context),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: CustomPaint(painter: _HuePainter(hue: hue)),
+          child: CustomPaint(
+            painter: _HuePainter(hue: hue),
+            // FIX: size must be non-zero. The parent SizedBox(220×16)
+            // supplies the constraints; Size.infinite lets it fill them.
+            size: Size.infinite,
+          ),
         ),
       );
 
@@ -921,6 +863,7 @@ class _HuePainter extends CustomPainter {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Opacity Strip
+// FIX: same finite-size fix as HueStrip above.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _OpacityStrip extends StatelessWidget {
@@ -944,6 +887,8 @@ class _OpacityStrip extends StatelessWidget {
           child: CustomPaint(
             painter: _OpacityPainter(
                 hue: hue, sat: sat, val: val, opacity: opacity),
+            // FIX: Size.infinite fills the parent SizedBox(220×16).
+            size: Size.infinite,
           ),
         ),
       );
@@ -984,9 +929,9 @@ class _OpacityPainter extends CustomPainter {
     canvas.drawRect(
         rect,
         Paint()
-          ..shader = LinearGradient(
-                  colors: [base.withOpacity(0), base])
-              .createShader(rect));
+          ..shader =
+              LinearGradient(colors: [base.withOpacity(0), base])
+                  .createShader(rect));
 
     final cx = opacity * size.width;
     canvas.drawRRect(
@@ -1031,25 +976,7 @@ class PropertiesResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// showPropertiesCustomizer — convenience entry-point
-//
-// Usage:
-//
-//   final result = await showPropertiesCustomizer(
-//     context,
-//     initialColor: layer.color,
-//     initialFontId: layer.fontId,
-//     initialEffect: layer.effect,
-//     initialEffectSpeedMs: layer.effectSpeedMs,
-//   );
-//   if (result != null) {
-//     n.updateLayer(layer.copyWith(
-//       color: result.color,
-//       fontId: result.fontId,
-//       effect: result.effect,
-//       effectSpeedMs: result.effectSpeedMs,
-//     ));
-//   }
+// showPropertiesCustomizer
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<PropertiesResult?> showPropertiesCustomizer(
@@ -1085,11 +1012,7 @@ Future<PropertiesResult?> showPropertiesCustomizer(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Backward-compat shim — keeps existing showColorPickerSheet call-sites working.
-//
-// Callers that only need a color (e.g. clock element colors) can continue to
-// use showColorPickerSheet; it delegates to showPropertiesCustomizer with all
-// effect panels hidden.
+// Backward-compat shim
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<Color?> showColorPickerSheet(
