@@ -11,7 +11,6 @@ import '../../../shared/providers/time_service.dart';
 class ClockWidget extends MatrixWidget<ClockLayer> {
   const ClockWidget();
 
-  // ── Spacing (pixels) ──────────────────────────────────────────────────────
   static const int spacingBeforeColon = 2;
   static const int spacingAfterColon  = 0;
   static const int spacingGeneral     = 1;
@@ -25,7 +24,7 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     final font = LedFontLibrary.get(layer.fontId);
     final DateTime now = _getTimeForZone(layer.timezone);
 
-    final bool colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
+    final bool   colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
     final double colonAlpha = colonOn ? layer.opacity : 0.0;
 
     final hoursStr   = _buildHoursStr(now, layer);
@@ -46,7 +45,8 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     int totalHeight = font.charHeight;
     if (hasDate) totalHeight += font.charHeight + 2;
 
-    final int startY = (buffer.height - totalHeight) ~/ 2;
+    // Apply offset.dy so vertical drag moves the clock on screen.
+    final int startY = (buffer.height - totalHeight) ~/ 2 + layer.offset.dy.round();
     int currentY     = startY;
 
     // ── Date row ──────────────────────────────────────────────────────────
@@ -64,27 +64,24 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
       currentY += font.charHeight + 2;
     }
 
-    // ── Time row width for alignment ──────────────────────────────────────
-    final int totalWidth = _calcTimeWidth(font, hoursStr, minutesStr, secondsStr, hasAmPm, ampmStr);
+    // ── Time row ──────────────────────────────────────────────────────────
+    final int totalWidth = _calcTimeWidth(
+        font, hoursStr, minutesStr, secondsStr, hasAmPm, ampmStr);
     int cx = _startX(buffer, totalWidth, layer.alignment, layer.offset.dx.round());
 
-    // ── Hours ─────────────────────────────────────────────────────────────
     font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
         x: cx, y: currentY, opacity: layer.opacity);
     cx += font.textWidth(hoursStr);
 
-    // ── Colon 1 ───────────────────────────────────────────────────────────
     cx += spacingBeforeColon;
     font.draw(buffer: buffer, text: ':', color: layer.colonColor,
         x: cx + colonVisualOffset, y: currentY, opacity: colonAlpha);
     cx += font.textWidth(':') + spacingAfterColon;
 
-    // ── Minutes ───────────────────────────────────────────────────────────
     font.draw(buffer: buffer, text: minutesStr, color: layer.minutesColor,
         x: cx, y: currentY, opacity: layer.opacity);
     cx += font.textWidth(minutesStr);
 
-    // ── Seconds (optional) ────────────────────────────────────────────────
     if (hasSeconds) {
       cx += spacingBeforeColon;
       font.draw(buffer: buffer, text: ':', color: layer.colonColor,
@@ -95,7 +92,6 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
       cx += font.textWidth(secondsStr);
     }
 
-    // ── AM/PM (optional) ──────────────────────────────────────────────────
     if (hasAmPm) {
       cx += spacingGeneral;
       font.draw(buffer: buffer, text: ampmStr, color: layer.minutesColor,
@@ -103,37 +99,20 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     }
   }
 
-  // ── Time resolution ───────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /// Return the current wall-clock time adjusted to [timezone].
-  ///
-  /// Strategy:
-  ///   - 'local'  → device local time (no conversion needed)
-  ///   - 'UTC'    → UTC
-  ///   - anything else → look up in the offset table and apply offset to UTC
-  ///
-  /// Note: DST is not modelled — offsets use the standard (winter) offset for
-  /// the zone. For a real app you would pull in the `timezone` package; for an
-  /// LED panel this is accurate enough and keeps dependencies minimal.
   DateTime _getTimeForZone(String timezone) {
     final DateTime base = _rawNow();
-
     if (timezone == 'local') return base;
-
     final DateTime utc = base.toUtc();
     if (timezone == 'UTC') return utc;
-
     final double? offset = _kTzOffsets[timezone];
-    if (offset == null) return base; // unknown id → fall back to local
-
-    final int offsetMinutes = (offset * 60).round();
-    return utc.add(Duration(minutes: offsetMinutes));
+    if (offset == null) return base;
+    return utc.add(Duration(minutes: (offset * 60).round()));
   }
 
   DateTime _rawNow() =>
       _container != null ? _container!.read(timeServiceProvider) : DateTime.now();
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   String _buildHoursStr(DateTime now, ClockLayer layer) {
     if (layer.format == ClockFormat.h24) return _pad(now.hour);
@@ -149,16 +128,15 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
           + spacingAfterColon
           + font.textWidth(minutes);
     if (seconds.isNotEmpty) {
-      w += spacingBeforeColon
-          + font.textWidth(':')
-          + spacingAfterColon
-          + font.textWidth(seconds);
+      w += spacingBeforeColon + font.textWidth(':') +
+           spacingAfterColon  + font.textWidth(seconds);
     }
     if (hasAmPm) w += spacingGeneral + font.textWidth(ampm);
     return w;
   }
 
-  int _startX(PixelBuffer buffer, int totalWidth, ClockAlignment alignment, int offsetX) =>
+  int _startX(PixelBuffer buffer, int totalWidth,
+      ClockAlignment alignment, int offsetX) =>
       switch (alignment) {
         ClockAlignment.left   => offsetX,
         ClockAlignment.center => ((buffer.width - totalWidth) ~/ 2) + offsetX,
@@ -193,10 +171,7 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UTC offset table — standard (non-DST) offsets in fractional hours.
-//
-// These match the _kTimezones list in clock_toolbox.dart.
-// DST transitions are NOT modelled; offset is the standard offset.
+// UTC offset table
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Map<String, double> _kTzOffsets = {

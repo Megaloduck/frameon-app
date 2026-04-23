@@ -40,13 +40,9 @@ class PomodoroTimerState {
 }
 
 /// Renders a [PomodoroLayer] into a [PixelBuffer].
-///
-/// Pomodoro always uses the polymorph font — digits are clean and legible
-/// at the tight time-display sizes used here.
 class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   const PomodoroWidget();
 
-  // Pomodoro uses a fixed font regardless of layer settings.
   static LedFont get _font => LedFontLibrary.get(LedFontId.polymorph);
 
   void renderWithState(
@@ -75,16 +71,20 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   // ── Private ───────────────────────────────────────────────────────────────
 
   void _renderTime(PixelBuffer buf, Duration d, PomodoroLayer layer, int t) {
-    final font = _font;
+    final font       = _font;
     final String text = _format(d, layer.showSeconds, t);
+
+    // Apply both offset axes so drag repositioning works on X and Y.
     final int y = (buf.height - font.charHeight) ~/ 2 + layer.offset.dy.round();
-    font.drawCentered(
-      buffer:      buf,
-      text:        text,
-      color:       layer.activeColor,
-      bufferWidth: buf.width,
-      y:           y,
-      opacity:     layer.opacity,
+    final int x = (buf.width  - font.textWidth(text)) ~/ 2 + layer.offset.dx.round();
+
+    font.draw(
+      buffer:  buf,
+      text:    text,
+      color:   layer.activeColor,
+      x:       x,
+      y:       y,
+      opacity: layer.opacity,
     );
   }
 

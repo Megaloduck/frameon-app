@@ -49,18 +49,16 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
 
   @override
   Widget build(BuildContext context) {
-    final buffer       = ref.watch(previewFrameProvider);
+    final buffer        = ref.watch(previewFrameProvider);
     final timelineAsync = ref.watch(timelineProvider);
-    final scene        = ref.watch(sceneProvider);
+    final scene         = ref.watch(sceneProvider);
 
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         children: [
           const _PreviewLabel(),
-          Expanded(
-            child: _CanvasArea(buffer: buffer),
-          ),
+          Expanded(child: _CanvasArea(buffer: buffer)),
           _InfoStrip(
             width:         scene.matrixWidth,
             height:        scene.matrixHeight,
@@ -72,6 +70,18 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drag-axis constraint
+//
+//   ClockLayer → horizontal only (Y stays fixed)
+//   TextLayer  → vertical only   (X stays fixed)
+//   everything else → free (both axes)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum _DragAxis { horizontal, vertical, free }
+
+_DragAxis _axisFor(Layer? layer) => _DragAxis.free;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Preview label
@@ -96,7 +106,7 @@ class _PreviewLabel extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Canvas area — wraps the LED canvas, dot-grid background, and drag logic
+// Canvas area
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CanvasArea extends ConsumerWidget {
@@ -112,12 +122,9 @@ class _CanvasArea extends ConsumerWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Dot-grid background
         Positioned.fill(
           child: CustomPaint(painter: _DotGridPainter(isDark: isDark)),
         ),
-
-        // LED matrix canvas
         Center(
           child: AspectRatio(
             aspectRatio: 64 / 32,
@@ -154,12 +161,10 @@ class _CanvasArea extends ConsumerWidget {
             ),
           ),
         ),
-
-        // "drag to reposition" hint — shown only when a layer is selected
         if (canDrag)
           Positioned(
             bottom: 12,
-            child: _DragHint(isDark: isDark),
+            child: _DragHint(layer: selectedLayer, isDark: isDark),
           ),
       ],
     );
@@ -167,16 +172,7 @@ class _CanvasArea extends ConsumerWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Interactive LED canvas — handles pan gestures and converts them to matrix
-// pixel offsets, then notifies the parent to persist the updated layer offset.
-//
-// Coordinate mapping:
-//   screen px → matrix px:  matX = screenX / canvasW × 64
-//                            matY = screenY / canvasH × 32
-//
-// The layer offset is in matrix pixels and is relative to each widget's
-// default (usually centred) position. Dragging 1 matrix pixel in any direction
-// moves the rendered element 1 pixel on the 64×32 grid.
+// Interactive LED canvas
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _InteractiveLedCanvas extends StatefulWidget {
@@ -199,12 +195,24 @@ class _InteractiveLedCanvas extends StatefulWidget {
 class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
   Offset? _dragStartMatrix;
   Offset? _dragStartLayerOffset;
-  bool    _isDragging    = false;
-  bool    _didSnapshot   = false;
+  bool    _isDragging  = false;
+  bool    _didSnapshot = false;
 
   bool get _canDrag => widget.selectedLayer != null;
 
-  /// Convert a local screen-space position to matrix-space (0..64, 0..32).
+  _DragAxis get _axis => _axisFor(widget.selectedLayer);
+
+  /// Mouse cursor reflects the allowed drag axis.
+  MouseCursor get _cursor {
+    if (!_canDrag) return MouseCursor.defer;
+    if (_isDragging) return SystemMouseCursors.grabbing;
+    return switch (_axis) {
+      _DragAxis.horizontal => SystemMouseCursors.resizeLeftRight,
+      _DragAxis.vertical   => SystemMouseCursors.resizeUpDown,
+      _DragAxis.free       => SystemMouseCursors.grab,
+    };
+  }
+
   Offset _toMatrix(Offset local, Size canvasSize) => Offset(
         local.dx / canvasSize.width  * 64,
         local.dy / canvasSize.height * 32,
@@ -221,23 +229,36 @@ class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
   }
 
   void _onPanUpdate(DragUpdateDetails details, Size canvasSize) {
-    if (!_canDrag || _dragStartMatrix == null || _dragStartLayerOffset == null) return;
+    if (!_canDrag || _dragStartMatrix == null || _dragStartLayerOffset == null) {
+      return;
+    }
 
-    // Snapshot on the first movement so undo captures the pre-drag state.
+    // Take a single undo snapshot at the start of each drag gesture.
     if (!_didSnapshot) {
       widget.onDragStart();
       _didSnapshot = true;
     }
 
-    final currentMatrix = _toMatrix(details.localPosition, canvasSize);
-    final delta         = currentMatrix - _dragStartMatrix!;
+    final current = _toMatrix(details.localPosition, canvasSize);
+    final delta   = current - _dragStartMatrix!;
 
-    widget.onOffsetChanged(
-      Offset(
-        _dragStartLayerOffset!.dx + delta.dx,
-        _dragStartLayerOffset!.dy + delta.dy,
-      ),
-    );
+    // Apply axis constraint — freeze the locked axis at its drag-start value.
+    final newOffset = switch (_axis) {
+      _DragAxis.horizontal => Offset(
+          _dragStartLayerOffset!.dx + delta.dx,
+          _dragStartLayerOffset!.dy,            // Y frozen
+        ),
+      _DragAxis.vertical => Offset(
+          _dragStartLayerOffset!.dx,             // X frozen
+          _dragStartLayerOffset!.dy + delta.dy,
+        ),
+      _DragAxis.free => Offset(
+          _dragStartLayerOffset!.dx + delta.dx,
+          _dragStartLayerOffset!.dy + delta.dy,
+        ),
+    };
+
+    widget.onOffsetChanged(newOffset);
   }
 
   void _onPanEnd(DragEndDetails _) {
@@ -255,21 +276,16 @@ class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
 
         return MouseRegion(
-          cursor: _canDrag
-              ? (_isDragging
-                  ? SystemMouseCursors.grabbing
-                  : SystemMouseCursors.grab)
-              : MouseCursor.defer,
+          cursor: _cursor,
           child: GestureDetector(
             onPanStart:  (d) => _onPanStart(d, size),
             onPanUpdate: (d) => _onPanUpdate(d, size),
             onPanEnd:    _onPanEnd,
             child: Stack(
               children: [
-                // LED pixel grid
                 _LedCanvas(buffer: widget.buffer),
 
-                // Selection border — indicates the layer is draggable
+                // Selection border
                 if (_canDrag)
                   Positioned.fill(
                     child: IgnorePointer(
@@ -278,7 +294,8 @@ class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
                         decoration: BoxDecoration(
                           borderRadius: const BorderRadius.all(kRadiusSm),
                           border: Border.all(
-                            color: kGreen.withOpacity(_isDragging ? 0.9 : 0.35),
+                            color: kGreen.withOpacity(
+                                _isDragging ? 0.9 : 0.35),
                             width: _isDragging ? 1.5 : 1.0,
                           ),
                         ),
@@ -286,12 +303,12 @@ class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
                     ),
                   ),
 
-                // Crosshair indicator during active drag
+                // Centre-line guides during drag — only on the active axis.
                 if (_isDragging)
                   Positioned.fill(
                     child: IgnorePointer(
                       child: CustomPaint(
-                        painter: _CrosshairPainter(),
+                        painter: _GuidePainter(axis: _axis),
                       ),
                     ),
                   ),
@@ -305,43 +322,67 @@ class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Crosshair painter — drawn over the canvas during a drag to help the user
-// align content to the matrix centre.
+// Guide painter
+//
+//   horizontal → horizontal centre line only
+//   vertical   → vertical centre line only
+//   free       → both lines
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _CrosshairPainter extends CustomPainter {
+class _GuidePainter extends CustomPainter {
+  final _DragAxis axis;
+  const _GuidePainter({required this.axis});
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color       = kGreen.withOpacity(0.18)
+      ..color       = kGreen.withOpacity(0.20)
       ..strokeWidth = 0.5
       ..style       = PaintingStyle.stroke;
 
-    // Vertical centre line
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      paint,
-    );
-    // Horizontal centre line
-    canvas.drawLine(
-      Offset(0, size.height / 2),
-      Offset(size.width, size.height / 2),
-      paint,
-    );
+    // Horizontal centre line — shown for horizontal-only and free axes.
+    if (axis == _DragAxis.horizontal || axis == _DragAxis.free) {
+      canvas.drawLine(
+        Offset(0, size.height / 2),
+        Offset(size.width, size.height / 2),
+        paint,
+      );
+    }
+
+    // Vertical centre line — shown for vertical-only and free axes.
+    if (axis == _DragAxis.vertical || axis == _DragAxis.free) {
+      canvas.drawLine(
+        Offset(size.width / 2, 0),
+        Offset(size.width / 2, size.height),
+        paint,
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(_CrosshairPainter _) => false;
+  bool shouldRepaint(_GuidePainter old) => old.axis != axis;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Drag hint chip — shown below the canvas when a layer is selected
+// Drag hint — label and icon adapt to the active axis constraint
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DragHint extends StatelessWidget {
-  final bool isDark;
-  const _DragHint({required this.isDark});
+  final Layer? layer;
+  final bool   isDark;
+  const _DragHint({required this.layer, required this.isDark});
+
+  String get _label => switch (_axisFor(layer)) {
+        _DragAxis.horizontal => 'drag horizontally to reposition',
+        _DragAxis.vertical   => 'drag vertically to reposition',
+        _DragAxis.free       => 'drag on preview to reposition',
+      };
+
+  IconData get _icon => switch (_axisFor(layer)) {
+        _DragAxis.horizontal => Icons.swap_horiz_rounded,
+        _DragAxis.vertical   => Icons.swap_vert_rounded,
+        _DragAxis.free       => Icons.open_with_rounded,
+      };
 
   @override
   Widget build(BuildContext context) => Container(
@@ -351,21 +392,15 @@ class _DragHint extends StatelessWidget {
               ? const Color(0xFF242424).withOpacity(0.85)
               : const Color(0xFFF8F7F3).withOpacity(0.85),
           borderRadius: const BorderRadius.all(kRadiusSm),
-          border: Border.all(
-            color: kGreen.withOpacity(0.30),
-          ),
+          border: Border.all(color: kGreen.withOpacity(0.30)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.open_with_rounded,
-              size: 10,
-              color: kGreen.withOpacity(0.75),
-            ),
+            Icon(_icon, size: 10, color: kGreen.withOpacity(0.75)),
             const SizedBox(width: 5),
             Text(
-              'drag on preview to reposition',
+              _label,
               style: TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w600,
@@ -406,7 +441,7 @@ class _DotGridPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LED canvas — wraps the painter in a LayoutBuilder
+// LED canvas wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _LedCanvas extends StatelessWidget {
@@ -424,9 +459,6 @@ class _LedCanvas extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LED painter
-//
-// Reads directly from the PixelBuffer — no RGB565 encode/decode round-trip.
-// Each pixel is checked per-channel so dim blues and greens render correctly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _LedPainter extends CustomPainter {
@@ -439,7 +471,8 @@ class _LedPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF0A0A0A));
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0xFF0A0A0A));
 
     final double dW = size.width  / _cols;
     final double dH = size.height / _rows;
@@ -473,11 +506,11 @@ class _LedPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Info strip — shows matrix dimensions and export stats
+// Info strip
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _InfoStrip extends StatelessWidget {
-  final int   width, height;
+  final int    width, height;
   final double fps;
   final AsyncValue<Timeline> timelineAsync;
 
