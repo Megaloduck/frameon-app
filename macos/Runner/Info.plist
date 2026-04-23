@@ -28,5 +28,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSWindowStyleMask</key>
+	<string>titled closable miniaturizable resizable fullSizeContentView</string>
 </dict>
 </plist>
