@@ -200,7 +200,9 @@ class SpotifyToolboxRight extends StatelessWidget {
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
               titleColor: r.color,
               fontId: r.fontId,
-              titleEffect: r.effect,
+              titleEffect: r.overlayEffect != AnimationEffect.none
+                  ? r.overlayEffect
+                  : r.scrollDirection,
               titleEffectSpeedMs: r.effectSpeedMs,
               )),
               onToggled: (v) =>n.updateLayer(layer.copyWith(showTitle: v)),
@@ -221,7 +223,9 @@ class SpotifyToolboxRight extends StatelessWidget {
                 onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
                 artistColor: r.color,
                 fontId: r.fontId,
-                artistEffect: r.effect,                   // ← saves to artist slot
+                artistEffect: r.overlayEffect != AnimationEffect.none
+                    ? r.overlayEffect
+                    : r.scrollDirection,
                 artistEffectSpeedMs: r.effectSpeedMs,
               )),
               onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),

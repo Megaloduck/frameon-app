@@ -2,9 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../../engine/animation/animator.dart';
-import '../../../../engine/renderer/font_effects.dart';
-import '../../../../engine/renderer/lighting_effects.dart';
 import '../../../../engine/renderer/font_organizer.dart';
 import '../../../../engine/scene/layer.dart';
 import 'ui_primitives.dart';
@@ -48,7 +45,12 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
   late double _opacity;
   late TextEditingController _hexCtrl;
   late LedFontId _fontId;
-  late AnimationEffect _effect;
+  // Scroll direction (base transport) and overlay effect are independent.
+  // Scroll Left/Right buttons control _scrollDirection exclusively.
+  // The dropdown controls _overlayEffect exclusively.
+  // Both can be active simultaneously: e.g. scroll-left + pulse.
+  late AnimationEffect _scrollDirection; // none | scrollLeft | scrollRight
+  late AnimationEffect _overlayEffect;   // none | blink | pulse | fade | burst
   late double _effectSpeedMs;
   late AnimationEffect _lightingEffect;
   late double _lightingSpeedMs;
@@ -59,7 +61,15 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     _fromColor(widget.initialColor);
     _hexCtrl = TextEditingController(text: _toHex());
     _fontId = widget.initialFontId ?? LedFontId.polymorph;
-    _effect = widget.initialEffect ?? AnimationEffect.none;
+    // Decode a legacy single-effect value into the two independent slots.
+    final init = widget.initialEffect ?? AnimationEffect.none;
+    if (init == AnimationEffect.scrollLeft || init == AnimationEffect.scrollRight) {
+      _scrollDirection = init;
+      _overlayEffect   = AnimationEffect.none;
+    } else {
+      _scrollDirection = AnimationEffect.none;
+      _overlayEffect   = init;
+    }
     _effectSpeedMs = widget.initialEffectSpeedMs.toDouble();
     _lightingEffect = widget.initialLightingEffect ?? AnimationEffect.none;
     _lightingSpeedMs = widget.initialLightingSpeedMs.toDouble();
@@ -108,49 +118,41 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
   PropertiesResult get _result => PropertiesResult(
         color: _currentColor,
         fontId: _fontId,
-        effect: _effect,
+        scrollDirection: _scrollDirection,
+        overlayEffect: _overlayEffect,
         effectSpeedMs: _effectSpeedMs.round(),
         lightingEffect: _lightingEffect,
         lightingSpeedMs: _lightingSpeedMs.round(),
       );
 
-  bool get _isScrollEffect =>
-      _effect == AnimationEffect.scrollLeft ||
-      _effect == AnimationEffect.scrollRight;
-
+  // Overlay effects for the dropdown — scroll direction is handled separately.
   static const _fontEffects = [
     AnimationEffect.none,
-    AnimationEffect.scrollLeft,
-    AnimationEffect.scrollRight,
     AnimationEffect.blink,
     AnimationEffect.pulse,
     AnimationEffect.fade,
     AnimationEffect.burst,
   ];
 
-  // Only effects that have a real LightingEffectProcessor implementation.
-  // fade / burst / blink / scroll* have no lighting equivalent — excluded to
-  // avoid silently doing nothing when selected.
   static const _lightingEffects = [
     AnimationEffect.none,
     AnimationEffect.pulse,
   ];
 
-  String _effectLabel(AnimationEffect e) => switch (e) {
-        AnimationEffect.none => 'Static',
-        AnimationEffect.blink => 'Blink',
-        AnimationEffect.scrollLeft => 'Scroll Left',
+  String _overlayLabel(AnimationEffect e) => switch (e) {
+        AnimationEffect.none        => 'Static',
+        AnimationEffect.blink       => 'Blink',
+        AnimationEffect.pulse       => 'Pulse',
+        AnimationEffect.fade        => 'Fade',
+        AnimationEffect.burst       => 'Burst',
+        // not shown in dropdown, but exhaustiveness required:
+        AnimationEffect.scrollLeft  => 'Scroll Left',
         AnimationEffect.scrollRight => 'Scroll Right',
-        AnimationEffect.pulse => 'Pulse',
-        AnimationEffect.fade => 'Fade',
-        AnimationEffect.burst => 'Burst',
       };
 
-  // Exhaustive — compiler will flag any new AnimationEffect values not handled.
   String _lightingLabel(AnimationEffect e) => switch (e) {
         AnimationEffect.none        => 'Static',
         AnimationEffect.pulse       => 'Breathing',
-        // Not exposed in _lightingEffects but required for exhaustiveness:
         AnimationEffect.blink       => 'Blink',
         AnimationEffect.fade        => 'Fading',
         AnimationEffect.burst       => 'Burst',
@@ -224,22 +226,25 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
                     fontId: _fontId,
                     onFontChanged: (v) => setState(() => _fontId = v),
                     showFontEffect: widget.showFontEffect,
-                    effect: _effect,
-                    isScrollEffect: _isScrollEffect,
+                    scrollDirection: _scrollDirection,
+                    overlayEffect: _overlayEffect,
                     effectSpeedMs: _effectSpeedMs,
                     fontEffects: _fontEffects,
-                    effectLabel: _effectLabel,
+                    overlayLabel: _overlayLabel,
                     onScrollLeft: () => setState(() {
-                      _effect = _effect == AnimationEffect.scrollLeft
-                          ? AnimationEffect.none
-                          : AnimationEffect.scrollLeft;
+                      _scrollDirection =
+                          _scrollDirection == AnimationEffect.scrollLeft
+                              ? AnimationEffect.none
+                              : AnimationEffect.scrollLeft;
                     }),
                     onScrollRight: () => setState(() {
-                      _effect = _effect == AnimationEffect.scrollRight
-                          ? AnimationEffect.none
-                          : AnimationEffect.scrollRight;
+                      _scrollDirection =
+                          _scrollDirection == AnimationEffect.scrollRight
+                              ? AnimationEffect.none
+                              : AnimationEffect.scrollRight;
                     }),
-                    onEffectChanged: (v) => setState(() => _effect = v),
+                    onOverlayChanged: (v) =>
+                        setState(() => _overlayEffect = v),
                     onEffectSpeedChanged: (v) =>
                         setState(() => _effectSpeedMs = v),
                     showLighting: widget.showLightingEffect,
@@ -290,8 +295,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Left column: Color picker
-// FIX: Hue and Opacity strips now use LayoutBuilder so CustomPaint
-//      receives a real finite size and actually renders.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ColorPickerColumn extends StatelessWidget {
@@ -330,8 +333,6 @@ class _ColorPickerColumn extends StatelessWidget {
               color: kTextMuted),
         ),
         const SizedBox(height: 8),
-
-        // ── SV Square ───────────────────────────────────────────────────
         SizedBox(
           width: 220,
           height: 220,
@@ -342,22 +343,13 @@ class _ColorPickerColumn extends StatelessWidget {
             onChanged: onSVChanged,
           ),
         ),
-
         const SizedBox(height: 10),
-
-        // ── Hue strip ───────────────────────────────────────────────────
-        // FIX: wrap in SizedBox with explicit width so CustomPaint
-        //      gets a finite constraint and renders visibly.
         SizedBox(
           width: 220,
           height: 16,
           child: _HueStrip(hue: hue, onChanged: onHueChanged),
         ),
-
         const SizedBox(height: 6),
-
-        // ── Opacity strip ────────────────────────────────────────────────
-        // FIX: same explicit size fix as hue strip above.
         SizedBox(
           width: 220,
           height: 16,
@@ -369,10 +361,7 @@ class _ColorPickerColumn extends StatelessWidget {
             onChanged: onOpacityChanged,
           ),
         ),
-
         const SizedBox(height: 10),
-
-        // ── Swatch + hex input ───────────────────────────────────────────
         Row(
           children: [
             Container(
@@ -436,14 +425,15 @@ class _ControlsColumn extends StatelessWidget {
   final LedFontId fontId;
   final ValueChanged<LedFontId> onFontChanged;
   final bool showFontEffect;
-  final AnimationEffect effect;
-  final bool isScrollEffect;
+  // Scroll direction and overlay effect are independent.
+  final AnimationEffect scrollDirection; // none | scrollLeft | scrollRight
+  final AnimationEffect overlayEffect;   // none | blink | pulse | fade | burst
   final double effectSpeedMs;
-  final List<AnimationEffect> fontEffects;
-  final String Function(AnimationEffect) effectLabel;
+  final List<AnimationEffect> fontEffects; // overlay options only
+  final String Function(AnimationEffect) overlayLabel;
   final VoidCallback onScrollLeft;
   final VoidCallback onScrollRight;
-  final ValueChanged<AnimationEffect> onEffectChanged;
+  final ValueChanged<AnimationEffect> onOverlayChanged;
   final ValueChanged<double> onEffectSpeedChanged;
   final bool showLighting;
   final AnimationEffect lightingEffect;
@@ -461,14 +451,14 @@ class _ControlsColumn extends StatelessWidget {
     required this.fontId,
     required this.onFontChanged,
     required this.showFontEffect,
-    required this.effect,
-    required this.isScrollEffect,
+    required this.scrollDirection,
+    required this.overlayEffect,
     required this.effectSpeedMs,
     required this.fontEffects,
-    required this.effectLabel,
+    required this.overlayLabel,
     required this.onScrollLeft,
     required this.onScrollRight,
-    required this.onEffectChanged,
+    required this.onOverlayChanged,
     required this.onEffectSpeedChanged,
     required this.showLighting,
     required this.lightingEffect,
@@ -478,6 +468,10 @@ class _ControlsColumn extends StatelessWidget {
     required this.onLightingChanged,
     required this.onLightingSpeedChanged,
   });
+
+  bool get _hasAnyEffect =>
+      scrollDirection != AnimationEffect.none ||
+      overlayEffect != AnimationEffect.none;
 
   @override
   Widget build(BuildContext context) {
@@ -500,12 +494,13 @@ class _ControlsColumn extends StatelessWidget {
         if (showFontEffect) ...[
           _ControlLabel('Font Effect'),
           const SizedBox(height: 6),
+          // ── Scroll direction (base) ─────────────────────────────────
           Row(
             children: [
               Expanded(
                 child: _ToggleButton(
                   label: 'Scroll Left',
-                  active: effect == AnimationEffect.scrollLeft,
+                  active: scrollDirection == AnimationEffect.scrollLeft,
                   onTap: onScrollLeft,
                 ),
               ),
@@ -513,27 +508,24 @@ class _ControlsColumn extends StatelessWidget {
               Expanded(
                 child: _ToggleButton(
                   label: 'Scroll Right',
-                  active: effect == AnimationEffect.scrollRight,
+                  active: scrollDirection == AnimationEffect.scrollRight,
                   onTap: onScrollRight,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
+          // ── Overlay effect (layered on top of scroll) ───────────────
           _StyledDropdown<AnimationEffect>(
-            value: isScrollEffect ? AnimationEffect.none : effect,
-            items: fontEffects
-                .where((e) =>
-                    e != AnimationEffect.scrollLeft &&
-                    e != AnimationEffect.scrollRight)
-                .toList(),
-            labelFor: effectLabel,
-            onChanged: onEffectChanged,
+            value: overlayEffect,
+            items: fontEffects,
+            labelFor: overlayLabel,
+            onChanged: onOverlayChanged,
             surface: surface,
             border: border,
           ),
-          // Speed slider is only meaningful when an effect is active.
-          if (effect != AnimationEffect.none) ...[
+          // Show speed slider whenever any effect is active.
+          if (_hasAnyEffect) ...[
             const SizedBox(height: 10),
             _SpeedSlider(
               value: effectSpeedMs,
@@ -553,7 +545,6 @@ class _ControlsColumn extends StatelessWidget {
             surface: surface,
             border: border,
           ),
-          // Speed slider is only meaningful when a lighting effect is active.
           if (lightingEffect != AnimationEffect.none) ...[
             const SizedBox(height: 10),
             _SpeedSlider(
@@ -671,44 +662,73 @@ class _ToggleButton extends StatelessWidget {
       );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 7-state discrete speed slider
+//
+// Steps (index 0 → 6):
+//   500 ms = Slow · 350 ms · 200 ms · 100 ms = Normal · 50 ms · 25 ms · 10 ms = Fast
+//
+// [value] is expressed in milliseconds and snaps to the nearest defined step.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _SpeedSlider extends StatelessWidget {
   final double value;
   final ValueChanged<double> onChanged;
 
   const _SpeedSlider({required this.value, required this.onChanged});
 
+  static const List<int> _steps = [500, 350, 200, 100, 50, 25, 10];
+
+  /// Return the step index whose ms value is closest to [ms].
+  static int _msToIndex(double ms) {
+    int best = 0;
+    double minDiff = double.infinity;
+    for (int i = 0; i < _steps.length; i++) {
+      final diff = (_steps[i] - ms).abs();
+      if (diff < minDiff) {
+        minDiff = diff;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   @override
-  Widget build(BuildContext context) => Column(
-        children: [
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 3,
-              activeTrackColor: kGreen,
-              inactiveTrackColor: const Color(0xFFE0DDD6),
-              thumbColor: kGreen,
-              overlayColor: kGreen.withOpacity(0.12),
-            ),
-            child: Slider(
-              value: value.clamp(10, 500),
-              min: 10,
-              max: 500,
-              onChanged: onChanged,
-            ),
+  Widget build(BuildContext context) {
+    final index = _msToIndex(value);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 3,
+            activeTrackColor: kGreen,
+            inactiveTrackColor: const Color(0xFFE0DDD6),
+            thumbColor: kGreen,
+            overlayColor: kGreen.withOpacity(0.12),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Text('Slow', style: TextStyle(fontSize: 9, color: kTextDim)),
-                Text('Normal',
-                    style: TextStyle(fontSize: 9, color: kTextDim)),
-                Text('Fast', style: TextStyle(fontSize: 9, color: kTextDim)),
-              ],
-            ),
+          child: Slider(
+            value: index.toDouble(),
+            min: 0,
+            max: 6,
+            divisions: 6,
+            onChanged: (v) => onChanged(_steps[v.round()].toDouble()),
           ),
-        ],
-      );
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Text('Slow',   style: TextStyle(fontSize: 9, color: kTextDim)),
+              Text('Normal', style: TextStyle(fontSize: 9, color: kTextDim)),
+              Text('Fast',   style: TextStyle(fontSize: 9, color: kTextDim)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -805,8 +825,6 @@ class _SVPainter extends CustomPainter {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hue Strip
-// FIX: GestureDetector now wraps a Container with explicit size, then
-//      CustomPaint fills it — ensures painter always gets finite constraints.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HueStrip extends StatelessWidget {
@@ -823,8 +841,6 @@ class _HueStrip extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: CustomPaint(
             painter: _HuePainter(hue: hue),
-            // FIX: size must be non-zero. The parent SizedBox(220×16)
-            // supplies the constraints; Size.infinite lets it fill them.
             size: Size.infinite,
           ),
         ),
@@ -877,7 +893,6 @@ class _HuePainter extends CustomPainter {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Opacity Strip
-// FIX: same finite-size fix as HueStrip above.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _OpacityStrip extends StatelessWidget {
@@ -901,7 +916,6 @@ class _OpacityStrip extends StatelessWidget {
           child: CustomPaint(
             painter: _OpacityPainter(
                 hue: hue, sat: sat, val: val, opacity: opacity),
-            // FIX: Size.infinite fills the parent SizedBox(220×16).
             size: Size.infinite,
           ),
         ),
@@ -974,7 +988,12 @@ class _OpacityPainter extends CustomPainter {
 class PropertiesResult {
   final Color color;
   final LedFontId fontId;
-  final AnimationEffect effect;
+  /// The scroll direction (none | scrollLeft | scrollRight). This is the base
+  /// transport — applied first so text can move while also having an overlay.
+  final AnimationEffect scrollDirection;
+  /// An additional alpha-modulation overlay (none | blink | pulse | fade | burst)
+  /// applied on top of the scroll. Independent of scrollDirection.
+  final AnimationEffect overlayEffect;
   final int effectSpeedMs;
   final AnimationEffect lightingEffect;
   final int lightingSpeedMs;
@@ -982,11 +1001,17 @@ class PropertiesResult {
   const PropertiesResult({
     required this.color,
     required this.fontId,
-    required this.effect,
+    required this.scrollDirection,
+    required this.overlayEffect,
     required this.effectSpeedMs,
     required this.lightingEffect,
     required this.lightingSpeedMs,
   });
+
+  /// Convenience: the dominant single AnimationEffect for callers that only
+  /// support one field. Scroll takes priority; overlay wins when no scroll.
+  AnimationEffect get dominantEffect =>
+      scrollDirection != AnimationEffect.none ? scrollDirection : overlayEffect;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

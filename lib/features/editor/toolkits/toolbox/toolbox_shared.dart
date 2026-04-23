@@ -93,20 +93,61 @@ class TbToggleRow extends StatelessWidget {
   }
 }
 
+/// A 7-state discrete speed slider.
+///
+/// Steps (index 0 → 6):
+///   500 ms = Slow · 350 ms · 200 ms · 100 ms = Normal · 50 ms · 25 ms · 10 ms = Fast
+///
+/// [value] is expressed in milliseconds and is snapped to the nearest step.
 class TbSpeedSlider extends StatelessWidget {
-  final double value; final ValueChanged<double> onChanged;
+  final double value;
+  final ValueChanged<double> onChanged;
+
   const TbSpeedSlider({super.key, required this.value, required this.onChanged});
+
+  static const List<int> _steps = [500, 350, 200, 100, 50, 25, 10];
+
+  /// Return the step index whose ms value is closest to [ms].
+  static int _msToIndex(double ms) {
+    int best = 0;
+    double minDiff = double.infinity;
+    for (int i = 0; i < _steps.length; i++) {
+      final diff = (_steps[i] - ms).abs();
+      if (diff < minDiff) {
+        minDiff = diff;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   @override
-  Widget build(BuildContext context) => Column(children: [
+  Widget build(BuildContext context) {
+    final index = _msToIndex(value);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         SliderTheme(
           data: SliderTheme.of(context).copyWith(trackHeight: 3),
-          child: Slider(value: value.clamp(10, 500), min: 10, max: 500, onChanged: onChanged),
+          child: Slider(
+            value: index.toDouble(),
+            min: 0,
+            max: 6,
+            divisions: 6,
+            onChanged: (v) => onChanged(_steps[v.round()].toDouble()),
+          ),
         ),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: const [
-          Text('10ms fast', style: TextStyle(fontSize: 9, color: kTextDim)),
-          Text('500ms slow', style: TextStyle(fontSize: 9, color: kTextDim)),
-        ]),
-      ]);
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: const [
+            Text('Slow', style: TextStyle(fontSize: 9, color: kTextDim)),
+            Text('Normal', style: TextStyle(fontSize: 9, color: kTextDim)),
+            Text('Fast', style: TextStyle(fontSize: 9, color: kTextDim)),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class TbStepper extends StatelessWidget {
@@ -188,30 +229,14 @@ Widget tbColorBtn(BuildContext ctx, Color color, ValueChanged<Color> onChange) =
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TbColorAnimRow — combined color swatch + animation effect picker
-//
-// Shows a single compact row:
-//   [color swatch]  [label text]          [effect chip ▾]
-//
-// Tapping the swatch opens the color picker.
-// Tapping the effect chip shows a mini dropdown of animation options.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TbColorAnimRow<T extends Enum> extends StatelessWidget {
-  /// Row label, e.g. "Text Color"
   final String label;
-
-  /// Current color value.
   final Color color;
-
-  /// All available effect enum values.
   final List<T> effectValues;
-
-  /// Currently selected effect.
   final T currentEffect;
-
-  /// Human-readable label for each effect value.
   final String Function(T) effectLabel;
-
   final ValueChanged<Color> onColorChanged;
   final ValueChanged<T> onEffectChanged;
 
@@ -237,7 +262,6 @@ class TbColorAnimRow<T extends Enum> extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Color swatch
           GestureDetector(
             onTap: () async {
               final picked = await showColorPickerSheet(context, initialColor: color);
@@ -254,16 +278,12 @@ class TbColorAnimRow<T extends Enum> extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-
-          // Label
           Expanded(
             child: Text(
               label,
               style: const TextStyle(fontSize: 11, color: kTextMuted),
             ),
           ),
-
-          // Effect picker chip
           _EffectChip<T>(
             values: effectValues,
             current: currentEffect,
@@ -276,8 +296,6 @@ class TbColorAnimRow<T extends Enum> extends StatelessWidget {
   }
 }
 
-/// A compact dropdown chip that shows the current effect name and lets the
-/// user pick from all available effects via a PopupMenu.
 class _EffectChip<T extends Enum> extends StatelessWidget {
   final List<T> values;
   final T current;
@@ -291,7 +309,6 @@ class _EffectChip<T extends Enum> extends StatelessWidget {
     required this.onChanged,
   });
 
-  // Map effect name → icon for visual identification
   static const Map<String, IconData> _icons = {
     'none':    Icons.crop_square_rounded,
     'static_': Icons.crop_square_rounded,
