@@ -42,27 +42,14 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     final bool hasAmPm    = ampmStr.isNotEmpty;
 
     // ── Vertical layout ───────────────────────────────────────────────────
-    int totalHeight = font.charHeight;
-    if (hasDate) totalHeight += font.charHeight + 2;
+    // Total height = time row + optional date row below it.
+    final int totalHeight = font.charHeight + (hasDate ? font.charHeight + 2 : 0);
 
-    // Apply offset.dy so vertical drag moves the clock on screen.
+    // startY is the top of the entire block, shifted by the drag offset.
+    // Both timeY and dateY are derived from it so they always move together.
     final int startY = (buffer.height - totalHeight) ~/ 2 + layer.offset.dy.round();
-    int currentY     = startY;
-
-    // ── Date row ──────────────────────────────────────────────────────────
-    if (hasDate) {
-      _drawAligned(font,
-        buffer:      buffer,
-        text:        dateStr,
-        color:       layer.dateColor,
-        alignment:   layer.alignment,
-        offsetX:     layer.offset.dx.round(),
-        y:           currentY,
-        opacity:     layer.opacity,
-        bufferWidth: buffer.width,
-      );
-      currentY += font.charHeight + 2;
-    }
+    final int timeY  = startY;
+    final int dateY  = startY + font.charHeight + 2;
 
     // ── Time row ──────────────────────────────────────────────────────────
     final int totalWidth = _calcTimeWidth(
@@ -70,32 +57,46 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     int cx = _startX(buffer, totalWidth, layer.alignment, layer.offset.dx.round());
 
     font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
-        x: cx, y: currentY, opacity: layer.opacity);
+        x: cx, y: timeY, opacity: layer.opacity);
     cx += font.textWidth(hoursStr);
 
     cx += spacingBeforeColon;
     font.draw(buffer: buffer, text: ':', color: layer.colonColor,
-        x: cx + colonVisualOffset, y: currentY, opacity: colonAlpha);
+        x: cx + colonVisualOffset, y: timeY, opacity: colonAlpha);
     cx += font.textWidth(':') + spacingAfterColon;
 
     font.draw(buffer: buffer, text: minutesStr, color: layer.minutesColor,
-        x: cx, y: currentY, opacity: layer.opacity);
+        x: cx, y: timeY, opacity: layer.opacity);
     cx += font.textWidth(minutesStr);
 
     if (hasSeconds) {
       cx += spacingBeforeColon;
       font.draw(buffer: buffer, text: ':', color: layer.colonColor,
-          x: cx + colonVisualOffset, y: currentY, opacity: colonAlpha);
+          x: cx + colonVisualOffset, y: timeY, opacity: colonAlpha);
       cx += font.textWidth(':') + spacingAfterColon;
       font.draw(buffer: buffer, text: secondsStr, color: layer.secondsColor,
-          x: cx, y: currentY, opacity: layer.opacity);
+          x: cx, y: timeY, opacity: layer.opacity);
       cx += font.textWidth(secondsStr);
     }
 
     if (hasAmPm) {
       cx += spacingGeneral;
       font.draw(buffer: buffer, text: ampmStr, color: layer.minutesColor,
-          x: cx, y: currentY, opacity: layer.opacity);
+          x: cx, y: timeY, opacity: layer.opacity);
+    }
+
+    // ── Date row — rendered below the time ────────────────────────────────
+    if (hasDate) {
+      _drawAligned(font,
+        buffer:      buffer,
+        text:        dateStr,
+        color:       layer.dateColor,
+        alignment:   layer.alignment,
+        offsetX:     layer.offset.dx.round(),
+        y:           dateY,
+        opacity:     layer.opacity,
+        bufferWidth: buffer.width,
+      );
     }
   }
 

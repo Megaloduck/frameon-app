@@ -28,14 +28,16 @@ class GifAsset {
   bool get isEmpty => frames.isEmpty;
 
   DecodedFrame frameAt(int elapsedMs) {
-    if (frames.length == 1) return frames.first;
-    int t = elapsedMs;
-    for (final frame in frames) {
-      t -= frame.durationMs;
-      if (t <= 0) return frame;
-    }
-    return frames.last;
+  if (frames.length == 1) return frames.first;
+  final int totalMs = frames.fold(0, (sum, f) => sum + f.durationMs);
+  if (totalMs == 0) return frames.first;
+  int t = elapsedMs % totalMs;   // ← wrap around instead of running past the end
+  for (final frame in frames) {
+    t -= frame.durationMs;
+    if (t <= 0) return frame;
   }
+  return frames.last;
+}
 }
 
 /// Renders a [GifLayer] into a [PixelBuffer].

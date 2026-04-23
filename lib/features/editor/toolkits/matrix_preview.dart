@@ -52,6 +52,7 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
     final buffer        = ref.watch(previewFrameProvider);
     final timelineAsync = ref.watch(timelineProvider);
     final scene         = ref.watch(sceneProvider);
+    final selectedLayer = ref.watch(selectedLayerProvider);
 
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
@@ -64,6 +65,7 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
             height:        scene.matrixHeight,
             fps:           scene.fps,
             timelineAsync: timelineAsync,
+            selectedLayer: selectedLayer,
           ),
         ],
       ),
@@ -117,7 +119,6 @@ class _CanvasArea extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark        = context.isDark;
     final selectedLayer = ref.watch(selectedLayerProvider);
-    final canDrag       = selectedLayer != null;
 
     return Stack(
       alignment: Alignment.center,
@@ -161,11 +162,6 @@ class _CanvasArea extends ConsumerWidget {
             ),
           ),
         ),
-        if (canDrag)
-          Positioned(
-            bottom: 12,
-            child: _DragHint(layer: selectedLayer, isDark: isDark),
-          ),
       ],
     );
   }
@@ -364,13 +360,12 @@ class _GuidePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Drag hint — label and icon adapt to the active axis constraint
+// Drag hint — rendered inline in the info strip, no longer an overlay
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DragHint extends StatelessWidget {
   final Layer? layer;
-  final bool   isDark;
-  const _DragHint({required this.layer, required this.isDark});
+  const _DragHint({required this.layer});
 
   String get _label => switch (_axisFor(layer)) {
         _DragAxis.horizontal => 'drag horizontally to reposition',
@@ -385,31 +380,21 @@ class _DragHint extends StatelessWidget {
       };
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF242424).withOpacity(0.85)
-              : const Color(0xFFF8F7F3).withOpacity(0.85),
-          borderRadius: const BorderRadius.all(kRadiusSm),
-          border: Border.all(color: kGreen.withOpacity(0.30)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_icon, size: 10, color: kGreen.withOpacity(0.75)),
-            const SizedBox(width: 5),
-            Text(
-              _label,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: kGreen.withOpacity(0.75),
-                letterSpacing: 0.04,
-              ),
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_icon, size: 10, color: kGreen.withOpacity(0.75)),
+          const SizedBox(width: 4),
+          Text(
+            _label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: kGreen.withOpacity(0.75),
+              letterSpacing: 0.04,
             ),
-          ],
-        ),
+          ),
+        ],
       );
 }
 
@@ -513,12 +498,14 @@ class _InfoStrip extends StatelessWidget {
   final int    width, height;
   final double fps;
   final AsyncValue<Timeline> timelineAsync;
+  final Layer? selectedLayer;
 
   const _InfoStrip({
     required this.width,
     required this.height,
     required this.fps,
     required this.timelineAsync,
+    required this.selectedLayer,
   });
 
   @override
@@ -547,11 +534,22 @@ class _InfoStrip extends StatelessWidget {
             '$width × $height  –  RGB565',
             style: TextStyle(fontSize: 11, color: context.tTextMuted),
           ),
-          const SizedBox(width: 12),
-          Text(
-            right,
-            style: TextStyle(fontSize: 11, color: context.tTextDim),
-          ),
+          // When a layer is selected replace the frame stats with the drag hint.
+          // When nothing is selected show the frame/size stats as normal.
+          if (selectedLayer != null) ...[
+            Container(
+              width: 1, height: 10,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: context.tBorder,
+            ),
+            _DragHint(layer: selectedLayer),
+          ] else ...[
+            const SizedBox(width: 12),
+            Text(
+              right,
+              style: TextStyle(fontSize: 11, color: context.tTextDim),
+            ),
+          ],
         ],
       ),
     );
