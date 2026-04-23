@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../../app.dart' show themeModeProvider;
 import '../../../features/device/connection_state.dart';
@@ -111,6 +114,13 @@ class EditorPage extends ConsumerWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Top bar
+//
+// The entire bar is wrapped in DragToMoveArea so the user can drag the window
+// by clicking anywhere on it that isn't an interactive control.
+//
+// On macOS the system traffic-light buttons render in their usual top-left
+// position inside our bar (TitleBarStyle.hidden keeps them). On Windows and
+// Linux we render our own minimize / maximize / close buttons on the right.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TopBar extends ConsumerWidget {
@@ -125,64 +135,224 @@ class _TopBar extends ConsumerWidget {
     final scene   = ref.watch(sceneProvider);
     final surface = Theme.of(context).colorScheme.surface;
 
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: surface,
-        border: const Border(bottom: kPanelBorder),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          _Logo(),
-          const SizedBox(width: 12),
-          Container(width: 1, height: 20, color: kBorder),
-          const SizedBox(width: 12),
-          Text(
-            scene.name,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: kTextMuted),
-          ),
-          if (editor.isDirty) ...[
-            const SizedBox(width: 5),
-            Container(width: 5, height: 5, decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle)),
+    // Whether to render our own window controls (Windows / Linux).
+    final bool showWinControls =
+        !kIsWeb && (Platform.isWindows || Platform.isLinux);
+
+    // On macOS the traffic lights occupy ~72 px on the left.
+    final double macOsLeadingPad = (!kIsWeb && Platform.isMacOS) ? 72.0 : 0.0;
+
+    return DragToMoveArea(
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: surface,
+          border: const Border(bottom: kPanelBorder),
+        ),
+        padding: EdgeInsets.only(
+          left: 12 + macOsLeadingPad,
+          right: showWinControls ? 0 : 12,
+        ),
+        child: Row(
+          children: [
+            _Logo(),
+            const SizedBox(width: 12),
+            Container(width: 1, height: 20, color: kBorder),
+            const SizedBox(width: 12),
+            Text(
+              scene.name,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: kTextMuted),
+            ),
+            if (editor.isDirty) ...[
+              const SizedBox(width: 5),
+              Container(
+                  width: 5,
+                  height: 5,
+                  decoration: const BoxDecoration(
+                      color: kGreen, shape: BoxShape.circle)),
+            ],
+            const SizedBox(width: 8),
+            _FileMenuBtn(),
+            const Spacer(),
+            _TopIconBtn(
+              icon: Icons.undo_rounded,
+              tooltip: 'Undo  ⌘Z',
+              enabled: editor.canUndo,
+              onTap: () =>
+                  ref.read(editorControllerProvider.notifier).undo(),
+            ),
+            _TopIconBtn(
+              icon: Icons.redo_rounded,
+              tooltip: 'Redo  ⌘⇧Z',
+              enabled: editor.canRedo,
+              onTap: () =>
+                  ref.read(editorControllerProvider.notifier).redo(),
+            ),
+            const SizedBox(width: 8),
+            Container(width: 1, height: 20, color: kBorder),
+            const SizedBox(width: 8),
+            _ConnectionChip(state: device),
+            const SizedBox(width: 8),
+            Container(width: 1, height: 20, color: kBorder),
+            const SizedBox(width: 8),
+            const Text(
+              'ZOOM',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.08,
+                  color: kTextMuted),
+            ),
+            const SizedBox(width: 6),
+            ...kZoomLevels
+                .map((z) => _ZoomBtn(level: z, active: z == zoom)),
+            const SizedBox(width: 8),
+            Container(width: 1, height: 20, color: kBorder),
+            const SizedBox(width: 8),
+            _ThemeBtn(isDark: isDark),
+
+            // Custom window controls — Windows / Linux only.
+            if (showWinControls) ...[
+              const SizedBox(width: 8),
+              Container(width: 1, height: 20, color: kBorder),
+              const _WindowControls(),
+            ] else
+              const SizedBox(width: 4),
           ],
-          const SizedBox(width: 8),
-          _FileMenuBtn(),
-          const Spacer(),
-          _TopIconBtn(
-            icon: Icons.undo_rounded,
-            tooltip: 'Undo  ⌘Z',
-            enabled: editor.canUndo,
-            onTap: () => ref.read(editorControllerProvider.notifier).undo(),
-          ),
-          _TopIconBtn(
-            icon: Icons.redo_rounded,
-            tooltip: 'Redo  ⌘⇧Z',
-            enabled: editor.canRedo,
-            onTap: () => ref.read(editorControllerProvider.notifier).redo(),
-          ),
-          const SizedBox(width: 8),
-          Container(width: 1, height: 20, color: kBorder),
-          const SizedBox(width: 8),
-          _ConnectionChip(state: device),
-          const SizedBox(width: 8),
-          Container(width: 1, height: 20, color: kBorder),
-          const SizedBox(width: 8),
-          const Text(
-            'ZOOM',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.08, color: kTextMuted),
-          ),
-          const SizedBox(width: 6),
-          ...kZoomLevels.map((z) => _ZoomBtn(level: z, active: z == zoom)),
-          const SizedBox(width: 8),
-          Container(width: 1, height: 20, color: kBorder),
-          const SizedBox(width: 8),
-          _ThemeBtn(isDark: isDark),
-        ],
+        ),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Window controls (Windows / Linux)
+//
+// Three buttons that match the bar's aesthetic: thin, flat, no borders.
+// The close button gets a red tint on hover to follow platform convention.
+// Each button is wrapped in a MouseRegion to suppress DragToMoveArea so
+// clicking them doesn't accidentally start a window drag.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WindowControls extends StatelessWidget {
+  const _WindowControls();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _WinBtn(
+          icon: Icons.remove_rounded,
+          tooltip: 'Minimise',
+          onTap: () => windowManager.minimize(),
+        ),
+        _WinBtn(
+          icon: Icons.crop_square_rounded,
+          tooltip: 'Maximise',
+          onTap: () async {
+            if (await windowManager.isMaximized()) {
+              await windowManager.unmaximize();
+            } else {
+              await windowManager.maximize();
+            }
+          },
+        ),
+        _WinCloseBtn(),
+      ],
+    );
+  }
+}
+
+class _WinBtn extends StatefulWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _WinBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  State<_WinBtn> createState() => _WinBtnState();
+}
+
+class _WinBtnState extends State<_WinBtn> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Tooltip(
+      message: widget.tooltip,
+      // MouseRegion prevents the DragToMoveArea from capturing these clicks.
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 80),
+            width: 46,
+            height: 44,
+            color: _hovered
+                ? (isDark
+                    ? Colors.white.withOpacity(0.07)
+                    : Colors.black.withOpacity(0.05))
+                : Colors.transparent,
+            child: Icon(widget.icon, size: 15, color: kTextMuted),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WinCloseBtn extends StatefulWidget {
+  @override
+  State<_WinCloseBtn> createState() => _WinCloseBtnState();
+}
+
+class _WinCloseBtnState extends State<_WinCloseBtn> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Close',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: () => windowManager.close(),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 80),
+            width: 46,
+            height: 44,
+            // Matches Windows 11 convention: red bg on hover.
+            color: _hovered ? const Color(0xFFC42B1C) : Colors.transparent,
+            child: Icon(
+              Icons.close_rounded,
+              size: 15,
+              color: _hovered ? Colors.white : kTextMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Logo
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _Logo extends StatelessWidget {
   @override
@@ -190,18 +360,31 @@ class _Logo extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 26, height: 26,
-            decoration: BoxDecoration(color: kGreen, borderRadius: const BorderRadius.all(kRadiusSm)),
-            child: const Icon(Icons.grid_on_rounded, size: 15, color: Colors.white),
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+                color: kGreen,
+                borderRadius:
+                    const BorderRadius.all(kRadiusSm)),
+            child: const Icon(Icons.grid_on_rounded,
+                size: 15, color: Colors.white),
           ),
           const SizedBox(width: 7),
           const Text(
             'Frameon',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kTextPrimary, letterSpacing: -0.3),
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: kTextPrimary,
+                letterSpacing: -0.3),
           ),
         ],
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File menu
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _FileMenuBtn extends ConsumerWidget {
   @override
@@ -209,7 +392,8 @@ class _FileMenuBtn extends ConsumerWidget {
       PopupMenuButton<String>(
         tooltip: 'File',
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             borderRadius: const BorderRadius.all(kRadiusSm),
             border: Border.all(color: kBorder),
@@ -217,32 +401,44 @@ class _FileMenuBtn extends ConsumerWidget {
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.folder_open_rounded, size: 13, color: kTextMuted),
+              Icon(Icons.folder_open_rounded,
+                  size: 13, color: kTextMuted),
               SizedBox(width: 4),
-              Text('File', style: TextStyle(fontSize: 11, color: kTextMuted, fontWeight: FontWeight.w500)),
-              Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: kTextMuted),
+              Text('File',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: kTextMuted,
+                      fontWeight: FontWeight.w500)),
+              Icon(Icons.keyboard_arrow_down_rounded,
+                  size: 14, color: kTextMuted),
             ],
           ),
         ),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(kRadiusMd)),
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(kRadiusMd)),
         itemBuilder: (_) => [
           _mi('open', 'Open project…', Icons.file_open_outlined),
           _mi('save', 'Save project…', Icons.save_outlined),
           const PopupMenuDivider(height: 1),
-          _mi('new',  'New project',   Icons.add_rounded),
+          _mi('new', 'New project', Icons.add_rounded),
         ],
         onSelected: (v) {
           switch (v) {
-            case 'open': _open(context, ref);
-            case 'save': _save(context, ref);
-            case 'new':  ref.read(sceneProvider.notifier).newScene();
+            case 'open':
+              _open(context, ref);
+            case 'save':
+              _save(context, ref);
+            case 'new':
+              ref.read(sceneProvider.notifier).newScene();
           }
         },
       );
 
-  PopupMenuItem<String> _mi(String val, String label, IconData icon) =>
+  PopupMenuItem<String> _mi(
+          String val, String label, IconData icon) =>
       PopupMenuItem(
-        value: val, height: 36,
+        value: val,
+        height: 36,
         child: Row(children: [
           Icon(icon, size: 14, color: kTextMuted),
           const SizedBox(width: 8),
@@ -252,7 +448,9 @@ class _FileMenuBtn extends ConsumerWidget {
 
   Future<void> _open(BuildContext context, WidgetRef ref) async {
     final r = await FilePicker.platform.pickFiles(
-      type: FileType.custom, allowedExtensions: ['frameon'], withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['frameon'],
+      withData: true,
     );
     if (r == null || r.files.single.bytes == null) return;
     try {
@@ -262,7 +460,8 @@ class _FileMenuBtn extends ConsumerWidget {
       ref.read(recentProjectsProvider.notifier).add(path);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to open: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to open: $e')));
       }
     }
   }
@@ -273,7 +472,9 @@ class _FileMenuBtn extends ConsumerWidget {
     final result = await FilePicker.platform.saveFile(
       dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
-      type: FileType.custom, allowedExtensions: ['frameon'], bytes: bytes,
+      type: FileType.custom,
+      allowedExtensions: ['frameon'],
+      bytes: bytes,
     );
     if (result != null) {
       ref.read(editorControllerProvider.notifier).markSaved(result);
@@ -282,12 +483,22 @@ class _FileMenuBtn extends ConsumerWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared top-bar icon button
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _TopIconBtn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback? onTap;
   final bool enabled;
-  const _TopIconBtn({required this.icon, required this.tooltip, this.onTap, this.enabled = true});
+
+  const _TopIconBtn({
+    required this.icon,
+    required this.tooltip,
+    this.onTap,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -297,11 +508,17 @@ class _TopIconBtn extends StatelessWidget {
           borderRadius: const BorderRadius.all(kRadiusSm),
           child: Padding(
             padding: const EdgeInsets.all(5),
-            child: Icon(icon, size: 16, color: enabled ? kTextMuted : kTextDim),
+            child: Icon(icon,
+                size: 16,
+                color: enabled ? kTextMuted : kTextDim),
           ),
         ),
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Connection chip
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _ConnectionChip extends ConsumerWidget {
   final DeviceConnectionState state;
@@ -325,12 +542,19 @@ class _ConnectionChip extends ConsumerWidget {
         decoration: BoxDecoration(
           color: connected ? kGreen.withOpacity(0.08) : Colors.transparent,
           borderRadius: const BorderRadius.all(kRadiusSm),
-          border: Border.all(color: connected ? kGreen.withOpacity(0.35) : kBorder),
+          border: Border.all(
+              color: connected
+                  ? kGreen.withOpacity(0.35)
+                  : kBorder),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.usb_rounded, size: 13, color: color),
           const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.w500)),
         ]),
       ),
     );
@@ -344,13 +568,18 @@ class _ConnectionChip extends ConsumerWidget {
         connectedPort: state.portName,
         onConnect: (p) async {
           Navigator.pop(context);
-          await ref.read(deviceConnectionProvider.notifier).connect(p);
+          await ref
+              .read(deviceConnectionProvider.notifier)
+              .connect(p);
         },
         onDisconnect: () async {
           Navigator.pop(context);
-          await ref.read(deviceConnectionProvider.notifier).disconnect();
+          await ref
+              .read(deviceConnectionProvider.notifier)
+              .disconnect();
         },
-        onScan: () => ref.read(deviceConnectionProvider.notifier).scanPorts(),
+        onScan: () =>
+            ref.read(deviceConnectionProvider.notifier).scanPorts(),
       ),
     );
   }
@@ -362,8 +591,14 @@ class _PortSheet extends ConsumerWidget {
   final Future<void> Function(String) onConnect;
   final Future<void> Function() onDisconnect;
   final Future<List<String>> Function() onScan;
-  const _PortSheet({required this.isConnected, required this.connectedPort,
-      required this.onConnect, required this.onDisconnect, required this.onScan});
+
+  const _PortSheet({
+    required this.isConnected,
+    required this.connectedPort,
+    required this.onConnect,
+    required this.onDisconnect,
+    required this.onScan,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -371,44 +606,71 @@ class _PortSheet extends ConsumerWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Text('Serial port', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            const Spacer(),
-            TextButton.icon(
-              icon: const Icon(Icons.refresh_rounded, size: 14),
-              label: const Text('Scan'),
-              onPressed: () async { await onScan(); ref.invalidate(availablePortsProvider); },
-            ),
-          ]),
-          const SizedBox(height: 8),
-          portsAsync.when(
-            loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
-            error: (e, _) => Text('Error: $e'),
-            data: (ports) => ports.isEmpty
-                ? const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No ports found.'))
-                : Column(children: ports.map((p) => ListTile(
-                      dense: true,
-                      leading: Icon(Icons.usb_rounded, color: p == connectedPort ? kGreen : null),
-                      title: Text(p),
-                      trailing: p == connectedPort ? const Icon(Icons.check_rounded, color: kGreen) : null,
-                      onTap: () => onConnect(p),
-                    )).toList()),
-          ),
-          if (isConnected) ...[
-            const Divider(),
-            TextButton.icon(
-              onPressed: onDisconnect,
-              icon: const Icon(Icons.link_off_rounded, size: 14),
-              label: const Text('Disconnect'),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-            ),
-          ],
-        ]),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Text('Serial port',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                TextButton.icon(
+                  icon: const Icon(Icons.refresh_rounded, size: 14),
+                  label: const Text('Scan'),
+                  onPressed: () async {
+                    await onScan();
+                    ref.invalidate(availablePortsProvider);
+                  },
+                ),
+              ]),
+              const SizedBox(height: 8),
+              portsAsync.when(
+                loading: () => const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator())),
+                error: (e, _) => Text('Error: $e'),
+                data: (ports) => ports.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('No ports found.'))
+                    : Column(
+                        children: ports
+                            .map((p) => ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.usb_rounded,
+                                      color: p == connectedPort
+                                          ? kGreen
+                                          : null),
+                                  title: Text(p),
+                                  trailing: p == connectedPort
+                                      ? const Icon(Icons.check_rounded,
+                                          color: kGreen)
+                                      : null,
+                                  onTap: () => onConnect(p),
+                                ))
+                            .toList()),
+              ),
+              if (isConnected) ...[
+                const Divider(),
+                TextButton.icon(
+                  onPressed: onDisconnect,
+                  icon: const Icon(Icons.link_off_rounded, size: 14),
+                  label: const Text('Disconnect'),
+                  style: TextButton.styleFrom(
+                      foregroundColor: Colors.red),
+                ),
+              ],
+            ]),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zoom buttons
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _ZoomBtn extends ConsumerWidget {
   final int level;
@@ -420,19 +682,28 @@ class _ZoomBtn extends ConsumerWidget {
         onTap: () => ref.read(zoomProvider.notifier).state = level,
         child: Container(
           margin: const EdgeInsets.only(right: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: active ? kGreen : Colors.transparent,
             borderRadius: const BorderRadius.all(kRadiusSm),
-            border: Border.all(color: active ? kGreen : kBorder),
+            border: Border.all(
+                color: active ? kGreen : kBorder),
           ),
           child: Text(
             '${level}x',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: active ? Colors.white : kTextMuted),
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: active ? Colors.white : kTextMuted),
           ),
         ),
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme toggle
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _ThemeBtn extends ConsumerWidget {
   final bool isDark;
@@ -440,24 +711,34 @@ class _ThemeBtn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => GestureDetector(
-        onTap: () => ref.read(themeModeProvider.notifier).state =
-            isDark ? ThemeMode.light : ThemeMode.dark,
+        onTap: () =>
+            ref.read(themeModeProvider.notifier).state =
+                isDark ? ThemeMode.light : ThemeMode.dark,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             borderRadius: const BorderRadius.all(kRadiusSm),
             border: Border.all(color: kBorder),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(
-              isDark ? Icons.dark_mode_rounded : Icons.wb_sunny_rounded,
+              isDark
+                  ? Icons.dark_mode_rounded
+                  : Icons.wb_sunny_rounded,
               size: 13,
-              color: isDark ? const Color(0xFF7B8CDE) : const Color(0xFFE6A817),
+              color: isDark
+                  ? const Color(0xFF7B8CDE)
+                  : const Color(0xFFE6A817),
             ),
             const SizedBox(width: 5),
             Text(
               isDark ? 'DARK' : 'LIGHT',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.05, color: kTextMuted),
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.05,
+                  color: kTextMuted),
             ),
           ]),
         ),
@@ -466,14 +747,6 @@ class _ThemeBtn extends ConsumerWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Preset slots — left vertical strip
-//
-// How it works:
-//   • Tapping a slot saves the current scene into the slot we're LEAVING,
-//     then loads the target slot's scene (or a blank if never saved).
-//   • Long-pressing a slot shows a delete confirmation.
-//   • The "+" button adds a new slot with a copy of the current scene as its
-//     initial content so the user always starts from something useful.
-//   • A dot indicator appears on any slot that has a saved (non-null) scene.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PresetSlots extends ConsumerWidget {
@@ -486,31 +759,21 @@ class _PresetSlots extends ConsumerWidget {
     final sceneN  = ref.read(sceneProvider.notifier);
 
     void switchTo(int label) {
-      // 1. Save the current scene back into the slot we're leaving.
       final current = ref.read(sceneProvider);
       presetN.saveScene(current, slot: preset.activeSlot);
-
-      // 2. Load the target slot's scene (blank if never saved).
       final target = presetN.switchTo(label);
       if (target != null) {
         sceneN.loadScene(target);
       } else {
-        // First visit — start with a fresh blank scene.
         sceneN.newScene();
-        // Immediately snapshot it into the slot so it persists.
         presetN.saveScene(ref.read(sceneProvider), slot: label);
       }
-
-      // 3. Reset undo history — undo across preset boundaries is confusing.
       ref.read(editorControllerProvider.notifier).newProject();
     }
 
     void addSlot() {
-      // Save current scene first.
       final current = ref.read(sceneProvider);
       presetN.saveScene(current, slot: preset.activeSlot);
-
-      // Add slot with a blank scene.
       presetN.addSlot();
       sceneN.newScene();
       presetN.saveScene(ref.read(sceneProvider), slot: preset.activeSlot);
@@ -522,7 +785,8 @@ class _PresetSlots extends ConsumerWidget {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Delete preset?'),
-          content: Text('Preset $label will be removed. This cannot be undone.'),
+          content: Text(
+              'Preset $label will be removed. This cannot be undone.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -530,7 +794,8 @@ class _PresetSlots extends ConsumerWidget {
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              style:
+                  TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete'),
             ),
           ],
@@ -539,10 +804,10 @@ class _PresetSlots extends ConsumerWidget {
         if (confirmed != true) return;
         final wasActive = preset.activeSlot == label;
         presetN.removeSlot(label);
-        // If we deleted the active slot, load whichever slot is now active.
         if (wasActive) {
           final newActive = ref.read(presetProvider).activeSlot;
-          final saved = ref.read(presetProvider).scenes[newActive];
+          final saved =
+              ref.read(presetProvider).scenes[newActive];
           if (saved != null) {
             sceneN.loadScene(saved);
           } else {
@@ -590,7 +855,11 @@ class _PresetSlots extends ConsumerWidget {
               ),
             ),
           ),
-          Container(height: 1, width: 32, color: kBorder, margin: const EdgeInsets.only(bottom: 6)),
+          Container(
+              height: 1,
+              width: 32,
+              color: kBorder,
+              margin: const EdgeInsets.only(bottom: 6)),
           _SlotIconBtn(
             icon: Icons.settings_rounded,
             tooltip: 'Settings',
@@ -631,31 +900,36 @@ class _PresetSlot extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: active ? kGreen : Theme.of(context).colorScheme.surface,
+                  color: active
+                      ? kGreen
+                      : Theme.of(context).colorScheme.surface,
                   borderRadius: const BorderRadius.all(kRadiusSm),
-                  border: Border.all(color: active ? kGreen : kBorder, width: active ? 0 : 1),
+                  border: Border.all(
+                      color: active ? kGreen : kBorder,
+                      width: active ? 0 : 1),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   label,
                   style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                     color: active ? Colors.white : kTextMuted,
                   ),
                 ),
               ),
-              // Small dot in top-right corner when slot has saved content.
               if (hasSavedContent && !active)
                 Positioned(
-                  top: 4, right: 4,
+                  top: 4,
+                  right: 4,
                   child: Container(
-                    width: 6, height: 6,
+                    width: 6,
+                    height: 6,
                     decoration: const BoxDecoration(
-                      color: kGreen,
-                      shape: BoxShape.circle,
-                    ),
+                        color: kGreen, shape: BoxShape.circle),
                   ),
                 ),
             ],
@@ -668,7 +942,10 @@ class _SlotIconBtn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
-  const _SlotIconBtn({required this.icon, required this.tooltip, required this.onTap});
+  const _SlotIconBtn(
+      {required this.icon,
+      required this.tooltip,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -676,7 +953,8 @@ class _SlotIconBtn extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 44, height: 44,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: const BorderRadius.all(kRadiusSm),
@@ -744,6 +1022,14 @@ class _BottomStrip extends StatelessWidget {
 // Keyboard intents
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _UndoIntent extends Intent { const _UndoIntent(); }
-class _RedoIntent extends Intent { const _RedoIntent(); }
-class _SaveIntent extends Intent { const _SaveIntent(); }
+class _UndoIntent extends Intent {
+  const _UndoIntent();
+}
+
+class _RedoIntent extends Intent {
+  const _RedoIntent();
+}
+
+class _SaveIntent extends Intent {
+  const _SaveIntent();
+}

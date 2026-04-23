@@ -37,6 +37,9 @@ dependencies:
 
   # Serial communication (Windows / macOS)
   # flutter_libserialport: ^0.3.1   # uncomment when wiring device transport
+    
+  #
+  window_manager: ^0.4.3
   
 
 dev_dependencies:
