@@ -59,14 +59,8 @@ class TextToolboxRight extends StatelessWidget {
                 value: layer.effectSpeedMs.toDouble(),
                 onChanged: (v) =>
                     n.updateLayer(layer.copyWith(effectSpeedMs: v.round()))),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
           ],
-          const TbLabel('Alignment'),
-          const SizedBox(height: 4),
-          TbSegAlign(
-              current: layer.alignment,
-              onChange: (v) => n.updateLayer(layer.copyWith(alignment: v))),
-          const SizedBox(height: 12),
           const TbLabel('Opacity'),
           Slider(
               value: layer.opacity,

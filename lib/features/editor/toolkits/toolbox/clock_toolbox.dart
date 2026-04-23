@@ -79,38 +79,6 @@ class ClockToolboxRight extends StatelessWidget {
             onChanged: (tz) => n.updateLayer(layer.copyWith(timezone: tz)),
           ),
           const SizedBox(height: 10),
-          const TbLabel('Alignment'),
-          const SizedBox(height: 4),
-          Row(
-              children: ClockAlignment.values.map((v) {
-            final active = v == layer.alignment;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => n.updateLayer(layer.copyWith(alignment: v)),
-                child: Container(
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: active ? kGreen : kSurface,
-                    border: Border.all(color: active ? kGreen : kBorder),
-                    borderRadius: BorderRadius.horizontal(
-                        left: v == ClockAlignment.left
-                            ? const Radius.circular(6)
-                            : Radius.zero,
-                        right: v == ClockAlignment.right
-                            ? const Radius.circular(6)
-                            : Radius.zero),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(v.name.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: active ? Colors.white : kTextMuted)),
-                ),
-              ),
-            );
-          }).toList()),
-          const SizedBox(height: 10),
           TbToggleRow(
               label: '24-hour format',
               value: layer.format == ClockFormat.h24,
@@ -145,7 +113,6 @@ class _TzEntry {
 }
 
 const _kTimezones = <_TzEntry>[
-  // Keep 'local' first — it is the default and most common.
   _TzEntry('local',               'Local (device time)'),
   _TzEntry('UTC',                 'UTC ±0'),
   _TzEntry('Europe/London',       'London  UTC+0/+1'),

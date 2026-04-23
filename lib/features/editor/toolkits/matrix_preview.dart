@@ -3,20 +3,14 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../engine/renderer/pixel_buffer.dart';
+import '../../../engine/scene/layer.dart';
 import '../../../engine/scene/timeline.dart';
 import '../../../shared/providers/providers.dart';
+import '../presentation/controller.dart';
 import 'ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MatrixPreview
-//
-// Drives a continuous Ticker that increments previewElapsedMsProvider every
-// frame. previewFrameProvider watches that value and re-renders one PixelBuffer
-// frame per tick — no frame count, no cap, no encode/decode round-trip.
-//
-// The timelineProvider is still watched here solely for the info strip stats
-// (frame count, byte size) shown below the preview canvas. It is NOT used
-// for the actual preview rendering.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MatrixPreview extends ConsumerStatefulWidget {
@@ -55,14 +49,9 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
 
   @override
   Widget build(BuildContext context) {
-    // Live PixelBuffer — one frame rendered at current elapsedMs.
-    final buffer = ref.watch(previewFrameProvider);
-
-    // Timeline is only needed for the stats strip (frame count, KB).
-    // It is no longer needed for rendering the preview.
+    final buffer       = ref.watch(previewFrameProvider);
     final timelineAsync = ref.watch(timelineProvider);
-
-    final scene = ref.watch(sceneProvider);
+    final scene        = ref.watch(sceneProvider);
 
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
@@ -107,22 +96,28 @@ class _PreviewLabel extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Canvas area
+// Canvas area — wraps the LED canvas, dot-grid background, and drag logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _CanvasArea extends StatelessWidget {
+class _CanvasArea extends ConsumerWidget {
   final PixelBuffer buffer;
   const _CanvasArea({required this.buffer});
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = context.isDark;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark        = context.isDark;
+    final selectedLayer = ref.watch(selectedLayerProvider);
+    final canDrag       = selectedLayer != null;
+
     return Stack(
       alignment: Alignment.center,
       children: [
+        // Dot-grid background
         Positioned.fill(
           child: CustomPaint(painter: _DotGridPainter(isDark: isDark)),
         ),
+
+        // LED matrix canvas
         Center(
           child: AspectRatio(
             aspectRatio: 64 / 32,
@@ -140,19 +135,251 @@ class _CanvasArea extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: const BorderRadius.all(kRadiusSm),
-                  child: _LedCanvas(buffer: buffer),
+                  child: _InteractiveLedCanvas(
+                    buffer: buffer,
+                    selectedLayer: selectedLayer,
+                    onDragStart: () {
+                      ref.read(editorControllerProvider.notifier).snapshot();
+                    },
+                    onOffsetChanged: (offset) {
+                      if (selectedLayer != null) {
+                        ref.read(sceneProvider.notifier).updateLayer(
+                          selectedLayer.copyWith(offset: offset),
+                        );
+                      }
+                    },
+                  ),
                 ),
               ),
             ),
           ),
         ),
+
+        // "drag to reposition" hint — shown only when a layer is selected
+        if (canDrag)
+          Positioned(
+            bottom: 12,
+            child: _DragHint(isDark: isDark),
+          ),
       ],
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dot grid background painter
+// Interactive LED canvas — handles pan gestures and converts them to matrix
+// pixel offsets, then notifies the parent to persist the updated layer offset.
+//
+// Coordinate mapping:
+//   screen px → matrix px:  matX = screenX / canvasW × 64
+//                            matY = screenY / canvasH × 32
+//
+// The layer offset is in matrix pixels and is relative to each widget's
+// default (usually centred) position. Dragging 1 matrix pixel in any direction
+// moves the rendered element 1 pixel on the 64×32 grid.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _InteractiveLedCanvas extends StatefulWidget {
+  final PixelBuffer  buffer;
+  final Layer?       selectedLayer;
+  final VoidCallback onDragStart;
+  final ValueChanged<Offset> onOffsetChanged;
+
+  const _InteractiveLedCanvas({
+    required this.buffer,
+    required this.selectedLayer,
+    required this.onDragStart,
+    required this.onOffsetChanged,
+  });
+
+  @override
+  State<_InteractiveLedCanvas> createState() => _InteractiveLedCanvasState();
+}
+
+class _InteractiveLedCanvasState extends State<_InteractiveLedCanvas> {
+  Offset? _dragStartMatrix;
+  Offset? _dragStartLayerOffset;
+  bool    _isDragging    = false;
+  bool    _didSnapshot   = false;
+
+  bool get _canDrag => widget.selectedLayer != null;
+
+  /// Convert a local screen-space position to matrix-space (0..64, 0..32).
+  Offset _toMatrix(Offset local, Size canvasSize) => Offset(
+        local.dx / canvasSize.width  * 64,
+        local.dy / canvasSize.height * 32,
+      );
+
+  void _onPanStart(DragStartDetails details, Size canvasSize) {
+    if (!_canDrag) return;
+    setState(() {
+      _dragStartMatrix      = _toMatrix(details.localPosition, canvasSize);
+      _dragStartLayerOffset = widget.selectedLayer!.offset;
+      _isDragging           = true;
+      _didSnapshot          = false;
+    });
+  }
+
+  void _onPanUpdate(DragUpdateDetails details, Size canvasSize) {
+    if (!_canDrag || _dragStartMatrix == null || _dragStartLayerOffset == null) return;
+
+    // Snapshot on the first movement so undo captures the pre-drag state.
+    if (!_didSnapshot) {
+      widget.onDragStart();
+      _didSnapshot = true;
+    }
+
+    final currentMatrix = _toMatrix(details.localPosition, canvasSize);
+    final delta         = currentMatrix - _dragStartMatrix!;
+
+    widget.onOffsetChanged(
+      Offset(
+        _dragStartLayerOffset!.dx + delta.dx,
+        _dragStartLayerOffset!.dy + delta.dy,
+      ),
+    );
+  }
+
+  void _onPanEnd(DragEndDetails _) {
+    setState(() {
+      _isDragging           = false;
+      _dragStartMatrix      = null;
+      _dragStartLayerOffset = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (_, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+
+        return MouseRegion(
+          cursor: _canDrag
+              ? (_isDragging
+                  ? SystemMouseCursors.grabbing
+                  : SystemMouseCursors.grab)
+              : MouseCursor.defer,
+          child: GestureDetector(
+            onPanStart:  (d) => _onPanStart(d, size),
+            onPanUpdate: (d) => _onPanUpdate(d, size),
+            onPanEnd:    _onPanEnd,
+            child: Stack(
+              children: [
+                // LED pixel grid
+                _LedCanvas(buffer: widget.buffer),
+
+                // Selection border — indicates the layer is draggable
+                if (_canDrag)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.all(kRadiusSm),
+                          border: Border.all(
+                            color: kGreen.withOpacity(_isDragging ? 0.9 : 0.35),
+                            width: _isDragging ? 1.5 : 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Crosshair indicator during active drag
+                if (_isDragging)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _CrosshairPainter(),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Crosshair painter — drawn over the canvas during a drag to help the user
+// align content to the matrix centre.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CrosshairPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color       = kGreen.withOpacity(0.18)
+      ..strokeWidth = 0.5
+      ..style       = PaintingStyle.stroke;
+
+    // Vertical centre line
+    canvas.drawLine(
+      Offset(size.width / 2, 0),
+      Offset(size.width / 2, size.height),
+      paint,
+    );
+    // Horizontal centre line
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CrosshairPainter _) => false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drag hint chip — shown below the canvas when a layer is selected
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DragHint extends StatelessWidget {
+  final bool isDark;
+  const _DragHint({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: isDark
+              ? const Color(0xFF242424).withOpacity(0.85)
+              : const Color(0xFFF8F7F3).withOpacity(0.85),
+          borderRadius: const BorderRadius.all(kRadiusSm),
+          border: Border.all(
+            color: kGreen.withOpacity(0.30),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.open_with_rounded,
+              size: 10,
+              color: kGreen.withOpacity(0.75),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              'drag on preview to reposition',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: kGreen.withOpacity(0.75),
+                letterSpacing: 0.04,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dot-grid background painter
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DotGridPainter extends CustomPainter {
@@ -199,8 +426,7 @@ class _LedCanvas extends StatelessWidget {
 // LED painter
 //
 // Reads directly from the PixelBuffer — no RGB565 encode/decode round-trip.
-// Each pixel is checked per-channel so dim blues and greens render correctly
-// (the old single 24-bit threshold incorrectly dimmed pure-blue pixels).
+// Each pixel is checked per-channel so dim blues and greens render correctly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _LedPainter extends CustomPainter {
@@ -213,12 +439,10 @@ class _LedPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Dark LED panel background.
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF0A0A0A));
 
     final double dW = size.width  / _cols;
     final double dH = size.height / _rows;
-    // LED dot radius — 40% of the smaller cell dimension.
     final double r  = (dW < dH ? dW : dH) * 0.40;
     final paint = Paint()..isAntiAlias = true;
 
@@ -226,16 +450,14 @@ class _LedPainter extends CustomPainter {
       for (int col = 0; col < _cols; col++) {
         final int argb = buffer.getPixel(col, row);
 
-        // Check each channel independently so any single channel lighting
-        // a pixel (e.g. pure blue 0x0000FF) is correctly treated as "on".
         final int r8 = (argb >> 16) & 0xFF;
         final int g8 = (argb >> 8)  & 0xFF;
         final int b8 =  argb        & 0xFF;
         final bool on = r8 > 8 || g8 > 8 || b8 > 8;
 
         paint.color = on
-            ? Color(argb | 0xFF000000)   // lit LED — use pixel colour
-            : const Color(0xFF181818);   // unlit LED — dark grey
+            ? Color(argb | 0xFF000000)
+            : const Color(0xFF181818);
 
         canvas.drawCircle(
           Offset(col * dW + dW / 2, row * dH + dH / 2),
@@ -255,7 +477,7 @@ class _LedPainter extends CustomPainter {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _InfoStrip extends StatelessWidget {
-  final int width, height;
+  final int   width, height;
   final double fps;
   final AsyncValue<Timeline> timelineAsync;
 
@@ -281,8 +503,7 @@ class _InfoStrip extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 7,
-            height: 7,
+            width: 7, height: 7,
             decoration: const BoxDecoration(
               color: kGreen,
               shape: BoxShape.circle,
