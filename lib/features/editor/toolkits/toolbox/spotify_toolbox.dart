@@ -192,20 +192,20 @@ class SpotifyToolboxRight extends StatelessWidget {
               color: layer.titleColor,
               value: layer.showTitle,
               initialFontId: layer.fontId,
-              initialEffect: layer.titleEffect,
+              initialEffect: layer.titleEffect,              // scroll direction
+              initialOverlayEffect: layer.titleOverlayEffect, // overlay
               initialEffectSpeedMs: layer.titleEffectSpeedMs,
               showFont: true,
               showFontEffect: true,
               showLightingEffect: true,
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
-              titleColor: r.color,
-              fontId: r.fontId,
-              titleEffect: r.overlayEffect != AnimationEffect.none
-                  ? r.overlayEffect
-                  : r.scrollDirection,
-              titleEffectSpeedMs: r.effectSpeedMs,
+                titleColor: r.color,
+                fontId: r.fontId,
+                titleEffect: r.scrollDirection,           // save scroll
+                titleOverlayEffect: r.overlayEffect,      // save overlay
+                titleEffectSpeedMs: r.effectSpeedMs,
               )),
-              onToggled: (v) =>n.updateLayer(layer.copyWith(showTitle: v)),
+              onToggled: (v) => n.updateLayer(layer.copyWith(showTitle: v)),
             ),
 
           // ── Show artist ──────────────────────────────────────────────
@@ -215,19 +215,19 @@ class SpotifyToolboxRight extends StatelessWidget {
                 color: layer.artistColor,
                 value: layer.showArtist,
                 initialFontId: layer.fontId,
-                initialEffect: layer.artistEffect,          // ← own effect
+                initialEffect: layer.artistEffect,               // scroll direction
+                initialOverlayEffect: layer.artistOverlayEffect, // overlay
                 initialEffectSpeedMs: layer.artistEffectSpeedMs,
                 showFont: true,
                 showFontEffect: true,
                 showLightingEffect: true,
                 onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
-                artistColor: r.color,
-                fontId: r.fontId,
-                artistEffect: r.overlayEffect != AnimationEffect.none
-                    ? r.overlayEffect
-                    : r.scrollDirection,
-                artistEffectSpeedMs: r.effectSpeedMs,
-              )),
+                  artistColor: r.color,
+                  fontId: r.fontId,
+                  artistEffect: r.scrollDirection,          // save scroll
+                  artistOverlayEffect: r.overlayEffect,     // save overlay
+                  artistEffectSpeedMs: r.effectSpeedMs,
+                )),
               onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),
             ),
 
@@ -262,6 +262,7 @@ class _PropertiesToggleRow extends StatelessWidget {
   final bool value;
   final LedFontId initialFontId;
   final AnimationEffect initialEffect;
+  final AnimationEffect? initialOverlayEffect;  // ← separate overlay init
   final int initialEffectSpeedMs;        
   final bool showFont;
   final bool showFontEffect;
@@ -275,6 +276,7 @@ class _PropertiesToggleRow extends StatelessWidget {
     required this.value,
     required this.initialFontId,
     required this.initialEffect,
+    this.initialOverlayEffect,
     this.initialEffectSpeedMs = 100,     
     this.showFont = true,
     this.showFontEffect = true,
@@ -295,7 +297,8 @@ class _PropertiesToggleRow extends StatelessWidget {
                   initialColor: color,
                   initialFontId: initialFontId,
                   initialEffect: initialEffect,
-                  initialEffectSpeedMs: initialEffectSpeedMs,  // ← pass it
+                  initialOverlayEffect: initialOverlayEffect,  // ← pass through
+                  initialEffectSpeedMs: initialEffectSpeedMs,
                   showFont: showFont,
                   showFontEffect: showFontEffect,
                   showLightingEffect: showLightingEffect,

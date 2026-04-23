@@ -78,12 +78,14 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     if (layer.showTitle && track.title.isNotEmpty) {
       _drawText(font, buffer, track.title, layer.titleColor,
           textX, titleY, textW, elapsedMs, layer.opacity,
-          layer.titleEffect, layer.titleEffectSpeedMs);
+          layer.titleEffect, layer.titleOverlayEffect,
+          layer.titleEffectSpeedMs);
     }
     if (layer.showArtist && track.artist.isNotEmpty) {
       _drawText(font, buffer, track.artist, layer.artistColor,
           textX, artistY, textW, elapsedMs + 300, layer.opacity,
-          layer.artistEffect, layer.artistEffectSpeedMs);
+          layer.artistEffect, layer.artistOverlayEffect,
+          layer.artistEffectSpeedMs);
     }
     if (layer.showProgress) {
       _drawProgressBar(buffer, track.progress, textX,
@@ -101,12 +103,14 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     if (layer.showTitle && track.title.isNotEmpty) {
       _drawText(font, buffer, track.title, layer.titleColor,
           0, titleY, buffer.width, elapsedMs, layer.opacity,
-          layer.titleEffect, layer.titleEffectSpeedMs);
+          layer.titleEffect, layer.titleOverlayEffect,
+          layer.titleEffectSpeedMs);
     }
     if (layer.showArtist && track.artist.isNotEmpty) {
       _drawText(font, buffer, track.artist, layer.artistColor,
           0, artistY, buffer.width, elapsedMs + 300, layer.opacity,
-          layer.artistEffect, layer.artistEffectSpeedMs);
+          layer.artistEffect, layer.artistOverlayEffect,
+          layer.artistEffectSpeedMs);
     }
     if (layer.showProgress) {
       _drawProgressBar(buffer, track.progress, 0,
@@ -122,67 +126,82 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
 
   // ── Text rendering ────────────────────────────────────────────────────────
 
-  /// Renders [text] into a temporary [PixelBuffer], applies the engine's
-  /// [AnimationEffectProcessor] for [effect], then blits the result into
-  /// [buffer] at ([startX], 0). The main buffer's right edge acts as the
-  /// natural viewport clip, so no extra cropping is needed.
+  /// Renders [text] into a PixelBuffer with two independent effects:
   ///
-  /// For scroll effects the temp buffer is [contentW + maxW] wide, which
-  /// gives the wrap-around gap for free — the processor loops within that
-  /// width and [blit] clips to [maxW] visible columns automatically.
-void _drawText(
-  LedFont font,
-  PixelBuffer buffer,
-  String text,
-  Color color,
-  int startX,
-  int y,
-  int maxW,
-  int elapsedMs,
-  double baseOpacity,
-  AnimationEffect effect,
-  int speedMs,
-) {
-  final int contentW = font.textWidth(text);
-  final bool isScroll = effect == AnimationEffect.scrollLeft ||
-                        effect == AnimationEffect.scrollRight;
-  // Only perform a marquee when text is actually wider than the viewport.
-  // Short text that fits should be shown centered and static, regardless of
-  // the scroll setting — same behaviour as the original _scrollText helper.
-  final bool needsScroll = isScroll && contentW > maxW;
+  /// 1. [scrollEffect] — moves the text (scrollLeft / scrollRight / none).
+  ///    Applied first, using a wide buffer so the marquee wraps seamlessly.
+  /// 2. [overlayEffect] — alpha modulation on top of the scrolled result
+  ///    (blink / pulse / fade / burst / none). Applied second so it layers
+  ///    over the moving text.
+  ///
+  /// Either or both may be [AnimationEffect.none].
+  void _drawText(
+    LedFont font,
+    PixelBuffer buffer,
+    String text,
+    Color color,
+    int startX,
+    int y,
+    int maxW,
+    int elapsedMs,
+    double baseOpacity,
+    AnimationEffect scrollEffect,
+    AnimationEffect overlayEffect,
+    int speedMs,
+  ) {
+    final int contentW = font.textWidth(text);
+    final bool isScroll = scrollEffect == AnimationEffect.scrollLeft ||
+                          scrollEffect == AnimationEffect.scrollRight;
+    // Only marquee when text is wider than the viewport.
+    final bool needsScroll = isScroll && contentW > maxW;
 
-  final int bufW = needsScroll ? contentW + maxW : maxW;
-  final srcBuf = PixelBuffer(width: bufW, height: buffer.height);
+    final int bufW = needsScroll ? contentW + maxW : maxW;
+    final srcBuf = PixelBuffer(width: bufW, height: buffer.height);
 
-  if (needsScroll) {
-    // Text starts at x=0 so the scroll processor can sweep it across bufW.
-    font.draw(buffer: srcBuf, text: text, color: color,
-        x: 0, y: y, opacity: baseOpacity);
-  } else {
-    // Centre text in the viewport (short text, or a non-scroll effect).
-    final int x = ((maxW - contentW) ~/ 2).clamp(0, maxW - 1);
-    font.draw(buffer: srcBuf, text: text, color: color,
-        x: x, y: y, opacity: baseOpacity);
+    if (needsScroll) {
+      // Text at x=0 so the scroll processor can sweep it across bufW.
+      font.draw(buffer: srcBuf, text: text, color: color,
+          x: 0, y: y, opacity: baseOpacity);
+    } else {
+      // Centre short text (or text shown with a non-scroll effect).
+      final int x = ((maxW - contentW) ~/ 2).clamp(0, maxW - 1);
+      font.draw(buffer: srcBuf, text: text, color: color,
+          x: x, y: y, opacity: baseOpacity);
+    }
+
+    // ── Step 1: apply scroll ─────────────────────────────────────────────
+    PixelBuffer scrolledBuf;
+    if (needsScroll) {
+      final scrollProcessor = _resolveTextEffect(scrollEffect, speedMs);
+      if (scrollProcessor != null) {
+        scrolledBuf = PixelBuffer(width: bufW, height: buffer.height);
+        scrollProcessor.apply(srcBuf, scrolledBuf, elapsedMs);
+      } else {
+        scrolledBuf = srcBuf;
+      }
+    } else {
+      scrolledBuf = srcBuf;
+    }
+
+    // ── Step 2: apply overlay on top of scrolled result ──────────────────
+    PixelBuffer finalBuf;
+    if (overlayEffect != AnimationEffect.none) {
+      final overlayProcessor = _resolveTextEffect(overlayEffect, speedMs);
+      if (overlayProcessor != null) {
+        finalBuf = PixelBuffer(width: bufW, height: buffer.height);
+        overlayProcessor.apply(scrolledBuf, finalBuf, elapsedMs);
+      } else {
+        finalBuf = scrolledBuf;
+      }
+    } else {
+      finalBuf = scrolledBuf;
+    }
+
+    buffer.blit(finalBuf, dx: startX);
   }
 
-  // Scroll processor is only meaningful when needsScroll is true.
-  // For short text with a scroll setting, skip the processor so the
-  // centred text is shown statically instead of looping within maxW.
-  final bool applyProcessor = needsScroll || !isScroll;
-  final processor =
-      applyProcessor ? _resolveTextEffect(effect, speedMs) : null;
-
-  if (processor == null) {
-    buffer.blit(srcBuf, dx: startX);
-  } else {
-    final dstBuf = PixelBuffer(width: bufW, height: buffer.height);
-    processor.apply(srcBuf, dstBuf, elapsedMs);
-    buffer.blit(dstBuf, dx: startX);
-  }
-}
-
-  /// Maps [AnimationEffect] → the same [AnimationEffectProcessor] the engine
-  /// uses for [TextLayer], parameterised by [speedMs] (ms per scroll pixel).
+  /// Maps [AnimationEffect] → [AnimationEffectProcessor] parameterised
+  /// by [speedMs] (ms per scroll pixel for scroll effects).
   AnimationEffectProcessor? _resolveTextEffect(
       AnimationEffect effect, int speedMs) {
     final double pps = 1000.0 / speedMs.clamp(10, 500);

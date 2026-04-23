@@ -14,6 +14,10 @@ class PropertiesCustomizer extends StatefulWidget {
   final Color initialColor;
   final LedFontId? initialFontId;
   final AnimationEffect? initialEffect;
+  /// When provided, bypasses the legacy single-field decode and populates the
+  /// overlay dropdown directly. [initialEffect] is then treated as the scroll
+  /// direction. This enables the two-field path used by Spotify.
+  final AnimationEffect? initialOverlayEffect;
   final int initialEffectSpeedMs;
   final AnimationEffect? initialLightingEffect;
   final int initialLightingSpeedMs;
@@ -26,6 +30,7 @@ class PropertiesCustomizer extends StatefulWidget {
     required this.initialColor,
     this.initialFontId,
     this.initialEffect,
+    this.initialOverlayEffect,
     this.initialEffectSpeedMs = 100,
     this.initialLightingEffect,
     this.initialLightingSpeedMs = 100,
@@ -61,9 +66,18 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     _fromColor(widget.initialColor);
     _hexCtrl = TextEditingController(text: _toHex());
     _fontId = widget.initialFontId ?? LedFontId.polymorph;
-    // Decode a legacy single-effect value into the two independent slots.
+    // Two-field path (Spotify): initialEffect = scroll direction,
+    // initialOverlayEffect = overlay. Both are set independently.
+    // Legacy single-field path: decode the single value into scroll vs overlay.
     final init = widget.initialEffect ?? AnimationEffect.none;
-    if (init == AnimationEffect.scrollLeft || init == AnimationEffect.scrollRight) {
+    if (widget.initialOverlayEffect != null) {
+      _scrollDirection = (init == AnimationEffect.scrollLeft ||
+              init == AnimationEffect.scrollRight)
+          ? init
+          : AnimationEffect.none;
+      _overlayEffect = widget.initialOverlayEffect!;
+    } else if (init == AnimationEffect.scrollLeft ||
+        init == AnimationEffect.scrollRight) {
       _scrollDirection = init;
       _overlayEffect   = AnimationEffect.none;
     } else {
@@ -1023,6 +1037,7 @@ Future<PropertiesResult?> showPropertiesCustomizer(
   required Color initialColor,
   LedFontId? initialFontId,
   AnimationEffect? initialEffect,
+  AnimationEffect? initialOverlayEffect,
   int initialEffectSpeedMs = 100,
   AnimationEffect? initialLightingEffect,
   int initialLightingSpeedMs = 100,
@@ -1039,6 +1054,7 @@ Future<PropertiesResult?> showPropertiesCustomizer(
         initialColor: initialColor,
         initialFontId: initialFontId,
         initialEffect: initialEffect,
+        initialOverlayEffect: initialOverlayEffect,
         initialEffectSpeedMs: initialEffectSpeedMs,
         initialLightingEffect: initialLightingEffect,
         initialLightingSpeedMs: initialLightingSpeedMs,

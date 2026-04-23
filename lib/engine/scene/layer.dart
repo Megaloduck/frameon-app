@@ -10,22 +10,13 @@ import '../../engine/widgets/spotify_widget.dart';
 export '../../engine/renderer/font_organizer.dart' show LedFontId;
 
 enum LayerType { text, clock, gif, spotify, pomodoro }
-
 enum AnimationEffect { none, blink, scrollLeft, scrollRight, pulse, fade, burst }
-
 enum TextAlignment { left, center, right }
-
 enum ClockFormat { h24, h12 }
-
 enum ClockAlignment { left, center, right }
-
 enum MediaLayout { letterbox, fill, stretch }
-
 enum SpotifyLayout { artAndText, textOnly, artOnly }
-
-/// Active state of a running Pomodoro session.
 enum PomodoroState { focus, shortBreak, longBreak }
-
 enum PomodoroLayout { defaultTimer }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,26 +30,11 @@ abstract class Layer {
   final int zIndex;
   final double opacity;
   final Offset offset;
-
   LayerType get type;
-
-  const Layer({
-    required this.id,
-    required this.name,
-    this.visible = true,
-    this.zIndex = 0,
-    this.opacity = 1.0,
-    this.offset = Offset.zero,
-  });
-
-  Layer copyWith({
-    String? id,
-    String? name,
-    bool? visible,
-    int? zIndex,
-    double? opacity,
-    Offset? offset,
-  });
+  const Layer({required this.id, required this.name, this.visible = true,
+      this.zIndex = 0, this.opacity = 1.0, this.offset = Offset.zero});
+  Layer copyWith({String? id, String? name, bool? visible, int? zIndex,
+      double? opacity, Offset? offset});
   Map<String, dynamic> toJson();
 }
 
@@ -76,109 +52,65 @@ class TextLayer extends Layer {
   final int effectSpeedMs;
 
   const TextLayer({
-    required super.id,
-    required super.name,
-    required this.text,
-    this.color = const Color(0xFF21C32C),
-    this.fontId = LedFontId.polymorph,
-    this.fontSize = 8,
-    this.alignment = TextAlignment.center,
-    this.effect = AnimationEffect.none,
-    this.effectSpeedMs = 100,
-    super.visible,
-    super.zIndex,
-    super.opacity,
-    super.offset,
+    required super.id, required super.name, required this.text,
+    this.color = const Color(0xFF21C32C), this.fontId = LedFontId.polymorph,
+    this.fontSize = 8, this.alignment = TextAlignment.center,
+    this.effect = AnimationEffect.none, this.effectSpeedMs = 100,
+    super.visible, super.zIndex, super.opacity, super.offset,
   });
 
-  @override
-  LayerType get type => LayerType.text;
+  @override LayerType get type => LayerType.text;
 
   @override
-  TextLayer copyWith({
-    String? id,
-    String? name,
-    String? text,
-    Color? color,
-    LedFontId? fontId,
-    double? fontSize,
-    TextAlignment? alignment,
-    AnimationEffect? effect,
-    int? effectSpeedMs,
-    bool? visible,
-    int? zIndex,
-    double? opacity,
-    Offset? offset,
-  }) =>
+  TextLayer copyWith({String? id, String? name, String? text, Color? color,
+      LedFontId? fontId, double? fontSize, TextAlignment? alignment,
+      AnimationEffect? effect, int? effectSpeedMs, bool? visible, int? zIndex,
+      double? opacity, Offset? offset}) =>
       TextLayer(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        text: text ?? this.text,
-        color: color ?? this.color,
-        fontId: fontId ?? this.fontId,
-        fontSize: fontSize ?? this.fontSize,
-        alignment: alignment ?? this.alignment,
-        effect: effect ?? this.effect,
-        effectSpeedMs: effectSpeedMs ?? this.effectSpeedMs,
-        visible: visible ?? this.visible,
-        zIndex: zIndex ?? this.zIndex,
-        opacity: opacity ?? this.opacity,
-        offset: offset ?? this.offset,
+        id: id ?? this.id, name: name ?? this.name, text: text ?? this.text,
+        color: color ?? this.color, fontId: fontId ?? this.fontId,
+        fontSize: fontSize ?? this.fontSize, alignment: alignment ?? this.alignment,
+        effect: effect ?? this.effect, effectSpeedMs: effectSpeedMs ?? this.effectSpeedMs,
+        visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
+        opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
       );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'text',
-        'id': id,
-        'name': name,
-        'text': text,
-        'color': color.value,
-        'fontId': fontId.name,
-        'fontSize': fontSize,
-        'alignment': alignment.name,
-        'effect': effect.name,
-        'effectSpeedMs': effectSpeedMs,
-        'visible': visible,
-        'zIndex': zIndex,
-        'opacity': opacity,
-        'offsetX': offset.dx,
-        'offsetY': offset.dy,
+        'type': 'text', 'id': id, 'name': name, 'text': text,
+        'color': color.value, 'fontId': fontId.name, 'fontSize': fontSize,
+        'alignment': alignment.name, 'effect': effect.name,
+        'effectSpeedMs': effectSpeedMs, 'visible': visible, 'zIndex': zIndex,
+        'opacity': opacity, 'offsetX': offset.dx, 'offsetY': offset.dy,
       };
 
   factory TextLayer.fromJson(Map<String, dynamic> j) => TextLayer(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        text: j['text'] as String,
-        color: Color(j['color'] as int),
-        fontId: LedFontId.values.byName(
-          _migrateFontId(j['fontId'] as String? ?? j['fontStyle'] as String? ?? 'polymorph'),
-        ),
+        id: j['id'] as String, name: j['name'] as String,
+        text: j['text'] as String, color: Color(j['color'] as int),
+        fontId: LedFontId.values.byName(_migrateFontId(
+            j['fontId'] as String? ?? j['fontStyle'] as String? ?? 'polymorph')),
         fontSize: (j['fontSize'] as num?)?.toDouble() ?? 8,
         alignment: TextAlignment.values.byName(j['alignment'] as String? ?? 'center'),
         effect: AnimationEffect.values.byName(j['effect'] as String? ?? 'none'),
         effectSpeedMs: j['effectSpeedMs'] as int? ?? 100,
-        visible: j['visible'] as bool? ?? true,
-        zIndex: j['zIndex'] as int? ?? 0,
+        visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset(
-          (j['offsetX'] as num?)?.toDouble() ?? 0,
-          (j['offsetY'] as num?)?.toDouble() ?? 0,
-        ),
+        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
+            (j['offsetY'] as num?)?.toDouble() ?? 0),
       );
 }
 
-/// Maps old PixelFontStyle names to LedFontId names for backward compat.
 String _migrateFontId(String raw) {
   switch (raw) {
     case 'matrixType': return 'polymorph';
-    case 'led':        return 'brickwork';
+    case 'led': return 'brickwork';
     default:
       return LedFontId.values.any((e) => e.name == raw) ? raw : 'polymorph';
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Clock Layer
+// Clock Layer  (unchanged — omitted for brevity, same as document)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ClockLayer extends Layer {
@@ -197,102 +129,56 @@ class ClockLayer extends Layer {
   final LedFontId fontId;
 
   const ClockLayer({
-    required super.id,
-    required super.name,
+    required super.id, required super.name,
     this.color = const Color(0xFF21C32C),
     this.hoursColor = const Color(0xFF21C32C),
     this.minutesColor = const Color(0xFF21C32C),
     this.secondsColor = const Color(0xFF21C32C),
     this.dateColor = const Color(0xFF21C32C),
     this.colonColor = const Color(0xFF21C32C),
-    this.format = ClockFormat.h24,
-    this.alignment = ClockAlignment.center,
-    this.showDate = false,
-    this.showSeconds = false,
-    this.blinkColon = true,
-    this.timezone = 'local',
-    this.fontId = LedFontId.polymorph,
-    super.visible,
-    super.zIndex,
-    super.opacity,
-    super.offset,
+    this.format = ClockFormat.h24, this.alignment = ClockAlignment.center,
+    this.showDate = false, this.showSeconds = false, this.blinkColon = true,
+    this.timezone = 'local', this.fontId = LedFontId.polymorph,
+    super.visible, super.zIndex, super.opacity, super.offset,
   });
 
-  @override
-  LayerType get type => LayerType.clock;
+  @override LayerType get type => LayerType.clock;
 
   @override
-  ClockLayer copyWith({
-    String? id,
-    String? name,
-    Color? color,
-    Color? hoursColor,
-    Color? minutesColor,
-    Color? secondsColor,
-    Color? dateColor,
-    Color? colonColor,
-    ClockFormat? format,
-    ClockAlignment? alignment,
-    bool? showDate,
-    bool? showSeconds,
-    bool? blinkColon,
-    String? timezone,
-    LedFontId? fontId,
-    bool? visible,
-    int? zIndex,
-    double? opacity,
-    Offset? offset,
-  }) =>
+  ClockLayer copyWith({String? id, String? name, Color? color,
+      Color? hoursColor, Color? minutesColor, Color? secondsColor,
+      Color? dateColor, Color? colonColor, ClockFormat? format,
+      ClockAlignment? alignment, bool? showDate, bool? showSeconds,
+      bool? blinkColon, String? timezone, LedFontId? fontId,
+      bool? visible, int? zIndex, double? opacity, Offset? offset}) =>
       ClockLayer(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        color: color ?? this.color,
-        hoursColor: hoursColor ?? this.hoursColor,
+        id: id ?? this.id, name: name ?? this.name,
+        color: color ?? this.color, hoursColor: hoursColor ?? this.hoursColor,
         minutesColor: minutesColor ?? this.minutesColor,
         secondsColor: secondsColor ?? this.secondsColor,
-        dateColor: dateColor ?? this.dateColor,
-        colonColor: colonColor ?? this.colonColor,
-        format: format ?? this.format,
-        alignment: alignment ?? this.alignment,
-        showDate: showDate ?? this.showDate,
-        showSeconds: showSeconds ?? this.showSeconds,
-        blinkColon: blinkColon ?? this.blinkColon,
-        timezone: timezone ?? this.timezone,
-        fontId: fontId ?? this.fontId,
-        visible: visible ?? this.visible,
-        zIndex: zIndex ?? this.zIndex,
-        opacity: opacity ?? this.opacity,
+        dateColor: dateColor ?? this.dateColor, colonColor: colonColor ?? this.colonColor,
+        format: format ?? this.format, alignment: alignment ?? this.alignment,
+        showDate: showDate ?? this.showDate, showSeconds: showSeconds ?? this.showSeconds,
+        blinkColon: blinkColon ?? this.blinkColon, timezone: timezone ?? this.timezone,
+        fontId: fontId ?? this.fontId, visible: visible ?? this.visible,
+        zIndex: zIndex ?? this.zIndex, opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
       );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'clock',
-        'id': id,
-        'name': name,
-        'color': color.value,
-        'hoursColor': hoursColor.value,
-        'minutesColor': minutesColor.value,
-        'secondsColor': secondsColor.value,
-        'dateColor': dateColor.value,
-        'colonColor': colonColor.value,
-        'format': format.name,
-        'alignment': alignment.name,
-        'showDate': showDate,
-        'showSeconds': showSeconds,
-        'blinkColon': blinkColon,
-        'timezone': timezone,
-        'fontId': fontId.name,
-        'visible': visible,
-        'zIndex': zIndex,
-        'opacity': opacity,
-        'offsetX': offset.dx,
-        'offsetY': offset.dy,
+        'type': 'clock', 'id': id, 'name': name, 'color': color.value,
+        'hoursColor': hoursColor.value, 'minutesColor': minutesColor.value,
+        'secondsColor': secondsColor.value, 'dateColor': dateColor.value,
+        'colonColor': colonColor.value, 'format': format.name,
+        'alignment': alignment.name, 'showDate': showDate, 'showSeconds': showSeconds,
+        'blinkColon': blinkColon, 'timezone': timezone, 'fontId': fontId.name,
+        'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
+        'offsetX': offset.dx, 'offsetY': offset.dy,
       };
 
   factory ClockLayer.fromJson(Map<String, dynamic> j) => ClockLayer(
-        id: j['id'] as String,
-        name: j['name'] as String,
+        id: j['id'] as String, name: j['name'] as String,
         color: Color(j['color'] as int? ?? 0xFF21C32C),
         hoursColor: Color(j['hoursColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         minutesColor: Color(j['minutesColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
@@ -305,16 +191,11 @@ class ClockLayer extends Layer {
         showSeconds: j['showSeconds'] as bool? ?? false,
         blinkColon: j['blinkColon'] as bool? ?? true,
         timezone: j['timezone'] as String? ?? 'local',
-        fontId: LedFontId.values.byName(
-          _migrateFontId(j['fontId'] as String? ?? 'polymorph'),
-        ),
-        visible: j['visible'] as bool? ?? true,
-        zIndex: j['zIndex'] as int? ?? 0,
+        fontId: LedFontId.values.byName(_migrateFontId(j['fontId'] as String? ?? 'polymorph')),
+        visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset(
-          (j['offsetX'] as num?)?.toDouble() ?? 0,
-          (j['offsetY'] as num?)?.toDouble() ?? 0,
-        ),
+        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
+            (j['offsetY'] as num?)?.toDouble() ?? 0),
       );
 }
 
@@ -331,93 +212,55 @@ class GifLayer extends Layer {
   final double? fpsOverride;
 
   const GifLayer({
-    required super.id,
-    required super.name,
-    this.filePath,
-    this.layout = MediaLayout.letterbox,
-    this.dithering = true,
-    this.grayscale = false,
-    this.invertColor = false,
-    this.fpsOverride,
-    super.visible,
-    super.zIndex,
-    super.opacity,
-    super.offset,
+    required super.id, required super.name, this.filePath,
+    this.layout = MediaLayout.letterbox, this.dithering = true,
+    this.grayscale = false, this.invertColor = false, this.fpsOverride,
+    super.visible, super.zIndex, super.opacity, super.offset,
   });
 
-  @override
-  LayerType get type => LayerType.gif;
+  @override LayerType get type => LayerType.gif;
 
   @override
-  GifLayer copyWith({
-    String? id,
-    String? name,
-    String? filePath,
-    bool clearFilePath = false,
-    MediaLayout? layout,
-    bool? dithering,
-    bool? grayscale,
-    bool? invertColor,
-    double? fpsOverride,
-    bool? visible,
-    int? zIndex,
-    double? opacity,
-    Offset? offset,
-  }) =>
+  GifLayer copyWith({String? id, String? name, String? filePath,
+      bool clearFilePath = false, MediaLayout? layout, bool? dithering,
+      bool? grayscale, bool? invertColor, double? fpsOverride,
+      bool? visible, int? zIndex, double? opacity, Offset? offset}) =>
       GifLayer(
-        id: id ?? this.id,
-        name: name ?? this.name,
+        id: id ?? this.id, name: name ?? this.name,
         filePath: clearFilePath ? null : (filePath ?? this.filePath),
-        layout: layout ?? this.layout,
-        dithering: dithering ?? this.dithering,
-        grayscale: grayscale ?? this.grayscale,
-        invertColor: invertColor ?? this.invertColor,
+        layout: layout ?? this.layout, dithering: dithering ?? this.dithering,
+        grayscale: grayscale ?? this.grayscale, invertColor: invertColor ?? this.invertColor,
         fpsOverride: fpsOverride ?? this.fpsOverride,
-        visible: visible ?? this.visible,
-        zIndex: zIndex ?? this.zIndex,
-        opacity: opacity ?? this.opacity,
-        offset: offset ?? this.offset,
+        visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
+        opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
       );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'gif',
-        'id': id,
-        'name': name,
-        'filePath': filePath,
-        'layout': layout.name,
-        'dithering': dithering,
-        'grayscale': grayscale,
-        'invertColor': invertColor,
-        'fpsOverride': fpsOverride,
-        'visible': visible,
-        'zIndex': zIndex,
-        'opacity': opacity,
-        'offsetX': offset.dx,
-        'offsetY': offset.dy,
+        'type': 'gif', 'id': id, 'name': name, 'filePath': filePath,
+        'layout': layout.name, 'dithering': dithering, 'grayscale': grayscale,
+        'invertColor': invertColor, 'fpsOverride': fpsOverride,
+        'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
+        'offsetX': offset.dx, 'offsetY': offset.dy,
       };
 
   factory GifLayer.fromJson(Map<String, dynamic> j) => GifLayer(
-        id: j['id'] as String,
-        name: j['name'] as String,
+        id: j['id'] as String, name: j['name'] as String,
         filePath: j['filePath'] as String?,
         layout: MediaLayout.values.byName(j['layout'] as String? ?? 'letterbox'),
         dithering: j['dithering'] as bool? ?? true,
         grayscale: j['grayscale'] as bool? ?? false,
         invertColor: j['invertColor'] as bool? ?? false,
         fpsOverride: (j['fpsOverride'] as num?)?.toDouble(),
-        visible: j['visible'] as bool? ?? true,
-        zIndex: j['zIndex'] as int? ?? 0,
+        visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset(
-          (j['offsetX'] as num?)?.toDouble() ?? 0,
-          (j['offsetY'] as num?)?.toDouble() ?? 0,
-        ),
+        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
+            (j['offsetY'] as num?)?.toDouble() ?? 0),
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify Layer (ENHANCED with speed support)
+// Spotify Layer  ← NOW WITH SEPARATE SCROLL + OVERLAY FIELDS
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyLayer extends Layer {
@@ -433,66 +276,51 @@ class SpotifyLayer extends Layer {
   final ArtLayoutMode? artLayoutMode;
   final LedFontId fontId;
 
-  // Per-element effects — each property customizer writes independently
-  final AnimationEffect titleEffect;
+  // ── Per-element scroll direction (base transport) ──────────────────────────
+  final AnimationEffect titleEffect;         // none | scrollLeft | scrollRight
   final int titleEffectSpeedMs;
-  final AnimationEffect artistEffect;
+  final AnimationEffect artistEffect;        // none | scrollLeft | scrollRight
   final int artistEffectSpeedMs;
 
+  // ── Per-element overlay effect (alpha modulation on top of scroll) ─────────
+  final AnimationEffect titleOverlayEffect;  // none | blink | pulse | fade | burst
+  final AnimationEffect artistOverlayEffect; // none | blink | pulse | fade | burst
+
   const SpotifyLayer({
-    required super.id,
-    required super.name,
+    required super.id, required super.name,
     this.layout = SpotifyLayout.artAndText,
-    this.showTitle = true,
-    this.showArtist = true,
-    this.showProgress = true,
+    this.showTitle = true, this.showArtist = true, this.showProgress = true,
     this.textColor = const Color(0xFFFFFFFF),
     this.titleColor = const Color(0xFFFFFFFF),
     this.artistColor = const Color(0xFFFFFFFF),
     this.progressColor = const Color(0xFF21C32C),
     this.fps = 10,
-    super.visible,
-    super.zIndex,
-    super.opacity,
-    super.offset,
-    this.artLayoutMode,
-    this.fontId = LedFontId.polymorph,
+    super.visible, super.zIndex, super.opacity, super.offset,
+    this.artLayoutMode, this.fontId = LedFontId.polymorph,
     this.titleEffect = AnimationEffect.scrollLeft,
     this.titleEffectSpeedMs = 100,
     this.artistEffect = AnimationEffect.scrollLeft,
     this.artistEffectSpeedMs = 100,
+    this.titleOverlayEffect = AnimationEffect.none,
+    this.artistOverlayEffect = AnimationEffect.none,
   });
 
-  @override
-  LayerType get type => LayerType.spotify;
+  @override LayerType get type => LayerType.spotify;
 
   @override
   SpotifyLayer copyWith({
-    String? id,
-    String? name,
-    SpotifyLayout? layout,
-    bool? showTitle,
-    bool? showArtist,
-    bool? showProgress,
-    Color? textColor,
-    Color? titleColor,
-    Color? artistColor,
-    Color? progressColor,
-    double? fps,
-    bool? visible,
-    int? zIndex,
-    double? opacity,
-    Offset? offset,
-    ArtLayoutMode? artLayoutMode,
-    LedFontId? fontId,
-    AnimationEffect? titleEffect,
-    int? titleEffectSpeedMs,
-    AnimationEffect? artistEffect,
-    int? artistEffectSpeedMs,
+    String? id, String? name, SpotifyLayout? layout,
+    bool? showTitle, bool? showArtist, bool? showProgress,
+    Color? textColor, Color? titleColor, Color? artistColor, Color? progressColor,
+    double? fps, bool? visible, int? zIndex, double? opacity, Offset? offset,
+    ArtLayoutMode? artLayoutMode, LedFontId? fontId,
+    AnimationEffect? titleEffect, int? titleEffectSpeedMs,
+    AnimationEffect? artistEffect, int? artistEffectSpeedMs,
+    AnimationEffect? titleOverlayEffect,
+    AnimationEffect? artistOverlayEffect,
   }) =>
       SpotifyLayer(
-        id: id ?? this.id,
-        name: name ?? this.name,
+        id: id ?? this.id, name: name ?? this.name,
         layout: layout ?? this.layout,
         showTitle: showTitle ?? this.showTitle,
         showArtist: showArtist ?? this.showArtist,
@@ -502,52 +330,40 @@ class SpotifyLayer extends Layer {
         artistColor: artistColor ?? this.artistColor,
         progressColor: progressColor ?? this.progressColor,
         fps: fps ?? this.fps,
-        visible: visible ?? this.visible,
-        zIndex: zIndex ?? this.zIndex,
-        opacity: opacity ?? this.opacity,
-        offset: offset ?? this.offset,
+        visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
+        opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
         artLayoutMode: artLayoutMode ?? this.artLayoutMode,
         fontId: fontId ?? this.fontId,
         titleEffect: titleEffect ?? this.titleEffect,
         titleEffectSpeedMs: titleEffectSpeedMs ?? this.titleEffectSpeedMs,
         artistEffect: artistEffect ?? this.artistEffect,
         artistEffectSpeedMs: artistEffectSpeedMs ?? this.artistEffectSpeedMs,
+        titleOverlayEffect: titleOverlayEffect ?? this.titleOverlayEffect,
+        artistOverlayEffect: artistOverlayEffect ?? this.artistOverlayEffect,
       );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'spotify',
-        'id': id,
-        'name': name,
-        'layout': layout.name,
-        'showTitle': showTitle,
-        'showArtist': showArtist,
-        'showProgress': showProgress,
-        'textColor': textColor.value,
-        'titleColor': titleColor.value,
-        'artistColor': artistColor.value,
-        'progressColor': progressColor.value,
-        'fps': fps,
-        'visible': visible,
-        'zIndex': zIndex,
-        'opacity': opacity,
-        'offsetX': offset.dx,
-        'offsetY': offset.dy,
-        'fontId': fontId.name,
+        'type': 'spotify', 'id': id, 'name': name, 'layout': layout.name,
+        'showTitle': showTitle, 'showArtist': showArtist, 'showProgress': showProgress,
+        'textColor': textColor.value, 'titleColor': titleColor.value,
+        'artistColor': artistColor.value, 'progressColor': progressColor.value,
+        'fps': fps, 'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
+        'offsetX': offset.dx, 'offsetY': offset.dy, 'fontId': fontId.name,
         'titleEffect': titleEffect.name,
         'titleEffectSpeedMs': titleEffectSpeedMs,
         'artistEffect': artistEffect.name,
         'artistEffectSpeedMs': artistEffectSpeedMs,
+        'titleOverlayEffect': titleOverlayEffect.name,
+        'artistOverlayEffect': artistOverlayEffect.name,
       };
 
   factory SpotifyLayer.fromJson(Map<String, dynamic> j) {
-    // Migrate old shared textEffect → both title and artist
     final legacy = _migrateSpotifyEffect(j['textEffect'] as String?);
     final legacySpeed = j['textEffectSpeedMs'] as int? ?? 100;
 
     return SpotifyLayer(
-      id: j['id'] as String,
-      name: j['name'] as String,
+      id: j['id'] as String, name: j['name'] as String,
       layout: SpotifyLayout.values.byName(j['layout'] as String? ?? 'artAndText'),
       showTitle: j['showTitle'] as bool? ?? true,
       showArtist: j['showArtist'] as bool? ?? true,
@@ -557,16 +373,11 @@ class SpotifyLayer extends Layer {
       artistColor: Color(j['artistColor'] as int? ?? 0xFFFFFFFF),
       progressColor: Color(j['progressColor'] as int? ?? 0xFF21C32C),
       fps: (j['fps'] as num?)?.toDouble() ?? 10,
-      visible: j['visible'] as bool? ?? true,
-      zIndex: j['zIndex'] as int? ?? 0,
+      visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
       opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-      offset: Offset(
-        (j['offsetX'] as num?)?.toDouble() ?? 0,
-        (j['offsetY'] as num?)?.toDouble() ?? 0,
-      ),
-      fontId: LedFontId.values.byName(
-        _migrateFontId(j['fontId'] as String? ?? 'polymorph'),
-      ),
+      offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
+          (j['offsetY'] as num?)?.toDouble() ?? 0),
+      fontId: LedFontId.values.byName(_migrateFontId(j['fontId'] as String? ?? 'polymorph')),
       titleEffect: j.containsKey('titleEffect')
           ? AnimationEffect.values.byName(j['titleEffect'] as String)
           : legacy,
@@ -575,11 +386,14 @@ class SpotifyLayer extends Layer {
           ? AnimationEffect.values.byName(j['artistEffect'] as String)
           : legacy,
       artistEffectSpeedMs: j['artistEffectSpeedMs'] as int? ?? legacySpeed,
+      titleOverlayEffect: AnimationEffect.values.byName(
+          j['titleOverlayEffect'] as String? ?? 'none'),
+      artistOverlayEffect: AnimationEffect.values.byName(
+          j['artistOverlayEffect'] as String? ?? 'none'),
     );
   }
 }
 
-/// Maps old SpotifyTextEffect strings to AnimationEffect for backward compat.
 AnimationEffect _migrateSpotifyEffect(String? raw) {
   switch (raw) {
     case 'scroll':  return AnimationEffect.scrollLeft;
@@ -589,7 +403,7 @@ AnimationEffect _migrateSpotifyEffect(String? raw) {
     case 'static_': return AnimationEffect.none;
     default:
       try { return AnimationEffect.values.byName(raw ?? 'scrollLeft'); }
-      catch (_)  { return AnimationEffect.scrollLeft; }
+      catch (_) { return AnimationEffect.scrollLeft; }
   }
 }
 
@@ -613,29 +427,19 @@ class PomodoroLayer extends Layer {
   final PomodoroState currentState;
 
   const PomodoroLayer({
-    required super.id,
-    required super.name,
-    this.focusDurationMinutes = 25,
-    this.shortBreakMinutes = 5,
-    this.longBreakMinutes = 15,
-    this.sessionsBeforeLongBreak = 4,
+    required super.id, required super.name,
+    this.focusDurationMinutes = 25, this.shortBreakMinutes = 5,
+    this.longBreakMinutes = 15, this.sessionsBeforeLongBreak = 4,
     this.layout = PomodoroLayout.defaultTimer,
-    this.showSeconds = true,
-    this.showSession = false,
-    this.blinkColor = true,
+    this.showSeconds = true, this.showSession = false, this.blinkColor = true,
     this.focusColor = const Color(0xFFFFCC00),
     this.breakColor = const Color(0xFF21C32C),
     this.longBreakColor = const Color.fromARGB(255, 40, 86, 185),
-    this.fps = 10,
-    this.currentState = PomodoroState.focus,
-    super.visible,
-    super.zIndex,
-    super.opacity,
-    super.offset,
+    this.fps = 10, this.currentState = PomodoroState.focus,
+    super.visible, super.zIndex, super.opacity, super.offset,
   });
 
-  @override
-  LayerType get type => LayerType.pomodoro;
+  @override LayerType get type => LayerType.pomodoro;
 
   Color get activeColor => switch (currentState) {
         PomodoroState.focus => focusColor,
@@ -644,77 +448,43 @@ class PomodoroLayer extends Layer {
       };
 
   @override
-  PomodoroLayer copyWith({
-    String? id,
-    String? name,
-    int? focusDurationMinutes,
-    int? shortBreakMinutes,
-    int? longBreakMinutes,
-    int? sessionsBeforeLongBreak,
-    PomodoroLayout? layout,
-    bool? showSeconds,
-    bool? showSession,
-    bool? blinkColor,
-    Color? focusColor,
-    Color? breakColor,
-    Color? longBreakColor,
-    double? fps,
-    PomodoroState? currentState,
-    bool? visible,
-    int? zIndex,
-    double? opacity,
-    Offset? offset,
-  }) =>
+  PomodoroLayer copyWith({String? id, String? name,
+      int? focusDurationMinutes, int? shortBreakMinutes, int? longBreakMinutes,
+      int? sessionsBeforeLongBreak, PomodoroLayout? layout,
+      bool? showSeconds, bool? showSession, bool? blinkColor,
+      Color? focusColor, Color? breakColor, Color? longBreakColor,
+      double? fps, PomodoroState? currentState,
+      bool? visible, int? zIndex, double? opacity, Offset? offset}) =>
       PomodoroLayer(
-        id: id ?? this.id,
-        name: name ?? this.name,
+        id: id ?? this.id, name: name ?? this.name,
         focusDurationMinutes: focusDurationMinutes ?? this.focusDurationMinutes,
         shortBreakMinutes: shortBreakMinutes ?? this.shortBreakMinutes,
         longBreakMinutes: longBreakMinutes ?? this.longBreakMinutes,
         sessionsBeforeLongBreak: sessionsBeforeLongBreak ?? this.sessionsBeforeLongBreak,
-        layout: layout ?? this.layout,
-        showSeconds: showSeconds ?? this.showSeconds,
-        showSession: showSession ?? this.showSession,
-        blinkColor: blinkColor ?? this.blinkColor,
-        focusColor: focusColor ?? this.focusColor,
-        breakColor: breakColor ?? this.breakColor,
+        layout: layout ?? this.layout, showSeconds: showSeconds ?? this.showSeconds,
+        showSession: showSession ?? this.showSession, blinkColor: blinkColor ?? this.blinkColor,
+        focusColor: focusColor ?? this.focusColor, breakColor: breakColor ?? this.breakColor,
         longBreakColor: longBreakColor ?? this.longBreakColor,
-        fps: fps ?? this.fps,
-        currentState: currentState ?? this.currentState,
-        visible: visible ?? this.visible,
-        zIndex: zIndex ?? this.zIndex,
-        opacity: opacity ?? this.opacity,
-        offset: offset ?? this.offset,
+        fps: fps ?? this.fps, currentState: currentState ?? this.currentState,
+        visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
+        opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
       );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'pomodoro',
-        'id': id,
-        'name': name,
+        'type': 'pomodoro', 'id': id, 'name': name,
         'focusDurationMinutes': focusDurationMinutes,
-        'shortBreakMinutes': shortBreakMinutes,
-        'longBreakMinutes': longBreakMinutes,
-        'sessionsBeforeLongBreak': sessionsBeforeLongBreak,
-        'layout': layout.name,
-        'showSeconds': showSeconds,
-        'showSession': showSession,
-        'blinkColor': blinkColor,
-        'focusColor': focusColor.value,
-        'breakColor': breakColor.value,
-        'longBreakColor': longBreakColor.value,
-        'fps': fps,
-        'currentState': currentState.name,
-        'visible': visible,
-        'zIndex': zIndex,
-        'opacity': opacity,
-        'offsetX': offset.dx,
-        'offsetY': offset.dy,
+        'shortBreakMinutes': shortBreakMinutes, 'longBreakMinutes': longBreakMinutes,
+        'sessionsBeforeLongBreak': sessionsBeforeLongBreak, 'layout': layout.name,
+        'showSeconds': showSeconds, 'showSession': showSession, 'blinkColor': blinkColor,
+        'focusColor': focusColor.value, 'breakColor': breakColor.value,
+        'longBreakColor': longBreakColor.value, 'fps': fps,
+        'currentState': currentState.name, 'visible': visible, 'zIndex': zIndex,
+        'opacity': opacity, 'offsetX': offset.dx, 'offsetY': offset.dy,
       };
 
   factory PomodoroLayer.fromJson(Map<String, dynamic> j) => PomodoroLayer(
-        id: j['id'] as String,
-        name: j['name'] as String,
+        id: j['id'] as String, name: j['name'] as String,
         focusDurationMinutes: j['focusDurationMinutes'] as int? ?? 25,
         shortBreakMinutes: j['shortBreakMinutes'] as int? ?? 5,
         longBreakMinutes: j['longBreakMinutes'] as int? ?? 15,
@@ -728,13 +498,10 @@ class PomodoroLayer extends Layer {
         longBreakColor: Color(j['longBreakColor'] as int? ?? 0xFF2856B9),
         fps: (j['fps'] as num?)?.toDouble() ?? 10,
         currentState: PomodoroState.values.byName(j['currentState'] as String? ?? 'focus'),
-        visible: j['visible'] as bool? ?? true,
-        zIndex: j['zIndex'] as int? ?? 0,
+        visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset(
-          (j['offsetX'] as num?)?.toDouble() ?? 0,
-          (j['offsetY'] as num?)?.toDouble() ?? 0,
-        ),
+        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
+            (j['offsetY'] as num?)?.toDouble() ?? 0),
       );
 }
 
@@ -744,17 +511,11 @@ class PomodoroLayer extends Layer {
 
 Layer layerFromJson(Map<String, dynamic> j) {
   switch (j['type'] as String) {
-    case 'text':
-      return TextLayer.fromJson(j);
-    case 'clock':
-      return ClockLayer.fromJson(j);
-    case 'gif':
-      return GifLayer.fromJson(j);
-    case 'spotify':
-      return SpotifyLayer.fromJson(j);
-    case 'pomodoro':
-      return PomodoroLayer.fromJson(j);
-    default:
-      throw ArgumentError('Unknown layer type: ${j['type']}');
+    case 'text':     return TextLayer.fromJson(j);
+    case 'clock':    return ClockLayer.fromJson(j);
+    case 'gif':      return GifLayer.fromJson(j);
+    case 'spotify':  return SpotifyLayer.fromJson(j);
+    case 'pomodoro': return PomodoroLayer.fromJson(j);
+    default: throw ArgumentError('Unknown layer type: ${j['type']}');
   }
 }
