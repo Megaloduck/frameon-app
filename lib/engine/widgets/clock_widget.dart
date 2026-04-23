@@ -45,8 +45,8 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     // Total height = time row + optional date row below it.
     final int totalHeight = font.charHeight + (hasDate ? font.charHeight + 2 : 0);
 
-    // startY is the top of the entire block, shifted by the drag offset.
-    // Both timeY and dateY are derived from it so they always move together.
+    // Both timeY and dateY derive from startY, which includes offset.dy,
+    // so both rows move together when dragged vertically.
     final int startY = (buffer.height - totalHeight) ~/ 2 + layer.offset.dy.round();
     final int timeY  = startY;
     final int dateY  = startY + font.charHeight + 2;
@@ -155,17 +155,17 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     required int bufferWidth,
   }) {
     if (text.isEmpty) return;
-    switch (alignment) {
-      case ClockAlignment.left:
-        font.draw(buffer: buffer, text: text, color: color,
-            x: offsetX, y: y, opacity: opacity);
-      case ClockAlignment.center:
-        font.drawCentered(buffer: buffer, text: text, color: color,
-            bufferWidth: bufferWidth, y: y, opacity: opacity);
-      case ClockAlignment.right:
-        font.drawRight(buffer: buffer, text: text, color: color,
-            rightEdge: bufferWidth + offsetX, y: y, opacity: opacity);
-    }
+    // All three branches compute x manually so that offsetX (the horizontal
+    // drag offset) is always respected. Previously the center branch called
+    // font.drawCentered() which ignores offsetX, causing the date to stay
+    // horizontally fixed even when the clock was dragged left/right.
+    final int x = switch (alignment) {
+      ClockAlignment.left   => offsetX,
+      ClockAlignment.center => (bufferWidth - font.textWidth(text)) ~/ 2 + offsetX,
+      ClockAlignment.right  => bufferWidth - font.textWidth(text) + offsetX,
+    };
+    font.draw(buffer: buffer, text: text, color: color,
+        x: x, y: y, opacity: opacity);
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
