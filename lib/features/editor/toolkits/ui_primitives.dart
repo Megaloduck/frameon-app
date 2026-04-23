@@ -1,48 +1,31 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_colors.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Static design tokens — light-mode constants kept for backwards compatibility
-// where a BuildContext is unavailable (e.g. CustomPainter, const widgets).
-// Prefer the ThemeTokens extension below whenever context is available.
+// Static design tokens — only what genuinely cannot use a BuildContext:
+// CustomPainter, const constructors, geometry constants.
+// For everything else use the ThemeTokens extension below.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const kGreen       = Color(0xFF21C32C);
-
-// Light-mode palette (used as fallbacks / in non-theme-aware code)
-const kSurface     = Color(0xFFF8F7F3);
-const kSurfaceLow  = Color(0xFFECEAE3);
-const kBorder      = Color(0xFFE0DDD6);
-const kTextPrimary = Color(0xFF1A1A1A);
-const kTextMuted   = Color(0xFF888580);
-const kTextDim     = Color(0xFFB0ADA8);
-
-// Dark-mode palette constants
-const kSurfaceDark     = Color(0xFF242424);
-const kSurfaceLowDark  = Color(0xFF1A1A1A);
-const kBorderDark      = Color(0xFF3A3A3A);
-const kTextPrimaryDark = Color(0xFFE8E8E8);
-const kTextMutedDark   = Color(0xFF9E9E9E);
-const kTextDimDark     = Color(0xFF6B6B6B);
+const kGreen    = Color(0xFF21C32C);
 
 const kRadiusSm = Radius.circular(6);
 const kRadiusMd = Radius.circular(9);
 const kRadiusLg = Radius.circular(12);
 
-const kPanelBorder = BorderSide(color: kBorder);
-
 // ─────────────────────────────────────────────────────────────────────────────
-// ThemeTokens — context-aware token accessor
+// ThemeTokens — context-aware token accessor backed by AppColors extension
 // ─────────────────────────────────────────────────────────────────────────────
 
 extension ThemeTokens on BuildContext {
-  bool get isDark => Theme.of(this).brightness == Brightness.dark;
+  AppColors get colors => Theme.of(this).extension<AppColors>()!;
 
-  Color get tSurface     => isDark ? kSurfaceDark     : kSurface;
-  Color get tSurfaceLow  => isDark ? kSurfaceLowDark  : kSurfaceLow;
-  Color get tBorder      => isDark ? kBorderDark      : kBorder;
-  Color get tTextPrimary => isDark ? kTextPrimaryDark : kTextPrimary;
-  Color get tTextMuted   => isDark ? kTextMutedDark   : kTextMuted;
-  Color get tTextDim     => isDark ? kTextDimDark     : kTextDim;
+  Color get tSurface     => colors.surface;
+  Color get tSurfaceLow  => colors.surfaceLow;
+  Color get tBorder      => colors.border;
+  Color get tTextPrimary => colors.textPrimary;
+  Color get tTextMuted   => colors.textMuted;
+  Color get tTextDim     => colors.textDim;
 
   BorderSide get tPanelBorder => BorderSide(color: tBorder);
 }
@@ -93,10 +76,10 @@ class SectionLabel extends StatelessWidget {
         child: Text(
           text.toUpperCase(),
           style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
+            fontSize:      9,
+            fontWeight:    FontWeight.w700,
             letterSpacing: 0.12,
-            color: context.tTextDim,
+            color:         context.tTextDim,
           ),
         ),
       );

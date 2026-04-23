@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_colors.dart';
 
 /// Frameon light theme.
 ///
@@ -16,46 +17,47 @@ ThemeData buildLightTheme() {
 
   final base = ThemeData.light(useMaterial3: true);
   return base.copyWith(
+    extensions: const [AppColors.light],
     colorScheme: base.colorScheme.copyWith(
-      primary:         green,
-      secondary:       teal,
-      surface:         const Color(0xFFF8F7F3),
-      onSurface:       const Color(0xFF1A1A1A),
-      surfaceContainerHighest: const Color(0xFFECEAE3),
-      outline:         const Color(0xFFE0DDD6),
+      primary:                 green,
+      secondary:               teal,
+      surface:                 Color(0xFFF8F7F3),
+      onSurface:               Color(0xFF1A1A1A),
+      surfaceContainerHighest: Color(0xFFECEAE3),
+      outline:                 Color(0xFFE0DDD6),
     ),
     scaffoldBackgroundColor: const Color(0xFFECEAE3),
     dividerColor: const Color(0xFFE0DDD6),
     dividerTheme: const DividerThemeData(
-      color: Color(0xFFE0DDD6),
-      space: 1,
+      color:     Color(0xFFE0DDD6),
+      space:     1,
       thickness: 1,
     ),
     cardTheme: const CardThemeData(
-      margin: EdgeInsets.zero,
+      margin:    EdgeInsets.zero,
       elevation: 0,
-      color: Color(0xFFF8F7F3),
+      color:     Color(0xFFF8F7F3),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(10)),
         side: BorderSide(color: Color(0xFFE0DDD6)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
-      isDense: true,
-      filled: true,
-      fillColor: const Color(0xFFFFFFFF),
+      isDense:        true,
+      filled:         true,
+      fillColor:      const Color(0xFFFFFFFF),
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: Color(0xFFE0DDD6)),
+        borderSide:   const BorderSide(color: Color(0xFFE0DDD6)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: Color(0xFFE0DDD6)),
+        borderSide:   const BorderSide(color: Color(0xFFE0DDD6)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: green, width: 1.5),
+        borderSide:   const BorderSide(color: green, width: 1.5),
       ),
     ),
     switchTheme: SwitchThemeData(
@@ -87,20 +89,19 @@ ThemeData buildLightTheme() {
       ),
     ),
     textTheme: base.textTheme.copyWith(
-      // Used for panel section labels
       labelSmall: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w600,
+        fontSize:      10,
+        fontWeight:    FontWeight.w600,
         letterSpacing: 0.08,
-        color: Color(0xFF999690),
+        color:         Color(0xFF999690),
       ),
       bodySmall: const TextStyle(
         fontSize: 12,
-        color: Color(0xFF666360),
+        color:    Color(0xFF666360),
       ),
       bodyMedium: const TextStyle(
         fontSize: 13,
-        color: Color(0xFF1A1A1A),
+        color:    Color(0xFF1A1A1A),
       ),
     ),
   );

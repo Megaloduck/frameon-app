@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_colors.dart';
 
 /// Frameon dark theme.
 ///
@@ -13,49 +14,50 @@ import 'package:flutter/material.dart';
 ThemeData buildDarkTheme() {
   const green = Color(0xFF21C32C);
   const teal  = Color(0xFF1A8C96);
-  
+
   final base = ThemeData.dark(useMaterial3: true);
   return base.copyWith(
+    extensions: const [AppColors.dark],
     colorScheme: base.colorScheme.copyWith(
-      primary:         green,
-      secondary:       teal,
-      surface:         const Color(0xFF242424),
-      onSurface:       const Color(0xFFE8E8E8),
-      surfaceContainerHighest: const Color(0xFF2D2D2D),
-      outline:         const Color(0xFF3A3A3A),
+      primary:                 green,
+      secondary:               teal,
+      surface:                 Color(0xFF242424),
+      onSurface:               Color(0xFFE8E8E8),
+      surfaceContainerHighest: Color(0xFF2D2D2D),
+      outline:                 Color(0xFF3A3A3A),
     ),
     scaffoldBackgroundColor: const Color(0xFF1A1A1A),
     dividerColor: const Color(0xFF3A3A3A),
     dividerTheme: const DividerThemeData(
-      color: Color(0xFF3A3A3A),
-      space: 1,
+      color:     Color(0xFF3A3A3A),
+      space:     1,
       thickness: 1,
     ),
     cardTheme: const CardThemeData(
-      margin: EdgeInsets.zero,
+      margin:    EdgeInsets.zero,
       elevation: 0,
-      color: Color(0xFF242424),
+      color:     Color(0xFF242424),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(10)),
         side: BorderSide(color: Color(0xFF3A3A3A)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
-      isDense: true,
-      filled: true,
-      fillColor: const Color(0xFF2D2D2D),
+      isDense:        true,
+      filled:         true,
+      fillColor:      const Color(0xFF2D2D2D),
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: Color(0xFF3A3A3A)),
+        borderSide:   const BorderSide(color: Color(0xFF3A3A3A)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: Color(0xFF3A3A3A)),
+        borderSide:   const BorderSide(color: Color(0xFF3A3A3A)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: green, width: 1.5),
+        borderSide:   const BorderSide(color: green, width: 1.5),
       ),
     ),
     switchTheme: SwitchThemeData(
@@ -87,21 +89,20 @@ ThemeData buildDarkTheme() {
       ),
     ),
     textTheme: base.textTheme.copyWith(
-      // Used for panel section labels
       labelSmall: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w600,
+        fontSize:      10,
+        fontWeight:    FontWeight.w600,
         letterSpacing: 0.08,
-        color: Color(0xFF8A8A8A),
+        color:         Color(0xFF8A8A8A),
       ),
       bodySmall: const TextStyle(
         fontSize: 12,
-        color: Color(0xFFA0A0A0),
+        color:    Color(0xFFA0A0A0),
       ),
       bodyMedium: const TextStyle(
         fontSize: 13,
-        color: Color(0xFFE8E8E8),
+        color:    Color(0xFFE8E8E8),
       ),
     ),
   );
-} 
+}
