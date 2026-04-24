@@ -15,7 +15,6 @@ import '../../../features/editor/presentation/controller.dart';
 import '../../../services/storage/project_service.dart';
 import '../../../shared/providers/preset_provider.dart';
 import '../../../shared/providers/providers.dart';
-import '../../../shared/providers/zoom_provider.dart';
 import '../toolkits/layer_panel.dart' show LayerPanel;
 import '../toolkits/matrix_preview.dart' show MatrixPreview;
 import '../toolkits/output_panel.dart' show OutputPanel;
@@ -122,7 +121,6 @@ class _TopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark  = ref.watch(themeModeProvider) == ThemeMode.dark;
-    final zoom    = ref.watch(zoomProvider);
     final device  = ref.watch(deviceConnectionProvider);
     final editor  = ref.watch(editorControllerProvider);
     final scene   = ref.watch(sceneProvider);
@@ -166,38 +164,7 @@ class _TopBar extends ConsumerWidget {
             const SizedBox(width: 8),
             _FileMenuBtn(),
             const Spacer(),
-            _TopIconBtn(
-              icon: Icons.undo_rounded,
-              tooltip: 'Undo  ⌘Z',
-              enabled: editor.canUndo,
-              onTap: () =>
-                  ref.read(editorControllerProvider.notifier).undo(),
-            ),
-            _TopIconBtn(
-              icon: Icons.redo_rounded,
-              tooltip: 'Redo  ⌘⇧Z',
-              enabled: editor.canRedo,
-              onTap: () =>
-                  ref.read(editorControllerProvider.notifier).redo(),
-            ),
-            const SizedBox(width: 8),
-            Container(width: 1, height: 20, color: context.tBorder),
-            const SizedBox(width: 8),
             _ConnectionChip(state: device),
-            const SizedBox(width: 8),
-            Container(width: 1, height: 20, color: context.tBorder),
-            const SizedBox(width: 8),
-            Text(
-              'ZOOM',
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.08,
-                  color: context.tTextMuted),
-            ),
-            const SizedBox(width: 6),
-            ...kZoomLevels
-                .map((z) => _ZoomBtn(level: z, active: z == zoom)),
             const SizedBox(width: 8),
             Container(width: 1, height: 20, color: context.tBorder),
             const SizedBox(width: 8),
@@ -645,39 +612,6 @@ class _PortSheet extends ConsumerWidget {
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Zoom buttons
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ZoomBtn extends ConsumerWidget {
-  final int level;
-  final bool active;
-  const _ZoomBtn({required this.level, required this.active});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => GestureDetector(
-        onTap: () => ref.read(zoomProvider.notifier).state = level,
-        child: Container(
-          margin: const EdgeInsets.only(right: 2),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: active ? kGreen : Colors.transparent,
-            borderRadius: const BorderRadius.all(kRadiusSm),
-            border: Border.all(
-                color: active ? kGreen : context.tBorder),
-          ),
-          child: Text(
-            '${level}x',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: active ? Colors.white : context.tTextMuted),
-          ),
-        ),
-      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
