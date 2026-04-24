@@ -87,7 +87,8 @@ class ClockToolboxRight extends StatelessWidget {
           TbToggleRow(
               label: 'Show date',
               value: layer.showDate,
-              onChanged: (v) => n.updateLayer(layer.copyWith(showDate: v))),
+              onChanged: (v) =>
+                  n.updateLayer(layer.copyWith(showDate: v))),
           TbToggleRow(
               label: 'Show seconds',
               value: layer.showSeconds,
@@ -103,7 +104,7 @@ class ClockToolboxRight extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timezone dropdown — full UTC-offset list
+// Timezone dropdown
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TzEntry {
@@ -186,23 +187,24 @@ class _TzDropdown extends StatelessWidget {
       value: selected,
       isDense: true,
       isExpanded: true,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.all(kRadiusSm),
-          borderSide: BorderSide(color: kBorder),
+          borderRadius: const BorderRadius.all(kRadiusSm),
+          borderSide: BorderSide(color: context.tBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.all(kRadiusSm),
-          borderSide: BorderSide(color: kBorder),
+          borderRadius: const BorderRadius.all(kRadiusSm),
+          borderSide: BorderSide(color: context.tBorder),
         ),
-        focusedBorder: OutlineInputBorder(
+        focusedBorder: const OutlineInputBorder(
           borderRadius: BorderRadius.all(kRadiusSm),
           borderSide: BorderSide(color: kGreen, width: 1.5),
         ),
       ),
-      style: const TextStyle(fontSize: 11, color: kTextPrimary),
+      style: TextStyle(fontSize: 11, color: context.tTextPrimary),
       items: _kTimezones
           .map((e) => DropdownMenuItem(
                 value: e,
@@ -232,8 +234,8 @@ class _ColorRow extends StatelessWidget {
         children: [
           Expanded(
               child: Text(label,
-                  style:
-                      const TextStyle(fontSize: 11, color: kTextMuted))),
+                  style: TextStyle(
+                      fontSize: 11, color: context.tTextMuted))),
           tbColorBtn(context, color, onChanged),
         ],
       );

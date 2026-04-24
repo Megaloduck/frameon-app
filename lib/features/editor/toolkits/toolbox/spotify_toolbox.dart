@@ -20,7 +20,7 @@ class SpotifyToolboxLeft extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final spot = ref.watch(spotifyServiceProvider);
+    final spot    = ref.watch(spotifyServiceProvider);
     final service = ref.read(spotifyServiceProvider.notifier);
 
     return Column(
@@ -29,9 +29,9 @@ class SpotifyToolboxLeft extends ConsumerWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: kSurfaceLow,
+            color: context.tSurfaceLow,
             borderRadius: const BorderRadius.all(kRadiusMd),
-            border: Border.all(color: kBorder),
+            border: Border.all(color: context.tBorder),
           ),
           child: spot.isConnected
               ? _NowPlayingCard(spot: spot, onRefresh: service.refresh)
@@ -84,13 +84,11 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color:
-                        const Color(0xFF1DB954).withOpacity(0.15),
-                    borderRadius:
-                        const BorderRadius.all(kRadiusSm),
+                    color: const Color(0xFF1DB954).withOpacity(0.15),
+                    borderRadius: const BorderRadius.all(kRadiusSm),
                     border: Border.all(
-                        color: const Color(0xFF1DB954)
-                            .withOpacity(0.5)),
+                        color:
+                            const Color(0xFF1DB954).withOpacity(0.5)),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
@@ -116,7 +114,7 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                 child: LinearProgressIndicator(
                   value: spot.progress,
                   minHeight: 4,
-                  backgroundColor: kBorder,
+                  backgroundColor: context.tBorder,
                   valueColor: const AlwaysStoppedAnimation<Color>(
                       Color(0xFF1DB954)),
                 ),
@@ -126,11 +124,11 @@ class SpotifyToolboxLeft extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatDuration(spot.currentPosition),
-                      style: const TextStyle(
-                          fontSize: 10, color: kTextDim)),
+                      style: TextStyle(
+                          fontSize: 10, color: context.tTextDim)),
                   Text(_formatDuration(spot.currentDuration),
-                      style: const TextStyle(
-                          fontSize: 10, color: kTextDim)),
+                      style: TextStyle(
+                          fontSize: 10, color: context.tTextDim)),
                 ],
               ),
             ],
@@ -165,17 +163,17 @@ class SpotifyToolboxRight extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Layout dropdown ──────────────────────────────────────────
           tbGreenDropdown<SpotifyLayout>(
+            context,
             SpotifyLayout.values,
             layer.layout,
             (v) => n.updateLayer(layer.copyWith(layout: v)),
           ),
           const SizedBox(height: 8),
 
-          // ── Art layout mode (artOnly only) ───────────────────────────
           if (layer.layout == SpotifyLayout.artOnly) ...[
             tbGreenDropdown<ArtLayoutMode>(
+              context,
               ArtLayoutMode.values,
               layer.artLayoutMode ?? ArtLayoutMode.stretch,
               (v) => n.updateLayer(layer.copyWith(artLayoutMode: v)),
@@ -185,15 +183,14 @@ class SpotifyToolboxRight extends StatelessWidget {
 
           const SizedBox(height: 4),
 
-          // ── Show title ───────────────────────────────────────────────
           if (_hasText)
             _PropertiesToggleRow(
               label: 'Show title',
               color: layer.titleColor,
               value: layer.showTitle,
               initialFontId: layer.fontId,
-              initialEffect: layer.titleEffect,              // scroll direction
-              initialOverlayEffect: layer.titleOverlayEffect, // overlay
+              initialEffect: layer.titleEffect,
+              initialOverlayEffect: layer.titleOverlayEffect,
               initialEffectSpeedMs: layer.titleEffectSpeedMs,
               showFont: true,
               showFontEffect: true,
@@ -201,37 +198,36 @@ class SpotifyToolboxRight extends StatelessWidget {
               onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
                 titleColor: r.color,
                 fontId: r.fontId,
-                titleEffect: r.scrollDirection,           // save scroll
-                titleOverlayEffect: r.overlayEffect,      // save overlay
+                titleEffect: r.scrollDirection,
+                titleOverlayEffect: r.overlayEffect,
                 titleEffectSpeedMs: r.effectSpeedMs,
               )),
               onToggled: (v) => n.updateLayer(layer.copyWith(showTitle: v)),
             ),
 
-          // ── Show artist ──────────────────────────────────────────────
           if (_hasText)
             _PropertiesToggleRow(
-                label: 'Show artist',
-                color: layer.artistColor,
-                value: layer.showArtist,
-                initialFontId: layer.fontId,
-                initialEffect: layer.artistEffect,               // scroll direction
-                initialOverlayEffect: layer.artistOverlayEffect, // overlay
-                initialEffectSpeedMs: layer.artistEffectSpeedMs,
-                showFont: true,
-                showFontEffect: true,
-                showLightingEffect: true,
-                onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
-                  artistColor: r.color,
-                  fontId: r.fontId,
-                  artistEffect: r.scrollDirection,          // save scroll
-                  artistOverlayEffect: r.overlayEffect,     // save overlay
-                  artistEffectSpeedMs: r.effectSpeedMs,
-                )),
-              onToggled: (v) => n.updateLayer(layer.copyWith(showArtist: v)),
+              label: 'Show artist',
+              color: layer.artistColor,
+              value: layer.showArtist,
+              initialFontId: layer.fontId,
+              initialEffect: layer.artistEffect,
+              initialOverlayEffect: layer.artistOverlayEffect,
+              initialEffectSpeedMs: layer.artistEffectSpeedMs,
+              showFont: true,
+              showFontEffect: true,
+              showLightingEffect: true,
+              onPropertiesChanged: (r) => n.updateLayer(layer.copyWith(
+                artistColor: r.color,
+                fontId: r.fontId,
+                artistEffect: r.scrollDirection,
+                artistOverlayEffect: r.overlayEffect,
+                artistEffectSpeedMs: r.effectSpeedMs,
+              )),
+              onToggled: (v) =>
+                  n.updateLayer(layer.copyWith(showArtist: v)),
             ),
 
-          // ── Show progress ────────────────────────────────────────────
           _PropertiesToggleRow(
             label: 'Show progress',
             color: layer.progressColor,
@@ -248,8 +244,6 @@ class SpotifyToolboxRight extends StatelessWidget {
           ),
         ],
       );
-
-
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -262,8 +256,8 @@ class _PropertiesToggleRow extends StatelessWidget {
   final bool value;
   final LedFontId initialFontId;
   final AnimationEffect initialEffect;
-  final AnimationEffect? initialOverlayEffect;  // ← separate overlay init
-  final int initialEffectSpeedMs;        
+  final AnimationEffect? initialOverlayEffect;
+  final int initialEffectSpeedMs;
   final bool showFont;
   final bool showFontEffect;
   final bool showLightingEffect;
@@ -277,7 +271,7 @@ class _PropertiesToggleRow extends StatelessWidget {
     required this.initialFontId,
     required this.initialEffect,
     this.initialOverlayEffect,
-    this.initialEffectSpeedMs = 100,     
+    this.initialEffectSpeedMs = 100,
     this.showFont = true,
     this.showFontEffect = true,
     this.showLightingEffect = false,
@@ -297,7 +291,7 @@ class _PropertiesToggleRow extends StatelessWidget {
                   initialColor: color,
                   initialFontId: initialFontId,
                   initialEffect: initialEffect,
-                  initialOverlayEffect: initialOverlayEffect,  // ← pass through
+                  initialOverlayEffect: initialOverlayEffect,
                   initialEffectSpeedMs: initialEffectSpeedMs,
                   showFont: showFont,
                   showFontEffect: showFontEffect,
@@ -306,21 +300,29 @@ class _PropertiesToggleRow extends StatelessWidget {
                 if (result != null) onPropertiesChanged(result);
               },
               child: Container(
-                width: 28, height: 28,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: color,
                   borderRadius: const BorderRadius.all(kRadiusSm),
-                  border: Border.all(color: Colors.black.withOpacity(0.18)),
+                  border: Border.all(
+                      color: Colors.black.withOpacity(0.18)),
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(child: Text(label,
-                style: const TextStyle(fontSize: 12, color: kTextMuted))),
+            Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: context.tTextMuted))),
             Transform.scale(
               scale: 0.5,
-              child: Switch(value: value, onChanged: onToggled,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              child: Switch(
+                  value: value,
+                  onChanged: onToggled,
+                  materialTapTargetSize:
+                      MaterialTapTargetSize.shrinkWrap),
             ),
           ],
         ),
@@ -375,8 +377,7 @@ class _ArtPainter extends CustomPainter {
 class _NowPlayingCard extends StatelessWidget {
   final SpotifyState spot;
   final VoidCallback onRefresh;
-  const _NowPlayingCard(
-      {required this.spot, required this.onRefresh});
+  const _NowPlayingCard({required this.spot, required this.onRefresh});
 
   @override
   Widget build(BuildContext context) => Row(
@@ -426,15 +427,15 @@ class _NowPlayingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(spot.currentArtist ?? '',
-                    style: const TextStyle(
-                        fontSize: 11, color: kTextMuted),
+                    style: TextStyle(
+                        fontSize: 11, color: context.tTextMuted),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1),
                 if (spot.currentAlbum != null) ...[
                   const SizedBox(height: 1),
                   Text(spot.currentAlbum!,
-                      style: const TextStyle(
-                          fontSize: 9, color: kTextDim),
+                      style: TextStyle(
+                          fontSize: 9, color: context.tTextDim),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1),
                 ],
@@ -446,10 +447,10 @@ class _NowPlayingCard extends StatelessWidget {
             child: InkWell(
               onTap: onRefresh,
               borderRadius: const BorderRadius.all(kRadiusSm),
-              child: const Padding(
-                padding: EdgeInsets.all(6),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
                 child: Icon(Icons.refresh_rounded,
-                    size: 15, color: kTextMuted),
+                    size: 15, color: context.tTextMuted),
               ),
             ),
           ),
@@ -461,20 +462,20 @@ class _ConnectingCard extends StatelessWidget {
   const _ConnectingCard();
 
   @override
-  Widget build(BuildContext context) => const Row(
+  Widget build(BuildContext context) => Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SizedBox(
+          const SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
                 strokeWidth: 2, color: Color(0xFF1DB954)),
           ),
-          SizedBox(width: 10),
+          const SizedBox(width: 10),
           Expanded(
             child: Text('Opening Spotify in your browser…',
-                style:
-                    TextStyle(fontSize: 11, color: kTextMuted)),
+                style: TextStyle(
+                    fontSize: 11, color: context.tTextMuted)),
           ),
         ],
       );
@@ -499,14 +500,13 @@ class _DisconnectedCard extends StatelessWidget {
           const SizedBox(height: 2),
           if (errorMessage != null)
             Text(errorMessage!,
-                style:
-                    TextStyle(fontSize: 10, color: Colors.red.shade400),
+                style: TextStyle(
+                    fontSize: 10, color: Colors.red.shade400),
                 textAlign: TextAlign.center)
           else
-            const Text(
-                'Sign in to display the current track',
-                style:
-                    TextStyle(fontSize: 10, color: kTextMuted),
+            Text('Sign in to display the current track',
+                style: TextStyle(
+                    fontSize: 10, color: context.tTextMuted),
                 textAlign: TextAlign.center),
           const SizedBox(height: 8),
           SizedBox(
@@ -519,14 +519,12 @@ class _DisconnectedCard extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF1DB954),
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 shape: const RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.all(kRadiusSm)),
+                    borderRadius: BorderRadius.all(kRadiusSm)),
               ),
             ),
           ),
         ],
       );
-}
+} 

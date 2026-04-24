@@ -11,21 +11,21 @@ class PomodoroToolboxLeft extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final layer = ref.watch(selectedLayerProvider) as PomodoroLayer;
-    final n = ref.read(sceneProvider.notifier);
+    final layer      = ref.watch(selectedLayerProvider) as PomodoroLayer;
+    final n          = ref.read(sceneProvider.notifier);
     final timerState = ref.watch(pomodoroServiceProvider);
-    final service = ref.read(pomodoroServiceProvider.notifier);
+    final service    = ref.read(pomodoroServiceProvider.notifier);
 
     final phaseLabel = switch (timerState.phase) {
-      PomodoroState.focus => 'Focus Session',
+      PomodoroState.focus      => 'Focus Session',
       PomodoroState.shortBreak => 'Short Break',
-      PomodoroState.longBreak => 'Long Break',
+      PomodoroState.longBreak  => 'Long Break',
     };
 
     final phaseColor = switch (timerState.phase) {
-      PomodoroState.focus => layer.focusColor,
+      PomodoroState.focus      => layer.focusColor,
       PomodoroState.shortBreak => layer.breakColor,
-      PomodoroState.longBreak => layer.longBreakColor,
+      PomodoroState.longBreak  => layer.longBreakColor,
     };
 
     final mins = timerState.remaining.inMinutes
@@ -54,7 +54,9 @@ class PomodoroToolboxLeft extends ConsumerWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: timerState.isRunning ? phaseColor : kTextDim,
+                  color: timerState.isRunning
+                      ? phaseColor
+                      : context.tTextDim,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -79,8 +81,9 @@ class PomodoroToolboxLeft extends ConsumerWidget {
           tbColorBtn(context, layer.focusColor,
               (c) => n.updateLayer(layer.copyWith(focusColor: c))),
           const SizedBox(width: 8),
-          const Text('Focus Session',
-              style: TextStyle(fontSize: 11, color: kTextMuted)),
+          Text('Focus Session',
+              style:
+                  TextStyle(fontSize: 11, color: context.tTextMuted)),
           const Spacer(),
           TbDurationStepper(
             value: layer.focusDurationMinutes,
@@ -94,8 +97,9 @@ class PomodoroToolboxLeft extends ConsumerWidget {
           tbColorBtn(context, layer.breakColor,
               (c) => n.updateLayer(layer.copyWith(breakColor: c))),
           const SizedBox(width: 8),
-          const Text('Short break',
-              style: TextStyle(fontSize: 11, color: kTextMuted)),
+          Text('Short break',
+              style:
+                  TextStyle(fontSize: 11, color: context.tTextMuted)),
           const Spacer(),
           TbDurationStepper(
             value: layer.shortBreakMinutes,
@@ -109,8 +113,9 @@ class PomodoroToolboxLeft extends ConsumerWidget {
           tbColorBtn(context, layer.longBreakColor,
               (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
           const SizedBox(width: 8),
-          const Text('Long break',
-              style: TextStyle(fontSize: 11, color: kTextMuted)),
+          Text('Long break',
+              style:
+                  TextStyle(fontSize: 11, color: context.tTextMuted)),
           const Spacer(),
           TbDurationStepper(
             value: layer.longBreakMinutes,
@@ -155,12 +160,15 @@ class PomodoroToolboxRight extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final layer = ref.watch(selectedLayerProvider) as PomodoroLayer;
-    final n = ref.read(sceneProvider.notifier);
+    final n     = ref.read(sceneProvider.notifier);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        tbGreenDropdown<PomodoroLayout>(PomodoroLayout.values, layer.layout,
+        tbGreenDropdown<PomodoroLayout>(
+            context,
+            PomodoroLayout.values,
+            layer.layout,
             (v) => n.updateLayer(layer.copyWith(layout: v))),
         const SizedBox(height: 8),
         TbToggleRow(
@@ -173,7 +181,6 @@ class PomodoroToolboxRight extends ConsumerWidget {
             value: layer.showSession,
             onChanged: (v) =>
                 n.updateLayer(layer.copyWith(showSession: v))),
-        // NOTE: field is blinkColor (not blinkColon) on PomodoroLayer
         TbToggleRow(
             label: 'Blink colon',
             value: layer.blinkColor,
@@ -188,4 +195,4 @@ class PomodoroToolboxRight extends ConsumerWidget {
       ],
     );
   }
-}
+} 

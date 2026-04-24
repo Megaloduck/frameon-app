@@ -23,7 +23,7 @@ class LayerPanel extends ConsumerWidget {
           height: 34,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: context.tBorder)),
+            border: Border(bottom: context.tPanelBorder),
           ),
           child: Row(
             children: [
@@ -106,14 +106,19 @@ class _LayerRow extends ConsumerStatefulWidget {
 class _LayerRowState extends ConsumerState<_LayerRow> {
   bool _hovered = false;
 
-  Color get _typeColor => kLayerTypeColors[widget.layer.type.name] ?? kTextMuted;
-  IconData get _typeIcon => kLayerTypeIcons[widget.layer.type.name] ?? Icons.layers_rounded;
+  // Resolved in build() so we have access to context for the fallback colour.
+  Color _resolveTypeColor(BuildContext context) =>
+      kLayerTypeColors[widget.layer.type.name] ?? context.tTextMuted;
+
+  IconData get _typeIcon =>
+      kLayerTypeIcons[widget.layer.type.name] ?? Icons.layers_rounded;
 
   @override
   Widget build(BuildContext context) {
-    final notifier = ref.read(sceneProvider.notifier);
-    final hidden   = !widget.layer.visible;
-    final isDark   = context.isDark;
+    final notifier   = ref.read(sceneProvider.notifier);
+    final hidden     = !widget.layer.visible;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final typeColor  = _resolveTypeColor(context);
 
     final hoverBg = isDark
         ? Colors.white.withOpacity(0.04)
@@ -129,11 +134,11 @@ class _LayerRowState extends ConsumerState<_LayerRow> {
           height: 32,
           decoration: BoxDecoration(
             color: widget.selected
-                ? _typeColor.withOpacity(0.10)
+                ? typeColor.withOpacity(0.10)
                 : _hovered ? hoverBg : Colors.transparent,
             border: Border(
               left: widget.selected
-                  ? BorderSide(color: _typeColor, width: 2)
+                  ? BorderSide(color: typeColor, width: 2)
                   : BorderSide.none,
             ),
           ),
@@ -149,7 +154,7 @@ class _LayerRowState extends ConsumerState<_LayerRow> {
                         color: context.tTextDim),
                   ),
                 ),
-                LayerTypeBadge(icon: _typeIcon, color: _typeColor, size: 22),
+                LayerTypeBadge(icon: _typeIcon, color: typeColor, size: 22),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(

@@ -19,8 +19,8 @@ class TextToolboxLeft extends StatelessWidget {
             tbColorBtn(context, layer.color,
                 (c) => n.updateLayer(layer.copyWith(color: c))),
             const SizedBox(width: 8),
-            const Text('Text Color',
-                style: TextStyle(fontSize: 11, color: kTextMuted)),
+            Text('Text Color',
+                style: TextStyle(fontSize: 11, color: context.tTextMuted)),
           ]),
           const SizedBox(height: 10),
           const TbLabel('Font Style'),
@@ -50,7 +50,10 @@ class TextToolboxRight extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tbGreenDropdown<AnimationEffect>(AnimationEffect.values, layer.effect,
+          tbGreenDropdown<AnimationEffect>(
+              context,
+              AnimationEffect.values,
+              layer.effect,
               (v) => n.updateLayer(layer.copyWith(effect: v))),
           const SizedBox(height: 12),
           if (layer.effect != AnimationEffect.none) ...[

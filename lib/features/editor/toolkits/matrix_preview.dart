@@ -117,7 +117,7 @@ class _CanvasArea extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark        = context.isDark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final selectedLayer = ref.watch(selectedLayerProvider);
 
     return Stack(

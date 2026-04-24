@@ -114,13 +114,6 @@ class EditorPage extends ConsumerWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Top bar
-//
-// The entire bar is wrapped in DragToMoveArea so the user can drag the window
-// by clicking anywhere on it that isn't an interactive control.
-//
-// On macOS the system traffic-light buttons render in their usual top-left
-// position inside our bar (TitleBarStyle.hidden keeps them). On Windows and
-// Linux we render our own minimize / maximize / close buttons on the right.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TopBar extends ConsumerWidget {
@@ -133,21 +126,17 @@ class _TopBar extends ConsumerWidget {
     final device  = ref.watch(deviceConnectionProvider);
     final editor  = ref.watch(editorControllerProvider);
     final scene   = ref.watch(sceneProvider);
-    final surface = Theme.of(context).colorScheme.surface;
 
-    // Whether to render our own window controls (Windows / Linux).
     final bool showWinControls =
         !kIsWeb && (Platform.isWindows || Platform.isLinux);
-
-    // On macOS the traffic lights occupy ~72 px on the left.
     final double macOsLeadingPad = (!kIsWeb && Platform.isMacOS) ? 72.0 : 0.0;
 
     return DragToMoveArea(
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: surface,
-          border: const Border(bottom: kPanelBorder),
+          color: context.tSurface,
+          border: Border(bottom: context.tPanelBorder),
         ),
         padding: EdgeInsets.only(
           left: 12 + macOsLeadingPad,
@@ -157,14 +146,14 @@ class _TopBar extends ConsumerWidget {
           children: [
             _Logo(),
             const SizedBox(width: 12),
-            Container(width: 1, height: 20, color: kBorder),
+            Container(width: 1, height: 20, color: context.tBorder),
             const SizedBox(width: 12),
             Text(
               scene.name,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: kTextMuted),
+                  color: context.tTextMuted),
             ),
             if (editor.isDirty) ...[
               const SizedBox(width: 5),
@@ -192,32 +181,30 @@ class _TopBar extends ConsumerWidget {
                   ref.read(editorControllerProvider.notifier).redo(),
             ),
             const SizedBox(width: 8),
-            Container(width: 1, height: 20, color: kBorder),
+            Container(width: 1, height: 20, color: context.tBorder),
             const SizedBox(width: 8),
             _ConnectionChip(state: device),
             const SizedBox(width: 8),
-            Container(width: 1, height: 20, color: kBorder),
+            Container(width: 1, height: 20, color: context.tBorder),
             const SizedBox(width: 8),
-            const Text(
+            Text(
               'ZOOM',
               style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.08,
-                  color: kTextMuted),
+                  color: context.tTextMuted),
             ),
             const SizedBox(width: 6),
             ...kZoomLevels
                 .map((z) => _ZoomBtn(level: z, active: z == zoom)),
             const SizedBox(width: 8),
-            Container(width: 1, height: 20, color: kBorder),
+            Container(width: 1, height: 20, color: context.tBorder),
             const SizedBox(width: 8),
             _ThemeBtn(isDark: isDark),
-
-            // Custom window controls — Windows / Linux only.
             if (showWinControls) ...[
               const SizedBox(width: 8),
-              Container(width: 1, height: 20, color: kBorder),
+              Container(width: 1, height: 20, color: context.tBorder),
               const _WindowControls(),
             ] else
               const SizedBox(width: 4),
@@ -230,11 +217,6 @@ class _TopBar extends ConsumerWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Window controls (Windows / Linux)
-//
-// Three buttons that match the bar's aesthetic: thin, flat, no borders.
-// The close button gets a red tint on hover to follow platform convention.
-// Each button is wrapped in a MouseRegion to suppress DragToMoveArea so
-// clicking them doesn't accidentally start a window drag.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _WindowControls extends StatelessWidget {
@@ -290,7 +272,6 @@ class _WinBtnState extends State<_WinBtn> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Tooltip(
       message: widget.tooltip,
-      // MouseRegion prevents the DragToMoveArea from capturing these clicks.
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
@@ -306,7 +287,7 @@ class _WinBtnState extends State<_WinBtn> {
                     ? Colors.white.withOpacity(0.07)
                     : Colors.black.withOpacity(0.05))
                 : Colors.transparent,
-            child: Icon(widget.icon, size: 15, color: kTextMuted),
+            child: Icon(widget.icon, size: 15, color: context.tTextMuted),
           ),
         ),
       ),
@@ -336,12 +317,11 @@ class _WinCloseBtnState extends State<_WinCloseBtn> {
             duration: const Duration(milliseconds: 80),
             width: 46,
             height: 44,
-            // Matches Windows 11 convention: red bg on hover.
             color: _hovered ? const Color(0xFFC42B1C) : Colors.transparent,
             child: Icon(
               Icons.close_rounded,
               size: 15,
-              color: _hovered ? Colors.white : kTextMuted,
+              color: _hovered ? Colors.white : context.tTextMuted,
             ),
           ),
         ),
@@ -362,20 +342,19 @@ class _Logo extends StatelessWidget {
           Container(
             width: 26,
             height: 26,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
                 color: kGreen,
-                borderRadius:
-                    const BorderRadius.all(kRadiusSm)),
+                borderRadius: BorderRadius.all(kRadiusSm)),
             child: const Icon(Icons.grid_on_rounded,
                 size: 15, color: Colors.white),
           ),
           const SizedBox(width: 7),
-          const Text(
+          Text(
             'Frameon',
             style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: kTextPrimary,
+                color: context.tTextPrimary,
                 letterSpacing: -0.3),
           ),
         ],
@@ -396,31 +375,31 @@ class _FileMenuBtn extends ConsumerWidget {
               const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             borderRadius: const BorderRadius.all(kRadiusSm),
-            border: Border.all(color: kBorder),
+            border: Border.all(color: context.tBorder),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.folder_open_rounded,
-                  size: 13, color: kTextMuted),
-              SizedBox(width: 4),
+                  size: 13, color: context.tTextMuted),
+              const SizedBox(width: 4),
               Text('File',
                   style: TextStyle(
                       fontSize: 11,
-                      color: kTextMuted,
+                      color: context.tTextMuted,
                       fontWeight: FontWeight.w500)),
               Icon(Icons.keyboard_arrow_down_rounded,
-                  size: 14, color: kTextMuted),
+                  size: 14, color: context.tTextMuted),
             ],
           ),
         ),
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(kRadiusMd)),
         itemBuilder: (_) => [
-          _mi('open', 'Open project…', Icons.file_open_outlined),
-          _mi('save', 'Save project…', Icons.save_outlined),
+          _mi(context, 'open', 'Open project…', Icons.file_open_outlined),
+          _mi(context, 'save', 'Save project…', Icons.save_outlined),
           const PopupMenuDivider(height: 1),
-          _mi('new', 'New project', Icons.add_rounded),
+          _mi(context, 'new', 'New project', Icons.add_rounded),
         ],
         onSelected: (v) {
           switch (v) {
@@ -435,12 +414,12 @@ class _FileMenuBtn extends ConsumerWidget {
       );
 
   PopupMenuItem<String> _mi(
-          String val, String label, IconData icon) =>
+          BuildContext context, String val, String label, IconData icon) =>
       PopupMenuItem(
         value: val,
         height: 36,
         child: Row(children: [
-          Icon(icon, size: 14, color: kTextMuted),
+          Icon(icon, size: 14, color: context.tTextMuted),
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(fontSize: 13)),
         ]),
@@ -510,7 +489,7 @@ class _TopIconBtn extends StatelessWidget {
             padding: const EdgeInsets.all(5),
             child: Icon(icon,
                 size: 16,
-                color: enabled ? kTextMuted : kTextDim),
+                color: enabled ? context.tTextMuted : context.tTextDim),
           ),
         ),
       );
@@ -527,7 +506,7 @@ class _ConnectionChip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connected = state.isConnected;
-    final color = connected ? kGreen : kTextDim;
+    final color = connected ? kGreen : context.tTextDim;
     final label = connected
         ? (state.portName ?? 'Connected')
         : state.status == DeviceConnectionStatus.connecting
@@ -545,7 +524,7 @@ class _ConnectionChip extends ConsumerWidget {
           border: Border.all(
               color: connected
                   ? kGreen.withOpacity(0.35)
-                  : kBorder),
+                  : context.tBorder),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.usb_rounded, size: 13, color: color),
@@ -688,14 +667,14 @@ class _ZoomBtn extends ConsumerWidget {
             color: active ? kGreen : Colors.transparent,
             borderRadius: const BorderRadius.all(kRadiusSm),
             border: Border.all(
-                color: active ? kGreen : kBorder),
+                color: active ? kGreen : context.tBorder),
           ),
           child: Text(
             '${level}x',
             style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: active ? Colors.white : kTextMuted),
+                color: active ? Colors.white : context.tTextMuted),
           ),
         ),
       );
@@ -719,7 +698,7 @@ class _ThemeBtn extends ConsumerWidget {
               const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             borderRadius: const BorderRadius.all(kRadiusSm),
-            border: Border.all(color: kBorder),
+            border: Border.all(color: context.tBorder),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(
@@ -734,11 +713,11 @@ class _ThemeBtn extends ConsumerWidget {
             const SizedBox(width: 5),
             Text(
               isDark ? 'DARK' : 'LIGHT',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.05,
-                  color: kTextMuted),
+                  color: context.tTextMuted),
             ),
           ]),
         ),
@@ -858,7 +837,7 @@ class _PresetSlots extends ConsumerWidget {
           Container(
               height: 1,
               width: 32,
-              color: kBorder,
+              color: context.tBorder,
               margin: const EdgeInsets.only(bottom: 6)),
           _SlotIconBtn(
             icon: Icons.settings_rounded,
@@ -903,12 +882,10 @@ class _PresetSlot extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: active
-                      ? kGreen
-                      : Theme.of(context).colorScheme.surface,
+                  color: active ? kGreen : context.tSurface,
                   borderRadius: const BorderRadius.all(kRadiusSm),
                   border: Border.all(
-                      color: active ? kGreen : kBorder,
+                      color: active ? kGreen : context.tBorder,
                       width: active ? 0 : 1),
                 ),
                 alignment: Alignment.center,
@@ -917,7 +894,7 @@ class _PresetSlot extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: active ? Colors.white : kTextMuted,
+                    color: active ? Colors.white : context.tTextMuted,
                   ),
                 ),
               ),
@@ -956,11 +933,11 @@ class _SlotIconBtn extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
+              color: context.tSurface,
               borderRadius: const BorderRadius.all(kRadiusSm),
-              border: Border.all(color: kBorder),
+              border: Border.all(color: context.tBorder),
             ),
-            child: Icon(icon, size: 18, color: kTextMuted),
+            child: Icon(icon, size: 18, color: context.tTextMuted),
           ),
         ),
       );

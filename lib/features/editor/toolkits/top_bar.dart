@@ -32,8 +32,8 @@ class EditorTopBar extends ConsumerWidget {
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: const Border(bottom: kPanelBorder),
+        color: context.tSurface,
+        border: Border(bottom: context.tPanelBorder),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(
@@ -99,10 +99,12 @@ class _SceneSlots extends StatelessWidget {
         children: [
           _Slot(label: 'F', active: true),
           const SizedBox(width: 3),
-          ...List.generate(4, (i) => Padding(
-                padding: const EdgeInsets.only(left: 3),
-                child: _Slot(label: '${i + 1}'),
-              )),
+          ...List.generate(
+              4,
+              (i) => Padding(
+                    padding: const EdgeInsets.only(left: 3),
+                    child: _Slot(label: '${i + 1}'),
+                  )),
         ],
       );
 }
@@ -120,7 +122,7 @@ class _Slot extends StatelessWidget {
           color: active ? kGreen.withOpacity(0.15) : Colors.transparent,
           borderRadius: const BorderRadius.all(kRadiusSm),
           border: Border.all(
-            color: active ? kGreen.withOpacity(0.4) : kBorder,
+            color: active ? kGreen.withOpacity(0.4) : context.tBorder,
           ),
         ),
         alignment: Alignment.center,
@@ -129,7 +131,7 @@ class _Slot extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: active ? kGreen : kTextMuted,
+            color: active ? kGreen : context.tTextMuted,
           ),
         ),
       );
@@ -148,13 +150,18 @@ class _ProjectName extends StatelessWidget {
         children: [
           Text(
             name,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: kTextMuted),
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: context.tTextMuted),
           ),
           if (isDirty) ...[
             const SizedBox(width: 4),
             Container(
-              width: 5, height: 5,
-              decoration: const BoxDecoration(color: kGreen, shape: BoxShape.circle),
+              width: 5,
+              height: 5,
+              decoration:
+                  const BoxDecoration(color: kGreen, shape: BoxShape.circle),
             ),
           ],
         ],
@@ -183,12 +190,13 @@ class _TopBarIconBtn extends StatelessWidget {
           onTap: enabled ? onTap : null,
           borderRadius: const BorderRadius.all(kRadiusSm),
           child: Container(
-            width: 30, height: 30,
+            width: 30,
+            height: 30,
             alignment: Alignment.center,
             child: Icon(
               icon,
               size: 17,
-              color: enabled ? kTextMuted : kTextDim,
+              color: enabled ? context.tTextMuted : context.tTextDim,
             ),
           ),
         ),
@@ -204,31 +212,37 @@ class _FileMenuBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
         tooltip: 'File',
-        icon: const Icon(Icons.folder_open_rounded, size: 17, color: kTextMuted),
+        icon: Icon(Icons.folder_open_rounded,
+            size: 17, color: context.tTextMuted),
         iconSize: 17,
         splashRadius: 16,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(kRadiusMd)),
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(kRadiusMd)),
         itemBuilder: (_) => [
-          _menuItem('open',  'Open project…',  Icons.file_open_outlined),
-          _menuItem('save',  'Save project…',  Icons.save_outlined),
+          _menuItem(context, 'open', 'Open project…', Icons.file_open_outlined),
+          _menuItem(context, 'save', 'Save project…', Icons.save_outlined),
           const PopupMenuDivider(height: 1),
-          _menuItem('new',   'New project',    Icons.add_rounded),
+          _menuItem(context, 'new', 'New project', Icons.add_rounded),
         ],
         onSelected: (v) {
           switch (v) {
-            case 'open': _openFile(context, ref);
-            case 'save': _saveFile(context, ref);
-            case 'new':  ref.read(sceneProvider.notifier).newScene();
+            case 'open':
+              _openFile(context, ref);
+            case 'save':
+              _saveFile(context, ref);
+            case 'new':
+              ref.read(sceneProvider.notifier).newScene();
           }
         },
       );
 
-  PopupMenuItem<String> _menuItem(String value, String label, IconData icon) =>
+  PopupMenuItem<String> _menuItem(
+          BuildContext context, String value, String label, IconData icon) =>
       PopupMenuItem(
         value: value,
         height: 36,
         child: Row(children: [
-          Icon(icon, size: 15, color: kTextMuted),
+          Icon(icon, size: 15, color: context.tTextMuted),
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(fontSize: 13)),
         ]),
@@ -236,7 +250,9 @@ class _FileMenuBtn extends StatelessWidget {
 
   Future<void> _openFile(BuildContext context, WidgetRef ref) async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom, allowedExtensions: ['frameon'], withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['frameon'],
+      withData: true,
     );
     if (result == null || result.files.single.bytes == null) return;
     try {
@@ -280,7 +296,7 @@ class _ConnectionChip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connected = state.isConnected;
-    final color     = connected ? kGreen : kTextDim;
+    final color     = connected ? kGreen : context.tTextDim;
     final label     = connected
         ? (state.portName ?? 'Connected')
         : state.status == DeviceConnectionStatus.connecting
@@ -295,15 +311,23 @@ class _ConnectionChip extends ConsumerWidget {
         decoration: BoxDecoration(
           color: connected ? kGreen.withOpacity(0.08) : Colors.transparent,
           borderRadius: const BorderRadius.all(kRadiusSm),
-          border: Border.all(color: connected ? kGreen.withOpacity(0.3) : kBorder),
+          border: Border.all(
+              color: connected
+                  ? kGreen.withOpacity(0.3)
+                  : context.tBorder),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 5, height: 5,
+            width: 5,
+            height: 5,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.w500)),
         ]),
       ),
     );
@@ -323,7 +347,8 @@ class _ConnectionChip extends ConsumerWidget {
           Navigator.pop(context);
           await ref.read(deviceConnectionProvider.notifier).disconnect();
         },
-        onScan: () => ref.read(deviceConnectionProvider.notifier).scanPorts(),
+        onScan: () =>
+            ref.read(deviceConnectionProvider.notifier).scanPorts(),
       ),
     );
   }
@@ -350,43 +375,66 @@ class _PortSheet extends ConsumerWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Text('Select port', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            const Spacer(),
-            TextButton.icon(
-              icon: const Icon(Icons.refresh_rounded, size: 15),
-              label: const Text('Scan', style: TextStyle(fontSize: 13)),
-              onPressed: () async {
-                await onScan();
-                ref.invalidate(availablePortsProvider);
-              },
-            ),
-          ]),
-          const SizedBox(height: 8),
-          portsAsync.when(
-            loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
-            error:   (e, _) => Text('Error: $e'),
-            data: (ports) => ports.isEmpty
-                ? const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No serial ports found.'))
-                : Column(children: ports.map((p) => ListTile(
-                      dense: true,
-                      leading: Icon(Icons.usb_rounded, color: p == connectedPort ? kGreen : null),
-                      title: Text(p),
-                      trailing: p == connectedPort ? const Icon(Icons.check_rounded, color: kGreen) : null,
-                      onTap: () => onConnect(p),
-                    )).toList()),
-          ),
-          if (isConnected) ...[
-            const Divider(),
-            TextButton.icon(
-              onPressed: onDisconnect,
-              icon: const Icon(Icons.link_off_rounded, size: 15),
-              label: const Text('Disconnect', style: TextStyle(fontSize: 13)),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-            ),
-          ],
-        ]),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Text('Select port',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                TextButton.icon(
+                  icon: const Icon(Icons.refresh_rounded, size: 15),
+                  label: const Text('Scan',
+                      style: TextStyle(fontSize: 13)),
+                  onPressed: () async {
+                    await onScan();
+                    ref.invalidate(availablePortsProvider);
+                  },
+                ),
+              ]),
+              const SizedBox(height: 8),
+              portsAsync.when(
+                loading: () => const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator())),
+                error: (e, _) => Text('Error: $e'),
+                data: (ports) => ports.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('No serial ports found.'))
+                    : Column(
+                        children: ports
+                            .map((p) => ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.usb_rounded,
+                                      color: p == connectedPort
+                                          ? kGreen
+                                          : null),
+                                  title: Text(p),
+                                  trailing: p == connectedPort
+                                      ? const Icon(
+                                          Icons.check_rounded,
+                                          color: kGreen)
+                                      : null,
+                                  onTap: () => onConnect(p),
+                                ))
+                            .toList()),
+              ),
+              if (isConnected) ...[
+                const Divider(),
+                TextButton.icon(
+                  onPressed: onDisconnect,
+                  icon: const Icon(Icons.link_off_rounded, size: 15),
+                  label: const Text('Disconnect',
+                      style: TextStyle(fontSize: 13)),
+                  style: TextButton.styleFrom(
+                      foregroundColor: Colors.red),
+                ),
+              ],
+            ]),
       ),
     );
   }
@@ -415,7 +463,7 @@ class _ZoomBtn extends ConsumerWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-              color: active ? kGreen : kTextMuted,
+              color: active ? kGreen : context.tTextMuted,
             ),
           ),
         ),
@@ -427,7 +475,9 @@ class _ZoomBtn extends ConsumerWidget {
 class _VDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
-        width: 1, height: 18, color: kBorder,
+        width: 1,
+        height: 18,
+        color: context.tBorder,
         margin: const EdgeInsets.symmetric(horizontal: 8),
       );
 }

@@ -14,9 +14,6 @@ class PropertiesCustomizer extends StatefulWidget {
   final Color initialColor;
   final LedFontId? initialFontId;
   final AnimationEffect? initialEffect;
-  /// When provided, bypasses the legacy single-field decode and populates the
-  /// overlay dropdown directly. [initialEffect] is then treated as the scroll
-  /// direction. This enables the two-field path used by Spotify.
   final AnimationEffect? initialOverlayEffect;
   final int initialEffectSpeedMs;
   final AnimationEffect? initialLightingEffect;
@@ -50,12 +47,8 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
   late double _opacity;
   late TextEditingController _hexCtrl;
   late LedFontId _fontId;
-  // Scroll direction (base transport) and overlay effect are independent.
-  // Scroll Left/Right buttons control _scrollDirection exclusively.
-  // The dropdown controls _overlayEffect exclusively.
-  // Both can be active simultaneously: e.g. scroll-left + pulse.
-  late AnimationEffect _scrollDirection; // none | scrollLeft | scrollRight
-  late AnimationEffect _overlayEffect;   // none | blink | pulse | fade | burst
+  late AnimationEffect _scrollDirection;
+  late AnimationEffect _overlayEffect;
   late double _effectSpeedMs;
   late AnimationEffect _lightingEffect;
   late double _lightingSpeedMs;
@@ -65,10 +58,7 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
     super.initState();
     _fromColor(widget.initialColor);
     _hexCtrl = TextEditingController(text: _toHex());
-    _fontId = widget.initialFontId ?? LedFontId.polymorph;
-    // Two-field path (Spotify): initialEffect = scroll direction,
-    // initialOverlayEffect = overlay. Both are set independently.
-    // Legacy single-field path: decode the single value into scroll vs overlay.
+    _fontId  = widget.initialFontId ?? LedFontId.polymorph;
     final init = widget.initialEffect ?? AnimationEffect.none;
     if (widget.initialOverlayEffect != null) {
       _scrollDirection = (init == AnimationEffect.scrollLeft ||
@@ -84,8 +74,8 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
       _scrollDirection = AnimationEffect.none;
       _overlayEffect   = init;
     }
-    _effectSpeedMs = widget.initialEffectSpeedMs.toDouble();
-    _lightingEffect = widget.initialLightingEffect ?? AnimationEffect.none;
+    _effectSpeedMs   = widget.initialEffectSpeedMs.toDouble();
+    _lightingEffect  = widget.initialLightingEffect ?? AnimationEffect.none;
     _lightingSpeedMs = widget.initialLightingSpeedMs.toDouble();
   }
 
@@ -97,9 +87,9 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
 
   void _fromColor(Color c) {
     final hsv = HSVColor.fromColor(c);
-    _hue = hsv.hue;
-    _sat = hsv.saturation;
-    _val = hsv.value;
+    _hue     = hsv.hue;
+    _sat     = hsv.saturation;
+    _val     = hsv.value;
     _opacity = c.opacity;
   }
 
@@ -130,16 +120,15 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
   }
 
   PropertiesResult get _result => PropertiesResult(
-        color: _currentColor,
-        fontId: _fontId,
+        color:           _currentColor,
+        fontId:          _fontId,
         scrollDirection: _scrollDirection,
-        overlayEffect: _overlayEffect,
-        effectSpeedMs: _effectSpeedMs.round(),
-        lightingEffect: _lightingEffect,
+        overlayEffect:   _overlayEffect,
+        effectSpeedMs:   _effectSpeedMs.round(),
+        lightingEffect:  _lightingEffect,
         lightingSpeedMs: _lightingSpeedMs.round(),
       );
 
-  // Overlay effects for the dropdown — scroll direction is handled separately.
   static const _fontEffects = [
     AnimationEffect.none,
     AnimationEffect.blink,
@@ -159,7 +148,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
         AnimationEffect.pulse       => 'Pulse',
         AnimationEffect.fade        => 'Fade',
         AnimationEffect.burst       => 'Burst',
-        // not shown in dropdown, but exhaustiveness required:
         AnimationEffect.scrollLeft  => 'Scroll Left',
         AnimationEffect.scrollRight => 'Scroll Right',
       };
@@ -176,16 +164,14 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? const Color(0xFF242424) : const Color(0xFFF8F7F3);
-    final border = isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE0DDD6);
-    final bg = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFECEAE3);
+    // All colours come from AppColors via ThemeTokens — no manual isDark branch.
+    final border = context.tBorder;
 
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: bg,
+        color: context.tSurfaceLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: border),
       ),
@@ -233,9 +219,6 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
                 // ── Right: Controls ─────────────────────────────────────
                 Expanded(
                   child: _ControlsColumn(
-                    isDark: isDark,
-                    surface: surface,
-                    border: border,
                     showFont: widget.showFont,
                     fontId: _fontId,
                     onFontChanged: (v) => setState(() => _fontId = v),
@@ -281,8 +264,8 @@ class _PropertiesCustomizerState extends State<PropertiesCustomizer> {
             children: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel',
-                    style: TextStyle(color: kTextMuted)),
+                child: Text('Cancel',
+                    style: TextStyle(color: context.tTextMuted)),
               ),
               const SizedBox(width: 8),
               ElevatedButton(
@@ -338,24 +321,19 @@ class _ColorPickerColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Color Picker',
           style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.08,
-              color: kTextMuted),
+              color: context.tTextMuted),
         ),
         const SizedBox(height: 8),
         SizedBox(
           width: 220,
           height: 220,
-          child: _SVSquare(
-            hue: hue,
-            sat: sat,
-            val: val,
-            onChanged: onSVChanged,
-          ),
+          child: _SVSquare(hue: hue, sat: sat, val: val, onChanged: onSVChanged),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -384,7 +362,8 @@ class _ColorPickerColumn extends StatelessWidget {
               decoration: BoxDecoration(
                 color: currentColor,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.black.withOpacity(0.15)),
+                border: Border.all(
+                    color: Colors.black.withOpacity(0.15)),
               ),
             ),
             const SizedBox(width: 8),
@@ -393,28 +372,29 @@ class _ColorPickerColumn extends StatelessWidget {
                 height: 32,
                 child: TextField(
                   controller: hexCtrl,
-                  style:
-                      const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  style: const TextStyle(
+                      fontFamily: 'monospace', fontSize: 12),
                   decoration: InputDecoration(
                     isDense: true,
                     prefixText: '#',
-                    prefixStyle: const TextStyle(color: kTextMuted),
+                    prefixStyle:
+                        TextStyle(color: context.tTextMuted),
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 8),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(6),
                       borderSide:
-                          const BorderSide(color: Color(0xFFE0DDD6)),
+                          BorderSide(color: context.tBorder),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(6),
                       borderSide:
-                          const BorderSide(color: Color(0xFFE0DDD6)),
+                          BorderSide(color: context.tBorder),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(6),
-                      borderSide:
-                          const BorderSide(color: kGreen, width: 1.5),
+                      borderSide: const BorderSide(
+                          color: kGreen, width: 1.5),
                     ),
                   ),
                   onSubmitted: onHexSubmitted,
@@ -430,20 +410,18 @@ class _ColorPickerColumn extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Right column: Font + Effect controls
+// isDark / surface / border params removed — use context.tXxx directly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ControlsColumn extends StatelessWidget {
-  final bool isDark;
-  final Color surface, border;
   final bool showFont;
   final LedFontId fontId;
   final ValueChanged<LedFontId> onFontChanged;
   final bool showFontEffect;
-  // Scroll direction and overlay effect are independent.
-  final AnimationEffect scrollDirection; // none | scrollLeft | scrollRight
-  final AnimationEffect overlayEffect;   // none | blink | pulse | fade | burst
+  final AnimationEffect scrollDirection;
+  final AnimationEffect overlayEffect;
   final double effectSpeedMs;
-  final List<AnimationEffect> fontEffects; // overlay options only
+  final List<AnimationEffect> fontEffects;
   final String Function(AnimationEffect) overlayLabel;
   final VoidCallback onScrollLeft;
   final VoidCallback onScrollRight;
@@ -458,9 +436,6 @@ class _ControlsColumn extends StatelessWidget {
   final ValueChanged<double> onLightingSpeedChanged;
 
   const _ControlsColumn({
-    required this.isDark,
-    required this.surface,
-    required this.border,
     required this.showFont,
     required this.fontId,
     required this.onFontChanged,
@@ -500,15 +475,12 @@ class _ControlsColumn extends StatelessWidget {
             items: LedFontId.values,
             labelFor: (v) => LedFontLibrary.get(v).name,
             onChanged: onFontChanged,
-            surface: surface,
-            border: border,
           ),
           const SizedBox(height: 14),
         ],
         if (showFontEffect) ...[
           _ControlLabel('Font Effect'),
           const SizedBox(height: 6),
-          // ── Scroll direction (base) ─────────────────────────────────
           Row(
             children: [
               Expanded(
@@ -529,22 +501,17 @@ class _ControlsColumn extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          // ── Overlay effect (layered on top of scroll) ───────────────
           _StyledDropdown<AnimationEffect>(
             value: overlayEffect,
             items: fontEffects,
             labelFor: overlayLabel,
             onChanged: onOverlayChanged,
-            surface: surface,
-            border: border,
           ),
-          // Show speed slider whenever any effect is active.
           if (_hasAnyEffect) ...[
             const SizedBox(height: 10),
             _SpeedSlider(
-              value: effectSpeedMs,
-              onChanged: onEffectSpeedChanged,
-            ),
+                value: effectSpeedMs,
+                onChanged: onEffectSpeedChanged),
           ],
           const SizedBox(height: 14),
         ],
@@ -556,15 +523,12 @@ class _ControlsColumn extends StatelessWidget {
             items: lightingEffects,
             labelFor: lightingLabel,
             onChanged: onLightingChanged,
-            surface: surface,
-            border: border,
           ),
           if (lightingEffect != AnimationEffect.none) ...[
             const SizedBox(height: 10),
             _SpeedSlider(
-              value: lightingSpeedMs,
-              onChanged: onLightingSpeedChanged,
-            ),
+                value: lightingSpeedMs,
+                onChanged: onLightingSpeedChanged),
           ],
         ],
         const Spacer(),
@@ -584,25 +548,25 @@ class _ControlLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w600, color: kTextMuted),
+        style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: context.tTextMuted),
       );
 }
 
+// surface / border params removed — read from theme directly.
 class _StyledDropdown<T> extends StatelessWidget {
   final T value;
   final List<T> items;
   final String Function(T) labelFor;
   final ValueChanged<T> onChanged;
-  final Color surface, border;
 
   const _StyledDropdown({
     required this.value,
     required this.items,
     required this.labelFor,
     required this.onChanged,
-    required this.surface,
-    required this.border,
   });
 
   @override
@@ -611,19 +575,19 @@ class _StyledDropdown<T> extends StatelessWidget {
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: surface,
+        color: context.tSurface,
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: border),
+        border: Border.all(color: context.tBorder),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
           isExpanded: true,
           isDense: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              size: 18, color: kTextMuted),
-          style: const TextStyle(fontSize: 12, color: kTextPrimary),
-          dropdownColor: surface,
+          icon: Icon(Icons.keyboard_arrow_down_rounded,
+              size: 18, color: context.tTextMuted),
+          style: TextStyle(fontSize: 12, color: context.tTextPrimary),
+          dropdownColor: context.tSurface,
           items: items
               .map((e) => DropdownMenuItem(
                     value: e,
@@ -661,7 +625,7 @@ class _ToggleButton extends StatelessWidget {
             color: active ? kGreen : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
             border: Border.all(
-              color: active ? kGreen : const Color(0xFFE0DDD6),
+              color: active ? kGreen : context.tBorder,
             ),
           ),
           child: Text(
@@ -669,7 +633,7 @@ class _ToggleButton extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: active ? Colors.white : kTextMuted,
+              color: active ? Colors.white : context.tTextMuted,
             ),
           ),
         ),
@@ -677,12 +641,7 @@ class _ToggleButton extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7-state discrete speed slider
-//
-// Steps (index 0 → 6):
-//   500 ms = Slow · 350 ms · 200 ms · 100 ms = Normal · 50 ms · 25 ms · 10 ms = Fast
-//
-// [value] is expressed in milliseconds and snaps to the nearest defined step.
+// Speed slider
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SpeedSlider extends StatelessWidget {
@@ -693,7 +652,6 @@ class _SpeedSlider extends StatelessWidget {
 
   static const List<int> _steps = [500, 350, 200, 100, 50, 25, 10];
 
-  /// Return the step index whose ms value is closest to [ms].
   static int _msToIndex(double ms) {
     int best = 0;
     double minDiff = double.infinity;
@@ -717,7 +675,7 @@ class _SpeedSlider extends StatelessWidget {
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3,
             activeTrackColor: kGreen,
-            inactiveTrackColor: const Color(0xFFE0DDD6),
+            inactiveTrackColor: context.tBorder,
             thumbColor: kGreen,
             overlayColor: kGreen.withOpacity(0.12),
           ),
@@ -733,10 +691,10 @@ class _SpeedSlider extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text('Slow',   style: TextStyle(fontSize: 9, color: kTextDim)),
-              Text('Normal', style: TextStyle(fontSize: 9, color: kTextDim)),
-              Text('Fast',   style: TextStyle(fontSize: 9, color: kTextDim)),
+            children: [
+              Text('Slow',   style: TextStyle(fontSize: 9, color: context.tTextDim)),
+              Text('Normal', style: TextStyle(fontSize: 9, color: context.tTextDim)),
+              Text('Fast',   style: TextStyle(fontSize: 9, color: context.tTextDim)),
             ],
           ),
         ),
@@ -762,9 +720,9 @@ class _SVSquare extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onPanStart: (d) => _update(d.localPosition, context),
+        onPanStart:  (d) => _update(d.localPosition, context),
         onPanUpdate: (d) => _update(d.localPosition, context),
-        onTapDown: (d) => _update(d.localPosition, context),
+        onTapDown:   (d) => _update(d.localPosition, context),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
@@ -781,10 +739,10 @@ class _SVSquare extends StatelessWidget {
       );
 
   void _update(Offset local, BuildContext context) {
-    final box = context.findRenderObject() as RenderBox;
+    final box  = context.findRenderObject() as RenderBox;
     final size = box.size;
-    final s = (local.dx / size.width).clamp(0.0, 1.0);
-    final v = (1 - local.dy / size.height).clamp(0.0, 1.0);
+    final s    = (local.dx / size.width).clamp(0.0, 1.0);
+    final v    = (1 - local.dy / size.height).clamp(0.0, 1.0);
     onChanged(s, v);
   }
 }
@@ -800,10 +758,7 @@ class _SVPainter extends CustomPainter {
         rect,
         Paint()
           ..shader = LinearGradient(
-            colors: [
-              Colors.white,
-              HSVColor.fromAHSV(1, hue, 1, 1).toColor()
-            ],
+            colors: [Colors.white, HSVColor.fromAHSV(1, hue, 1, 1).toColor()],
           ).createShader(rect));
     canvas.drawRect(
         rect,
@@ -848,9 +803,9 @@ class _HueStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onPanStart: (d) => _update(d.localPosition, context),
+        onPanStart:  (d) => _update(d.localPosition, context),
         onPanUpdate: (d) => _update(d.localPosition, context),
-        onTapDown: (d) => _update(d.localPosition, context),
+        onTapDown:   (d) => _update(d.localPosition, context),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: CustomPaint(
@@ -878,12 +833,8 @@ class _HuePainter extends CustomPainter {
         Paint()
           ..shader = const LinearGradient(
             colors: [
-              Color(0xFFFF0000),
-              Color(0xFFFFFF00),
-              Color(0xFF00FF00),
-              Color(0xFF00FFFF),
-              Color(0xFF0000FF),
-              Color(0xFFFF00FF),
+              Color(0xFFFF0000), Color(0xFFFFFF00), Color(0xFF00FF00),
+              Color(0xFF00FFFF), Color(0xFF0000FF), Color(0xFFFF00FF),
               Color(0xFFFF0000),
             ],
             stops: [0.0, 0.16, 0.33, 0.5, 0.66, 0.83, 1.0],
@@ -922,9 +873,9 @@ class _OpacityStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onPanStart: (d) => _update(d.localPosition, context),
+        onPanStart:  (d) => _update(d.localPosition, context),
         onPanUpdate: (d) => _update(d.localPosition, context),
-        onTapDown: (d) => _update(d.localPosition, context),
+        onTapDown:   (d) => _update(d.localPosition, context),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: CustomPaint(
@@ -951,16 +902,17 @@ class _OpacityPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
+    final rect    = Offset.zero & size;
     const checker = 5.0;
-    final dark = Paint()..color = Colors.grey.shade300;
+    final dark  = Paint()..color = Colors.grey.shade300;
     final light = Paint()..color = Colors.grey.shade100;
 
     for (double y = 0; y < size.height; y += checker) {
       for (double x = 0; x < size.width; x += checker) {
         final odd = ((x ~/ checker) + (y ~/ checker)) % 2 == 0;
         canvas.drawRect(
-          Rect.fromLTWH(x, y, math.min(checker, size.width - x),
+          Rect.fromLTWH(x, y,
+              math.min(checker, size.width - x),
               math.min(checker, size.height - y)),
           odd ? dark : light,
         );
@@ -1002,11 +954,7 @@ class _OpacityPainter extends CustomPainter {
 class PropertiesResult {
   final Color color;
   final LedFontId fontId;
-  /// The scroll direction (none | scrollLeft | scrollRight). This is the base
-  /// transport — applied first so text can move while also having an overlay.
   final AnimationEffect scrollDirection;
-  /// An additional alpha-modulation overlay (none | blink | pulse | fade | burst)
-  /// applied on top of the scroll. Independent of scrollDirection.
   final AnimationEffect overlayEffect;
   final int effectSpeedMs;
   final AnimationEffect lightingEffect;
@@ -1022,10 +970,10 @@ class PropertiesResult {
     required this.lightingSpeedMs,
   });
 
-  /// Convenience: the dominant single AnimationEffect for callers that only
-  /// support one field. Scroll takes priority; overlay wins when no scroll.
   AnimationEffect get dominantEffect =>
-      scrollDirection != AnimationEffect.none ? scrollDirection : overlayEffect;
+      scrollDirection != AnimationEffect.none
+          ? scrollDirection
+          : overlayEffect;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

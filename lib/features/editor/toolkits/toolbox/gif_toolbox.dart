@@ -80,24 +80,24 @@ class _GifToolboxLeftState extends ConsumerState<GifToolboxLeft> {
 
   @override
   Widget build(BuildContext context) {
-    final key = widget.layer.filePath;
-    final hasFile = key != null;
+    final key      = widget.layer.filePath;
+    final hasFile  = key != null;
     final allBytes = ref.watch(gifBytesProvider);
-    final bytes = hasFile ? allBytes[key] : null;
+    final bytes    = hasFile ? allBytes[key] : null;
     final fileName =
         hasFile ? key.split('/').last.split('\\').last : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Row(children: [
+        Row(children: [
           Expanded(
             child: Text('JPG · PNG · GIF',
                 style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.08,
-                    color: kTextDim)),
+                    color: context.tTextDim)),
           ),
         ]),
         const SizedBox(height: 8),
@@ -106,11 +106,13 @@ class _GifToolboxLeftState extends ConsumerState<GifToolboxLeft> {
           child: Container(
             height: 115,
             decoration: BoxDecoration(
-              color: hasFile ? Colors.black : kSurfaceLow,
+              color: hasFile ? Colors.black : context.tSurfaceLow,
               borderRadius: const BorderRadius.all(kRadiusMd),
               border: hasFile
                   ? null
-                  : Border.all(color: kBorder, style: BorderStyle.solid),
+                  : Border.all(
+                      color: context.tBorder,
+                      style: BorderStyle.solid),
             ),
             clipBehavior: Clip.antiAlias,
             child: hasFile && bytes != null
@@ -149,12 +151,13 @@ class _GifToolboxLeftState extends ConsumerState<GifToolboxLeft> {
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: kGreen))
                       else
-                        const Icon(Icons.upload_file_rounded,
-                            size: 28, color: kTextDim),
+                        Icon(Icons.upload_file_rounded,
+                            size: 28, color: context.tTextDim),
                       const SizedBox(height: 6),
-                      Text(_loading ? 'Loading…' : 'Click to upload',
-                          style: const TextStyle(
-                              fontSize: 11, color: kTextDim)),
+                      Text(
+                          _loading ? 'Loading…' : 'Click to upload',
+                          style: TextStyle(
+                              fontSize: 11, color: context.tTextDim)),
                     ],
                   ),
           ),
@@ -165,22 +168,25 @@ class _GifToolboxLeftState extends ConsumerState<GifToolboxLeft> {
             children: [
               Expanded(
                   child: Text(fileName ?? '',
-                      style: const TextStyle(
-                          fontSize: 11, color: kTextMuted),
+                      style: TextStyle(
+                          fontSize: 11, color: context.tTextMuted),
                       overflow: TextOverflow.ellipsis)),
               GestureDetector(
                 onTap: _remove,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 4),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.close_rounded,
-                        size: 14, color: Colors.red.shade400),
-                    const SizedBox(width: 2),
-                    Text('Remove',
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.red.shade400)),
-                  ]),
+                  child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.close_rounded,
+                            size: 14, color: Colors.red.shade400),
+                        const SizedBox(width: 2),
+                        Text('Remove',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.red.shade400)),
+                      ]),
                 ),
               ),
             ],
@@ -200,7 +206,7 @@ class GifToolboxRight extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tbGreenDropdown<MediaLayout>(MediaLayout.values, layer.layout,
+          tbGreenDropdown<MediaLayout>(context, MediaLayout.values, layer.layout,
               (v) => n.updateLayer(layer.copyWith(layout: v))),
           const SizedBox(height: 10),
           TbToggleRow(

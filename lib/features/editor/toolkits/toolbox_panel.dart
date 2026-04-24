@@ -129,13 +129,14 @@ class _SubHeader extends StatelessWidget {
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         alignment: Alignment.centerLeft,
-        decoration: const BoxDecoration(border: Border(bottom: kPanelBorder)),
+        decoration: BoxDecoration(
+            border: Border(bottom: context.tPanelBorder)),
         child: Text(title,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.12,
-                color: kTextDim)),
+                color: context.tTextDim)),
       );
 }
 
