@@ -121,36 +121,43 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   /// Automatically retries once on NAK (CRC mismatch).
   /// Surfaces a human-readable error on ERR, second NAK, or timeout.
   Future<void> sendToDevice() async {
-    if (!state.isConnected) return;
+  if (!state.isConnected) return;
 
-    final Timeline? timeline = ref.read(timelineProvider).value;
-    if (timeline == null || timeline.frameCount == 0) return;
+  final Timeline? timeline = ref.read(timelineProvider).value;
+  if (timeline == null || timeline.frameCount == 0) return;
+
+  state = state.copyWith(
+    status: DeviceConnectionStatus.sending,
+    sendProgress: 0,
+  );
+
+  try {
+    final Uint8List packet = _exporter.export(timeline);
+    await _sendWithRetry(packet);
 
     state = state.copyWith(
-      status: DeviceConnectionStatus.sending,
+      status: DeviceConnectionStatus.connected,
+      sendProgress: 1.0,
+    );
+  } on SerialException catch (e) {
+    // If the port is still open, stay connected so the user can retry.
+    // Only drop to error if the port actually closed (physical disconnect).
+    final bool portStillOpen = _serial.isConnected;
+    state = state.copyWith(
+      status: portStillOpen
+          ? DeviceConnectionStatus.connected  // ← keeps "COM3" visible, just shows error msg
+          : DeviceConnectionStatus.error,
+      errorMessage: e.message,
       sendProgress: 0,
     );
-
-    try {
-      final Uint8List packet = _exporter.export(timeline);
-      await _sendWithRetry(packet);
-
-      state = state.copyWith(
-        status: DeviceConnectionStatus.connected,
-        sendProgress: 1.0,
-      );
-    } on SerialException catch (e) {
-      state = state.copyWith(
-        status: DeviceConnectionStatus.error,
-        errorMessage: e.message,
-      );
-    } catch (e) {
-      state = state.copyWith(
-        status: DeviceConnectionStatus.error,
-        errorMessage: 'Unexpected error: $e',
-      );
-    }
+  } catch (e) {
+    state = state.copyWith(
+      status: DeviceConnectionStatus.error,
+      errorMessage: 'Unexpected error: $e',
+      sendProgress: 0,
+    );
   }
+}
 
   // ── Private ───────────────────────────────────────────────────────────────
 

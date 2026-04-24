@@ -134,28 +134,29 @@ class LibSerialPortService implements SerialService {
   /// Without this, the captured `port` reference points to a disposed native
   /// object after disconnect(), causing _CrtIsValidHeapPointer on Windows.
   @override
-  Future<int?> readResponseByte({int timeoutMs = 15000}) async {
-    final DateTime deadline =
-        DateTime.now().add(Duration(milliseconds: timeoutMs));
+Future<int?> readResponseByte({int timeoutMs = 15000}) async {
+  final DateTime deadline =
+      DateTime.now().add(Duration(milliseconds: timeoutMs));
 
-    while (DateTime.now().isBefore(deadline)) {
-      // ── Re-read _port at the top of every iteration ───────────────────
-      // This is the critical fix: if disconnect() ran during the previous
-      // await Future.delayed(), _port is null and we return immediately
-      // rather than calling port.read() on a freed native sp_port* pointer.
-      final port = _port;
-      if (port == null || !port.isOpen) return null;
+  while (DateTime.now().isBefore(deadline)) {
+    final port = _port;
+    if (port == null || !port.isOpen) return null;
 
-      // Non-blocking read — returns immediately with 0 or 1 byte.
-      final Uint8List bytes = port.read(1, timeout: 0);
-      if (bytes.isNotEmpty) return bytes[0];
-
-      // Yield to the event loop — disconnect() may run here.
-      await Future<void>.delayed(_kPollInterval);
+    final Uint8List bytes = port.read(1, timeout: 0);
+    if (bytes.isNotEmpty) {
+      final int byte = bytes[0];
+      // Only surface known protocol bytes — skip debug text from firmware.
+      if (byte == kFirmwareAck || byte == kFirmwareNak || byte == kFirmwareErr) {
+        return byte;
+      }
+      // Any other byte is a Serial.println() debug character — discard and keep polling.
     }
 
-    return null; // timed out
+    await Future<void>.delayed(_kPollInterval);
   }
+
+  return null; // timed out
+}
 
   // ── Accessors ─────────────────────────────────────────────────────────────
 
