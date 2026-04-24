@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/device/connection_state.dart';
+import '../../features/device/device_controller.dart';
 import '../../features/editor/toolkits/ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,6 +322,7 @@ class _ContentHeader extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section: Device
+// Now includes live connection status + connect/disconnect controls.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DeviceSection extends ConsumerWidget {
@@ -330,12 +333,171 @@ class _DeviceSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(settingsProvider);
-    final n = ref.read(settingsProvider.notifier);
+    final s      = ref.watch(settingsProvider);
+    final sn     = ref.read(settingsProvider.notifier);
+    final device = ref.watch(deviceConnectionProvider);
+    final portsAsync = ref.watch(availablePortsProvider);
 
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
+
+        // ── Live connection card ─────────────────────────────────────────
+        _SettingsGroup(
+          label: 'Connection',
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Status row
+                  Row(children: [
+                    Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _statusColor(device.status),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _statusLabel(device),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _statusColor(device.status),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (device.isConnected)
+                      _SmallBtn(
+                        label: 'Disconnect',
+                        color: Colors.red.shade400,
+                        onTap: () => ref
+                            .read(deviceConnectionProvider.notifier)
+                            .disconnect(),
+                      ),
+                  ]),
+                  if (device.errorMessage != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      device.errorMessage!,
+                      style: TextStyle(fontSize: 11, color: Colors.red.shade400),
+                    ),
+                  ],
+
+                  // Port picker
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Text(
+                      'Serial Port',
+                      style: TextStyle(fontSize: 12, color: context.tTextPrimary),
+                    ),
+                    const Spacer(),
+                    _SmallBtn(
+                      label: 'Scan',
+                      color: kGreen,
+                      icon: Icons.refresh_rounded,
+                      onTap: () async {
+                        await ref
+                            .read(deviceConnectionProvider.notifier)
+                            .scanPorts();
+                        ref.invalidate(availablePortsProvider);
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  portsAsync.when(
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(
+                          child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: kGreen))),
+                    ),
+                    error: (e, _) => Text('Scan error: $e',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.red.shade400)),
+                    data: (ports) => ports.isEmpty
+                        ? Text(
+                            'No ports found. Plug in your device and tap Scan.',
+                            style: TextStyle(
+                                fontSize: 11, color: context.tTextDim),
+                          )
+                        : Column(
+                            children: ports.map((p) {
+                              final isActive = p == device.portName;
+                              return GestureDetector(
+                                onTap: device.isConnected && isActive
+                                    ? null
+                                    : () => ref
+                                        .read(deviceConnectionProvider.notifier)
+                                        .connect(p),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 100),
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: isActive
+                                        ? kGreen.withOpacity(0.10)
+                                        : context.tSurface,
+                                    borderRadius:
+                                        const BorderRadius.all(kRadiusSm),
+                                    border: Border.all(
+                                      color: isActive
+                                          ? kGreen.withOpacity(0.5)
+                                          : context.tBorder,
+                                    ),
+                                  ),
+                                  child: Row(children: [
+                                    Icon(Icons.usb_rounded,
+                                        size: 14,
+                                        color: isActive
+                                            ? kGreen
+                                            : context.tTextMuted),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(p,
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: isActive
+                                                  ? kGreen
+                                                  : context.tTextPrimary,
+                                              fontWeight: isActive
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w400)),
+                                    ),
+                                    if (device.status ==
+                                            DeviceConnectionStatus.connecting &&
+                                        isActive)
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2, color: kGreen),
+                                      )
+                                    else if (isActive && device.isConnected)
+                                      const Icon(Icons.check_rounded,
+                                          size: 14, color: kGreen),
+                                  ]),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // ── Serial settings ─────────────────────────────────────────────
         _SettingsGroup(
           label: 'Serial Connection',
           children: [
@@ -347,7 +509,7 @@ class _DeviceSection extends ConsumerWidget {
                 items: _baudRates,
                 labelFor: (v) => v.toString(),
                 onChanged: (v) =>
-                    n.update((s) => s.copyWith(baudRate: v)),
+                    sn.update((s) => s.copyWith(baudRate: v)),
               ),
             ),
             _SettingsDivider(),
@@ -359,7 +521,7 @@ class _DeviceSection extends ConsumerWidget {
                 items: _timeouts,
                 labelFor: (v) => '${v}s',
                 onChanged: (v) =>
-                    n.update((s) => s.copyWith(connectionTimeoutSec: v)),
+                    sn.update((s) => s.copyWith(connectionTimeoutSec: v)),
               ),
             ),
             _SettingsDivider(),
@@ -370,12 +532,15 @@ class _DeviceSection extends ConsumerWidget {
               child: _ToggleField(
                 value: s.autoReconnect,
                 onChanged: (v) =>
-                    n.update((s) => s.copyWith(autoReconnect: v)),
+                    sn.update((s) => s.copyWith(autoReconnect: v)),
               ),
             ),
           ],
         ),
+
         const SizedBox(height: 16),
+
+        // ── Protocol info ───────────────────────────────────────────────
         _SettingsGroup(
           label: 'Protocol',
           children: [
@@ -401,6 +566,25 @@ class _DeviceSection extends ConsumerWidget {
       ],
     );
   }
+
+  Color _statusColor(DeviceConnectionStatus status) => switch (status) {
+        DeviceConnectionStatus.connected  => kGreen,
+        DeviceConnectionStatus.connecting => const Color(0xFFE6A817),
+        DeviceConnectionStatus.sending    => const Color(0xFF378ADD),
+        DeviceConnectionStatus.error      => Colors.red,
+        DeviceConnectionStatus.lost       => Colors.red,
+        _                                  => const Color(0xFF888580),
+      };
+
+  String _statusLabel(DeviceConnectionState d) => switch (d.status) {
+        DeviceConnectionStatus.connected    => 'Connected  ·  ${d.portName}',
+        DeviceConnectionStatus.connecting   => 'Connecting…',
+        DeviceConnectionStatus.sending      => 'Sending…',
+        DeviceConnectionStatus.scanning     => 'Scanning for ports…',
+        DeviceConnectionStatus.error        => 'Error',
+        DeviceConnectionStatus.lost         => 'Connection lost',
+        DeviceConnectionStatus.disconnected => 'Not connected',
+      };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,27 +715,30 @@ class _KeyBadge extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section: Hardware
+// Now reads real connection state from deviceConnectionProvider.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _HardwareSection extends StatefulWidget {
+class _HardwareSection extends ConsumerStatefulWidget {
   const _HardwareSection();
 
   @override
-  State<_HardwareSection> createState() => _HardwareSectionState();
+  ConsumerState<_HardwareSection> createState() => _HardwareSectionState();
 }
 
-class _HardwareSectionState extends State<_HardwareSection> {
-  // In a real implementation these would come from platform channels.
-  // Displayed as realistic placeholders.
-  final double _cpuUsage      = 0.18;
-  final double _memUsage      = 0.54;
-  final double _diskUsage     = 0.67;
-  final double _batteryLevel  = 0.82;
-  final bool   _onAcPower     = true;
-  final bool   _deviceOnline  = false;
+class _HardwareSectionState extends ConsumerState<_HardwareSection> {
+  // System stats remain as placeholders (would need platform channels for real data).
+  final double _cpuUsage     = 0.18;
+  final double _memUsage     = 0.54;
+  final double _diskUsage    = 0.67;
+  final double _batteryLevel = 0.82;
+  final bool   _onAcPower    = true;
 
   @override
   Widget build(BuildContext context) {
+    // Read live device connection state from the provider.
+    final device = ref.watch(deviceConnectionProvider);
+    final deviceOnline = device.isConnected;
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -574,7 +761,8 @@ class _HardwareSectionState extends State<_HardwareSection> {
               icon: Icons.memory_rounded,
               label: 'Memory',
               value: _memUsage,
-              valueLabel: '${(_memUsage * 100).round()}%  ·  8.6 GB used of 16 GB',
+              valueLabel:
+                  '${(_memUsage * 100).round()}%  ·  8.6 GB used of 16 GB',
               color: _memUsage > 0.85
                   ? Colors.red.shade400
                   : _memUsage > 0.65
@@ -586,7 +774,8 @@ class _HardwareSectionState extends State<_HardwareSection> {
               icon: Icons.storage_rounded,
               label: 'Disk',
               value: _diskUsage,
-              valueLabel: '${(_diskUsage * 100).round()}%  ·  335 GB used of 512 GB',
+              valueLabel:
+                  '${(_diskUsage * 100).round()}%  ·  335 GB used of 512 GB',
               color: _diskUsage > 0.9
                   ? Colors.red.shade400
                   : _diskUsage > 0.75
@@ -619,43 +808,79 @@ class _HardwareSectionState extends State<_HardwareSection> {
           ],
         ),
         const SizedBox(height: 16),
+
+        // ── LED matrix device — reads from real provider ──────────────────
         _SettingsGroup(
           label: 'Device',
           children: [
             _InfoRow(
               icon: Icons.usb_rounded,
               label: 'Matrix Status',
-              value: _deviceOnline ? 'Connected' : 'Not connected',
-              valueColor:
-                  _deviceOnline ? kGreen : context.tTextDim,
+              value: _deviceStatusLabel(device.status),
+              valueColor: deviceOnline ? kGreen : context.tTextDim,
+            ),
+            _SettingsDivider(),
+            _InfoRow(
+              icon: Icons.settings_input_hdmi_rounded,
+              label: 'Port',
+              value: device.portName ?? '—',
             ),
             _SettingsDivider(),
             _InfoRow(
               icon: Icons.settings_ethernet_rounded,
               label: 'Firmware',
-              value: _deviceOnline ? 'FRM-ESP32  v2.1.4' : '—',
+              value: deviceOnline ? 'FRM-ESP32  v2.1.4' : '—',
             ),
             _SettingsDivider(),
             _InfoRow(
               icon: Icons.thermostat_rounded,
               label: 'Device Temp',
-              value: _deviceOnline ? '38 °C' : '—',
+              value: deviceOnline ? '38 °C' : '—',
             ),
+            if (device.errorMessage != null) ...[
+              _SettingsDivider(),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(children: [
+                  Icon(Icons.error_outline_rounded,
+                      size: 13, color: Colors.red.shade400),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      device.errorMessage!,
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.red.shade400),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
           ],
         ),
+
         const SizedBox(height: 12),
         Row(children: [
           Icon(Icons.info_outline_rounded,
               size: 11, color: context.tTextDim),
           const SizedBox(width: 5),
           Text(
-            'Hardware data refreshes every 5 seconds.',
+            'Connect to a device via the Device tab or the USB chip in the top bar.',
             style: TextStyle(fontSize: 10, color: context.tTextDim),
           ),
         ]),
       ],
     );
   }
+
+  String _deviceStatusLabel(DeviceConnectionStatus s) => switch (s) {
+        DeviceConnectionStatus.connected    => 'Connected',
+        DeviceConnectionStatus.connecting   => 'Connecting…',
+        DeviceConnectionStatus.sending      => 'Sending…',
+        DeviceConnectionStatus.scanning     => 'Scanning…',
+        DeviceConnectionStatus.error        => 'Error',
+        DeviceConnectionStatus.lost         => 'Connection lost',
+        DeviceConnectionStatus.disconnected => 'Not connected',
+      };
 }
 
 class _HardwareBar extends StatelessWidget {
@@ -777,7 +1002,6 @@ class _AboutSection extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        // App identity card
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -810,18 +1034,15 @@ class _AboutSection extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'LED Matrix Editor',
-                style: TextStyle(
-                    fontSize: 12, color: context.tTextMuted),
+                style: TextStyle(fontSize: 12, color: context.tTextMuted),
               ),
               const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: kGreen.withOpacity(0.12),
                   borderRadius: const BorderRadius.all(kRadiusSm),
-                  border: Border.all(
-                      color: kGreen.withOpacity(0.3)),
+                  border: Border.all(color: kGreen.withOpacity(0.3)),
                 ),
                 child: const Text(
                   'v1.0.0',
@@ -839,52 +1060,31 @@ class _AboutSection extends StatelessWidget {
         _SettingsGroup(
           label: 'Build Info',
           children: [
-            _InfoRow(
-              icon: Icons.tag_rounded,
-              label: 'Version',
-              value: '1.0.0  (build 42)',
-            ),
+            _InfoRow(icon: Icons.tag_rounded, label: 'Version',
+                value: '1.0.0  (build 42)'),
             _SettingsDivider(),
-            _InfoRow(
-              icon: Icons.code_rounded,
-              label: 'Framework',
-              value: 'Flutter 3.x  ·  Dart 3.x',
-            ),
+            _InfoRow(icon: Icons.code_rounded, label: 'Framework',
+                value: 'Flutter 3.x  ·  Dart 3.x'),
             _SettingsDivider(),
-            _InfoRow(
-              icon: Icons.devices_rounded,
-              label: 'Platform',
-              value: 'macOS · Windows · Linux',
-            ),
+            _InfoRow(icon: Icons.devices_rounded, label: 'Platform',
+                value: 'macOS · Windows · Linux'),
             _SettingsDivider(),
-            _InfoRow(
-              icon: Icons.calendar_today_rounded,
-              label: 'Release Date',
-              value: 'April 2026',
-            ),
+            _InfoRow(icon: Icons.calendar_today_rounded, label: 'Release Date',
+                value: 'April 2026'),
           ],
         ),
         const SizedBox(height: 16),
         _SettingsGroup(
           label: 'Legal',
           children: [
-            _LinkRow(
-              icon: Icons.article_outlined,
-              label: 'License',
-              value: 'MIT License',
-            ),
+            _LinkRow(icon: Icons.article_outlined, label: 'License',
+                value: 'MIT License'),
             _SettingsDivider(),
-            _LinkRow(
-              icon: Icons.privacy_tip_outlined,
-              label: 'Privacy Policy',
-              value: 'View online →',
-            ),
+            _LinkRow(icon: Icons.privacy_tip_outlined, label: 'Privacy Policy',
+                value: 'View online →'),
             _SettingsDivider(),
-            _LinkRow(
-              icon: Icons.bug_report_outlined,
-              label: 'Report a Bug',
-              value: 'Open GitHub →',
-            ),
+            _LinkRow(icon: Icons.bug_report_outlined, label: 'Report a Bug',
+                value: 'Open GitHub →'),
           ],
         ),
         const SizedBox(height: 16),
@@ -985,20 +1185,14 @@ class _SettingsRow extends StatelessWidget {
                     Tooltip(
                       message: tooltipText!,
                       preferBelow: false,
-                      child: Icon(
-                        Icons.help_outline_rounded,
-                        size: 12,
-                        color: context.tTextDim,
-                      ),
+                      child: Icon(Icons.help_outline_rounded,
+                          size: 12, color: context.tTextDim),
                     ),
                   ],
                 ]),
                 const SizedBox(height: 2),
-                Text(
-                  description,
-                  style: TextStyle(
-                      fontSize: 11, color: context.tTextDim),
-                ),
+                Text(description,
+                    style: TextStyle(fontSize: 11, color: context.tTextDim)),
               ],
             ),
           ),
@@ -1031,8 +1225,8 @@ class _InfoRow extends StatelessWidget {
         Icon(icon, size: 13, color: context.tTextMuted),
         const SizedBox(width: 8),
         Text(label,
-            style: TextStyle(
-                fontSize: 12, color: context.tTextPrimary)),
+            style:
+                TextStyle(fontSize: 12, color: context.tTextPrimary)),
         const Spacer(),
         Text(
           value,
@@ -1052,11 +1246,7 @@ class _LinkRow extends StatefulWidget {
   final String label;
   final String value;
 
-  const _LinkRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _LinkRow({required this.icon, required this.label, required this.value});
 
   @override
   State<_LinkRow> createState() => _LinkRowState();
@@ -1072,7 +1262,7 @@ class _LinkRowState extends State<_LinkRow> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
-        onTap: () {}, // wire to url_launcher in production
+        onTap: () {},
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(children: [
@@ -1144,8 +1334,7 @@ class _DropdownField<T> extends StatelessWidget {
           isDense: true,
           icon: Icon(Icons.keyboard_arrow_down_rounded,
               size: 16, color: context.tTextMuted),
-          style: TextStyle(
-              fontSize: 12, color: context.tTextPrimary),
+          style: TextStyle(fontSize: 12, color: context.tTextPrimary),
           dropdownColor: context.tSurface,
           items: items
               .map((e) => DropdownMenuItem(
@@ -1160,4 +1349,43 @@ class _DropdownField<T> extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Small inline action button used in the Device section.
+class _SmallBtn extends StatelessWidget {
+  final String label;
+  final Color color;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  const _SmallBtn({
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.10),
+            borderRadius: const BorderRadius.all(kRadiusSm),
+            border: Border.all(color: color.withOpacity(0.4)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) ...[
+              Icon(icon, size: 11, color: color),
+              const SizedBox(width: 4),
+            ],
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: color)),
+          ]),
+        ),
+      );
 }
