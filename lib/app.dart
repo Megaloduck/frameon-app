@@ -6,7 +6,16 @@ import 'core/theme/light_theme.dart';
 import 'features/editor/pages/editor_page.dart';
 import 'shared/providers/time_service.dart';
 
-final themeModeProvider = StateProvider<ThemeMode>((_) => ThemeMode.light);
+// ── Replace StateProvider with a proper Notifier ──────────────────────────────
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() => ThemeMode.light;
+
+  void set(ThemeMode mode) => state = mode;
+}
+
+final themeModeProvider =
+    NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
 
 class FrameonApp extends ConsumerStatefulWidget {
   const FrameonApp({super.key});
@@ -18,7 +27,6 @@ class FrameonApp extends ConsumerStatefulWidget {
 class _FrameonAppState extends ConsumerState<FrameonApp> {
   @override
   void dispose() {
-    // Clean up time service when app closes
     ref.read(timeServiceProvider.notifier).dispose();
     super.dispose();
   }

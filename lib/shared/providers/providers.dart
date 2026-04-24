@@ -85,9 +85,9 @@ class SceneNotifier extends Notifier<Scene> {
   void selectLayer(String? id) => _setSelection(id);
 
   void _setSelection(String? id) {
-    _selectedId = id;
-    ref.read(selectedLayerIdProvider.notifier).state = id;
-  }
+  _selectedId = id;
+    ref.read(selectedLayerIdProvider.notifier).set(id);
+    }
 
   // ── Scene meta ────────────────────────────────────────────────────────────
 
@@ -111,7 +111,15 @@ final sceneProvider =
 // Selection
 // ─────────────────────────────────────────────────────────────────────────────
 
-final selectedLayerIdProvider = StateProvider<String?>((ref) => null);
+class _SelectedLayerIdNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+  void set(String? id) => state = id;
+}
+
+final selectedLayerIdProvider =
+    NotifierProvider<_SelectedLayerIdNotifier, String?>(
+        _SelectedLayerIdNotifier.new);
 
 final selectedLayerProvider = Provider<Layer?>((ref) {
   final scene = ref.watch(sceneProvider);
@@ -119,7 +127,6 @@ final selectedLayerProvider = Provider<Layer?>((ref) {
   if (id == null) return null;
   return scene.layerById(id);
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Renderer
 // ─────────────────────────────────────────────────────────────────────────────
@@ -378,7 +385,23 @@ class _FrameCounter {
 /// Continuously increasing elapsed time in milliseconds, driven by the
 /// Ticker in MatrixPreview. previewFrameProvider watches this to trigger
 /// re-renders at display refresh rate.
-final previewElapsedMsProvider = StateProvider<int>((ref) => 0);
 
-/// Whether the preview ticker is running.
-final previewPlayingProvider = StateProvider<bool>((ref) => true);
+class _PreviewElapsedMsNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+  void set(int ms) => state = ms;
+}
+
+final previewElapsedMsProvider =
+    NotifierProvider<_PreviewElapsedMsNotifier, int>(
+        _PreviewElapsedMsNotifier.new);
+
+class _PreviewPlayingNotifier extends Notifier<bool> {
+  @override
+  bool build() => true;
+  void set(bool playing) => state = playing;
+}
+
+final previewPlayingProvider =
+    NotifierProvider<_PreviewPlayingNotifier, bool>(
+        _PreviewPlayingNotifier.new);

@@ -33,13 +33,14 @@ class _MatrixPreviewState extends ConsumerState<MatrixPreview>
   }
 
   void _onTick(Duration _) {
-    final now = DateTime.now();
-    if (_lastTick != null && ref.read(previewPlayingProvider)) {
-      _elapsedMs += now.difference(_lastTick!).inMilliseconds;
-      ref.read(previewElapsedMsProvider.notifier).state = _elapsedMs;
-    }
-    _lastTick = now;
+  final now = DateTime.now();
+  if (_lastTick != null && ref.read(previewPlayingProvider)) {
+    _elapsedMs += now.difference(_lastTick!).inMilliseconds;
+    // Before: ref.read(previewElapsedMsProvider.notifier).state = _elapsedMs;
+    ref.read(previewElapsedMsProvider.notifier).set(_elapsedMs);
   }
+  _lastTick = now;
+}
 
   @override
   void dispose() {

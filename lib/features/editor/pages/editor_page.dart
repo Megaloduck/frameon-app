@@ -627,8 +627,8 @@ class _ThemeBtn extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => GestureDetector(
         onTap: () =>
-            ref.read(themeModeProvider.notifier).state =
-                isDark ? ThemeMode.light : ThemeMode.dark,
+            ref.read(themeModeProvider.notifier).set(
+                isDark ? ThemeMode.light : ThemeMode.dark)  ,
         child: Container(
           padding:
               const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

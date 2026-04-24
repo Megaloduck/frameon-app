@@ -21,7 +21,7 @@ dependencies:
   image: ^4.1.7
 
   # File picker for GIF/image upload
-  file_picker: ^11.0.2
+  file_picker: ^9.2.3
 
   # NTP for time sync 
   ntp: ^2.0.0
@@ -50,4 +50,3 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-# File picker already declared above under file_picker: ^8.0.3

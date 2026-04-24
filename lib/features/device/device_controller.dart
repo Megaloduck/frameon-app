@@ -123,8 +123,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   Future<void> sendToDevice() async {
     if (!state.isConnected) return;
 
-    final Timeline? timeline =
-        ref.read(timelineProvider).valueOrNull;
+    final Timeline? timeline = ref.read(timelineProvider).value;
     if (timeline == null || timeline.frameCount == 0) return;
 
     state = state.copyWith(
