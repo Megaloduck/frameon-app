@@ -1,11 +1,30 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Firmware response constants
+// Must match frameon.h on the ESP32 side.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Device accepted the packet — frames committed to display.
+const int kFirmwareAck = 0x06;
+
+/// CRC mismatch — resend required.
+const int kFirmwareNak = 0x15;
+
+/// Malformed header or unsupported dimensions.
+const int kFirmwareErr = 0x1B;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Abstract serial transport layer
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Abstract serial transport layer.
 ///
-/// The concrete implementation will use `flutter_libserialport` on desktop
-/// and a WebSocket bridge on Web. By coding against this interface, the rest
-/// of the app never imports platform-specific packages directly.
+/// Desktop: [LibSerialPortService] via `flutter_libserialport`.
+/// Web/stub: [StubSerialService] for UI development.
+///
+/// All implementations must be safe to call from async Dart code.
 abstract class SerialService {
   /// List all currently available serial port names.
   Future<List<String>> availablePorts();
@@ -26,12 +45,24 @@ abstract class SerialService {
     void Function(double progress)? onProgress,
   });
 
+  /// Read a single response byte from the device.
+  ///
+  /// Polls until a byte arrives or [timeoutMs] elapses.
+  /// Returns the byte value, or `null` on timeout.
+  ///
+  /// Expected values: [kFirmwareAck], [kFirmwareNak], [kFirmwareErr].
+  Future<int?> readResponseByte({int timeoutMs = 15000});
+
   /// Whether a connection is currently open.
   bool get isConnected;
 
   /// The name of the currently connected port, or null.
   String? get connectedPort;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SerialException
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Thrown when a serial operation fails.
 class SerialException implements Exception {
@@ -43,20 +74,19 @@ class SerialException implements Exception {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stub implementation (no-op, used until flutter_libserialport is wired)
+// StubSerialService — no-op, used on web or for UI development
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Development stub — returns fake ports and simulates a successful send.
 ///
-/// Replace with [LibSerialPortService] (desktop) or [WebSocketSerialService]
-/// (web) once the platform packages are added to pubspec.yaml.
+/// Replace by selecting [LibSerialPortService] via [serialServiceProvider]
+/// at runtime on desktop platforms.
 class StubSerialService implements SerialService {
   bool _connected = false;
   String? _port;
 
   @override
   Future<List<String>> availablePorts() async {
-    // Return plausible fake ports for UI development.
     await Future<void>.delayed(const Duration(milliseconds: 150));
     return ['COM3', 'COM4', '/dev/ttyUSB0'];
   }
@@ -80,14 +110,20 @@ class StubSerialService implements SerialService {
     void Function(double progress)? onProgress,
   }) async {
     if (!_connected) throw const SerialException('Not connected');
-    // Simulate chunked send with progress callbacks.
-    const int chunkSize = 512;
+    const int chunkSize = 4096;
     int sent = 0;
     while (sent < data.length) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 8));
       sent = (sent + chunkSize).clamp(0, data.length);
       onProgress?.call(sent / data.length);
     }
+  }
+
+  @override
+  Future<int?> readResponseByte({int timeoutMs = 15000}) async {
+    // Simulate device processing time then ACK.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return kFirmwareAck;
   }
 
   @override

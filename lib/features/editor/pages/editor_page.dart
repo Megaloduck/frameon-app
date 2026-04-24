@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../../features/settings/settings_dialog.dart';
+
 import '../../../app.dart' show themeModeProvider;
 import '../../../features/device/connection_state.dart';
 import '../../../features/device/device_controller.dart';
@@ -776,7 +778,7 @@ class _PresetSlots extends ConsumerWidget {
           _SlotIconBtn(
             icon: Icons.settings_rounded,
             tooltip: 'Settings',
-            onTap: () {},
+            onTap: () => showSettingsDialog(context),
           ),
         ],
       ),
