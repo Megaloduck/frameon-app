@@ -227,7 +227,7 @@ class LibSerialPortService implements SerialService {
 
       // ── Native-level guard (Bug 2 fix) ────────────────────────────────
       _beginOp();
-      final Uint8List bytes = port.read(1, timeout: 0);
+      final Uint8List bytes = port.read(1);
       _endOp();
 
       if (bytes.isNotEmpty) {

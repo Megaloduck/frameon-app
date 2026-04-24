@@ -155,7 +155,13 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     if (!state.isConnected) return;
 
     final Timeline? timeline = ref.read(timelineProvider).value;
-    if (timeline == null || timeline.frameCount == 0) return;
+    if (timeline == null || timeline.frameCount == 0) {
+  state = state.copyWith(
+    status: DeviceConnectionStatus.error,
+    errorMessage: 'Nothing to send — add some content to the canvas first.',
+  );
+  return;
+}
 
     state = state.copyWith(
       status: DeviceConnectionStatus.sending,
@@ -174,19 +180,18 @@ class DeviceController extends Notifier<DeviceConnectionState> {
         status: DeviceConnectionStatus.connected,
         sendProgress: 1.0,
       );
-    } on SerialException catch (e) {
-      // If the port is still physically open, stay in connected state so
-      // the user can retry without having to re-select the port.
-      // Only drop to error if the port itself has closed (true disconnect).
-      final bool portStillOpen = _serial.isConnected;
-      state = state.copyWith(
-        status: portStillOpen
-            ? DeviceConnectionStatus.connected
-            : DeviceConnectionStatus.error,
-        errorMessage: e.message,
-        sendProgress: 0,
-      );
-    } catch (e) {
+      } on SerialException catch (e) {
+  final bool portStillOpen = _serial.isConnected;
+  // If port closed during error, clean it up properly
+  if (!portStillOpen) await _serial.disconnect();
+  state = state.copyWith(
+    status: portStillOpen
+        ? DeviceConnectionStatus.connected
+        : DeviceConnectionStatus.error,
+    errorMessage: e.message,
+    sendProgress: 0,
+  );
+} catch (e) {
       state = state.copyWith(
         status: DeviceConnectionStatus.error,
         errorMessage: 'Unexpected error: $e',
