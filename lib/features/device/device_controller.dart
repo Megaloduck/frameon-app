@@ -49,6 +49,24 @@ final availablePortsProvider = FutureProvider<List<String>>((ref) async {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Top-level packet builder — required by compute()
+//
+// compute() spawns a background isolate and calls this function there,
+// keeping the CRC-16 computation (which loops over ~1.2 MB of data) off
+// the UI thread entirely. Must be a top-level or static function —
+// closures and instance methods are not sendable across isolate boundaries.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Converts a [Timeline] into the binary FRM packet on a background isolate.
+///
+/// Called via `compute(_buildPacket, timeline)` in [DeviceController.sendToDevice].
+/// Includes the 16-byte header, all RGB565 frame data, and the CRC-16/CCITT
+/// trailer — exactly the bytes the firmware expects.
+Uint8List _buildPacket(Timeline timeline) {
+  return const FrameExporter().export(timeline);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DeviceController
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -56,7 +74,9 @@ final availablePortsProvider = FutureProvider<List<String>>((ref) async {
 ///
 /// ## Send flow
 ///
-/// 1. Export the current [Timeline] to a binary packet via [FrameExporter].
+/// 1. Export the current [Timeline] to a binary packet via [FrameExporter],
+///    running on a **background isolate** via `compute()` so the UI thread
+///    is never blocked by the CRC-16 computation over ~1.2 MB.
 /// 2. Stream the packet to the device in 4 KB chunks (progress 0 → 1).
 /// 3. Wait up to [_kResponseTimeoutMs] ms for a 1-byte firmware response:
 ///    - `0x06` ACK → success, update state to connected.
@@ -72,7 +92,6 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   DeviceConnectionState build() => const DeviceConnectionState();
 
   SerialService get _serial => ref.read(serialServiceProvider);
-  FrameExporter get _exporter => const FrameExporter();
 
   // ── Public API ────────────────────────────────────────────────────────────
 
@@ -118,46 +137,63 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   /// Export the current timeline and send it to the connected device.
   ///
+  /// ## Why compute() is used here
+  ///
+  /// [FrameExporter.export] builds the full binary packet synchronously:
+  ///   - Copies all RGB565 frame data (up to ~1.2 MB) into one [Uint8List]
+  ///   - Runs CRC-16/CCITT over every byte of that buffer in a tight loop
+  ///
+  /// Both operations are pure CPU work with no I/O. Running them on the UI
+  /// thread causes the app to freeze for a noticeable moment and produces the
+  /// "Reported frame time is older than the last one; clamping" error in the
+  /// debug console. `compute(_buildPacket, timeline)` offloads this to a
+  /// background isolate, leaving the UI thread free to keep painting.
+  ///
   /// Automatically retries once on NAK (CRC mismatch).
   /// Surfaces a human-readable error on ERR, second NAK, or timeout.
   Future<void> sendToDevice() async {
-  if (!state.isConnected) return;
+    if (!state.isConnected) return;
 
-  final Timeline? timeline = ref.read(timelineProvider).value;
-  if (timeline == null || timeline.frameCount == 0) return;
-
-  state = state.copyWith(
-    status: DeviceConnectionStatus.sending,
-    sendProgress: 0,
-  );
-
-  try {
-    final Uint8List packet = _exporter.export(timeline);
-    await _sendWithRetry(packet);
+    final Timeline? timeline = ref.read(timelineProvider).value;
+    if (timeline == null || timeline.frameCount == 0) return;
 
     state = state.copyWith(
-      status: DeviceConnectionStatus.connected,
-      sendProgress: 1.0,
-    );
-  } on SerialException catch (e) {
-    // If the port is still open, stay connected so the user can retry.
-    // Only drop to error if the port actually closed (physical disconnect).
-    final bool portStillOpen = _serial.isConnected;
-    state = state.copyWith(
-      status: portStillOpen
-          ? DeviceConnectionStatus.connected  // ← keeps "COM3" visible, just shows error msg
-          : DeviceConnectionStatus.error,
-      errorMessage: e.message,
+      status: DeviceConnectionStatus.sending,
       sendProgress: 0,
     );
-  } catch (e) {
-    state = state.copyWith(
-      status: DeviceConnectionStatus.error,
-      errorMessage: 'Unexpected error: $e',
-      sendProgress: 0,
-    );
+
+    try {
+      // Build the FRM packet on a background isolate.
+      // This keeps CRC-16 computation (~1.2 MB) off the UI thread,
+      // preventing the app freeze and the frame-time error.
+      final Uint8List packet = await compute(_buildPacket, timeline);
+
+      await _sendWithRetry(packet);
+
+      state = state.copyWith(
+        status: DeviceConnectionStatus.connected,
+        sendProgress: 1.0,
+      );
+    } on SerialException catch (e) {
+      // If the port is still physically open, stay in connected state so
+      // the user can retry without having to re-select the port.
+      // Only drop to error if the port itself has closed (true disconnect).
+      final bool portStillOpen = _serial.isConnected;
+      state = state.copyWith(
+        status: portStillOpen
+            ? DeviceConnectionStatus.connected
+            : DeviceConnectionStatus.error,
+        errorMessage: e.message,
+        sendProgress: 0,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: DeviceConnectionStatus.error,
+        errorMessage: 'Unexpected error: $e',
+        sendProgress: 0,
+      );
+    }
   }
-}
 
   // ── Private ───────────────────────────────────────────────────────────────
 
@@ -219,9 +255,12 @@ class DeviceController extends Notifier<DeviceConnectionState> {
           );
 
         default:
+          // Unknown byte — likely a firmware debug Serial.print() line that
+          // slipped through. Treat it as a timeout and surface the error.
           throw SerialException(
             'Unexpected response byte: '
-            '0x${response!.toRadixString(16).toUpperCase()}',
+            '0x${response!.toRadixString(16).toUpperCase()}. '
+            'This may be a firmware debug message on the serial line.',
           );
       }
     }
