@@ -11,14 +11,21 @@ import '../../features/editor/toolkits/ui_primitives.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsState {
-  final int baudRate;
+  // LOCKED: baudRate is always 115200 — must match ESP32 firmware (Serial.begin(115200)).
+  // Exposing this as a user-settable field caused silent communication failure when
+  // the user changed it to a different value. The firmware cannot be reconfigured at
+  // runtime, so this is now a compile-time constant surfaced here only for
+  // DeviceController.connect() to read.
+  static const int fixedBaudRate = 115200;
+
+  int get baudRate => fixedBaudRate;
+
   final bool autoReconnect;
   final bool runInBackground;
   final bool startOnStartup;
   final int connectionTimeoutSec;
 
   const SettingsState({
-    this.baudRate = 115200,
     this.autoReconnect = true,
     this.runInBackground = false,
     this.startOnStartup = false,
@@ -26,14 +33,12 @@ class SettingsState {
   });
 
   SettingsState copyWith({
-    int? baudRate,
     bool? autoReconnect,
     bool? runInBackground,
     bool? startOnStartup,
     int? connectionTimeoutSec,
   }) =>
       SettingsState(
-        baudRate: baudRate ?? this.baudRate,
         autoReconnect: autoReconnect ?? this.autoReconnect,
         runInBackground: runInBackground ?? this.runInBackground,
         startOnStartup: startOnStartup ?? this.startOnStartup,
@@ -322,13 +327,12 @@ class _ContentHeader extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section: Device
-// Now includes live connection status + connect/disconnect controls.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DeviceSection extends ConsumerWidget {
   const _DeviceSection();
 
-  static const _baudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800];
+  // REMOVED: _baudRates list. Baud rate is now locked to 115200 — see SettingsState.
   static const _timeouts = [2, 3, 5, 10, 15, 30];
 
   @override
@@ -501,16 +505,22 @@ class _DeviceSection extends ConsumerWidget {
         _SettingsGroup(
           label: 'Serial Connection',
           children: [
+            // ── Baud Rate — LOCKED to 115200 ───────────────────────────
+            // The ESP32 firmware calls Serial.begin(115200) and cannot be
+            // reconfigured at runtime. Allowing the user to change this
+            // caused silent communication failure (garbled bytes → CRC
+            // mismatch → NAK loop) whenever they set a different value.
+            // The lock icon makes the constraint immediately visible.
             _SettingsRow(
               label: 'Baud Rate',
-              description: 'Data transfer speed to the LED matrix device.',
-              child: _DropdownField<int>(
-                value: s.baudRate,
-                items: _baudRates,
-                labelFor: (v) => v.toString(),
-                onChanged: (v) =>
-                    sn.update((s) => s.copyWith(baudRate: v)),
-              ),
+              description:
+                  'Fixed at 115200 bps to match the Frameon firmware. '
+                  'Changing this requires reflashing the ESP32.',
+              tooltipText:
+                  'The firmware calls Serial.begin(115200). Both sides must '
+                  'use the same baud rate — this cannot be changed without '
+                  'also updating and reflashing the firmware.',
+              child: _LockedValueBadge(label: '115200'),
             ),
             _SettingsDivider(),
             _SettingsRow(
@@ -715,7 +725,6 @@ class _KeyBadge extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section: Hardware
-// Now reads real connection state from deviceConnectionProvider.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HardwareSection extends ConsumerStatefulWidget {
@@ -726,7 +735,6 @@ class _HardwareSection extends ConsumerStatefulWidget {
 }
 
 class _HardwareSectionState extends ConsumerState<_HardwareSection> {
-  // System stats remain as placeholders (would need platform channels for real data).
   final double _cpuUsage     = 0.18;
   final double _memUsage     = 0.54;
   final double _diskUsage    = 0.67;
@@ -735,7 +743,6 @@ class _HardwareSectionState extends ConsumerState<_HardwareSection> {
 
   @override
   Widget build(BuildContext context) {
-    // Read live device connection state from the provider.
     final device = ref.watch(deviceConnectionProvider);
     final deviceOnline = device.isConnected;
 
@@ -808,8 +815,6 @@ class _HardwareSectionState extends ConsumerState<_HardwareSection> {
           ],
         ),
         const SizedBox(height: 16),
-
-        // ── LED matrix device — reads from real provider ──────────────────
         _SettingsGroup(
           label: 'Device',
           children: [
@@ -857,7 +862,6 @@ class _HardwareSectionState extends ConsumerState<_HardwareSection> {
             ],
           ],
         ),
-
         const SizedBox(height: 12),
         Row(children: [
           Icon(Icons.info_outline_rounded,
@@ -1346,6 +1350,47 @@ class _DropdownField<T> extends StatelessWidget {
             if (v != null) onChanged(v);
           },
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _LockedValueBadge
+//
+// Read-only badge used for settings that cannot be changed by the user
+// (e.g. baud rate, which is hardcoded in the ESP32 firmware).
+// Displays a lock icon + value so the constraint is immediately visible.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LockedValueBadge extends StatelessWidget {
+  final String label;
+  const _LockedValueBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: context.tSurfaceLow,
+        borderRadius: const BorderRadius.all(kRadiusSm),
+        border: Border.all(color: context.tBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_rounded, size: 11, color: context.tTextDim),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: context.tTextMuted,
+            ),
+          ),
+        ],
       ),
     );
   }
