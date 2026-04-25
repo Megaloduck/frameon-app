@@ -11,12 +11,12 @@ import '../../features/editor/toolkits/ui_primitives.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsState {
-  // LOCKED: baudRate is always 115200 — must match ESP32 firmware (Serial.begin(115200)).
+  // LOCKED: baudRate is always 921600 — must match ESP32 firmware (Serial.begin(921600)).
   // Exposing this as a user-settable field caused silent communication failure when
   // the user changed it to a different value. The firmware cannot be reconfigured at
   // runtime, so this is now a compile-time constant surfaced here only for
   // DeviceController.connect() to read.
-  static const int fixedBaudRate = 115200;
+  static const int fixedBaudRate = 921600;
 
   int get baudRate => fixedBaudRate;
 
@@ -332,7 +332,7 @@ class _ContentHeader extends StatelessWidget {
 class _DeviceSection extends ConsumerWidget {
   const _DeviceSection();
 
-  // REMOVED: _baudRates list. Baud rate is now locked to 115200 — see SettingsState.
+  // REMOVED: _baudRates list. Baud rate is now locked to 921600 — see SettingsState.
   static const _timeouts = [2, 3, 5, 10, 15, 30];
 
   @override
@@ -505,8 +505,8 @@ class _DeviceSection extends ConsumerWidget {
         _SettingsGroup(
           label: 'Serial Connection',
           children: [
-            // ── Baud Rate — LOCKED to 115200 ───────────────────────────
-            // The ESP32 firmware calls Serial.begin(115200) and cannot be
+            // ── Baud Rate — LOCKED to 921600 ───────────────────────────
+            // The ESP32 firmware calls Serial.begin(921600) and cannot be
             // reconfigured at runtime. Allowing the user to change this
             // caused silent communication failure (garbled bytes → CRC
             // mismatch → NAK loop) whenever they set a different value.
@@ -514,13 +514,13 @@ class _DeviceSection extends ConsumerWidget {
             _SettingsRow(
               label: 'Baud Rate',
               description:
-                  'Fixed at 115200 bps to match the Frameon firmware. '
+                  'Fixed at 921600 bps to match the Frameon firmware. '
                   'Changing this requires reflashing the ESP32.',
               tooltipText:
-                  'The firmware calls Serial.begin(115200). Both sides must '
+                  'The firmware calls Serial.begin(921600). Both sides must '
                   'use the same baud rate — this cannot be changed without '
                   'also updating and reflashing the firmware.',
-              child: _LockedValueBadge(label: '115200'),
+              child: _LockedValueBadge(label: '921600'),
             ),
             _SettingsDivider(),
             _SettingsRow(

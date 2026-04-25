@@ -468,19 +468,63 @@ class _TopIconBtn extends StatelessWidget {
 // Connection chip
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH 1 — lib/features/editor/pages/editor_page.dart
+//
+// Replace the entire _ConnectionChip class with this version.
+//
+// BUG: _ConnectionChip used `state.isConnected` which is only true for
+//      DeviceConnectionStatus.connected. When sendToDevice() sets status to
+//      .sending, the chip immediately flips to "No device" — even though the
+//      port is still open and data is actively being transmitted.
+//
+//      This is the same bug that was already found and fixed in
+//      output_panel.dart's _DeviceStatus widget:
+//
+//        // FIX: the original used `state.isConnected` (only true for
+//        // `connected` status) to pick the dot colour. This made the dot
+//        // go grey while sending, which looks identical to "disconnected"
+//        // and confuses users into thinking the connection dropped.
+//        //
+//        // Now the dot stays green for both `connected` and `sending`.
+//        final bool alive = state.isConnected || state.isSending;
+//
+//      But the fix was never propagated to _ConnectionChip.
+//
+// FIX: Use `alive = isConnected || isSending` for color, label, and
+//      decoration — matching the output panel. Also surface `error` and
+//      `lost` states with distinct labels instead of "No device" for all.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ConnectionChip extends ConsumerWidget {
   final DeviceConnectionState state;
   const _ConnectionChip({required this.state});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final connected = state.isConnected;
-    final color = connected ? kGreen : context.tTextDim;
-    final label = connected
-        ? (state.portName ?? 'Connected')
-        : state.status == DeviceConnectionStatus.connecting
-            ? 'Connecting…'
-            : 'No device';
+    // FIX: treat `sending` as alive — same as output_panel.dart's
+    // _DeviceStatus. Without this, the chip shows "No device" the instant
+    // sendToDevice() sets status to .sending.
+    final alive = state.isConnected || state.isSending;
+
+    final color = alive
+        ? kGreen
+        : state.status == DeviceConnectionStatus.error ||
+                state.status == DeviceConnectionStatus.lost
+            ? Colors.red
+            : context.tTextDim;
+
+    final label = alive
+        ? state.isSending
+            ? 'Sending…'
+            : (state.portName ?? 'Connected')
+        : switch (state.status) {
+            DeviceConnectionStatus.connecting => 'Connecting…',
+            DeviceConnectionStatus.scanning   => 'Scanning…',
+            DeviceConnectionStatus.error      => 'Error',
+            DeviceConnectionStatus.lost       => 'Connection lost',
+            _                                 => 'No device',
+          };
 
     return GestureDetector(
       onTap: () => _showSheet(context, ref),
@@ -488,12 +532,15 @@ class _ConnectionChip extends ConsumerWidget {
         height: 28,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: connected ? kGreen.withOpacity(0.08) : Colors.transparent,
+          color: alive ? kGreen.withOpacity(0.08) : Colors.transparent,
           borderRadius: const BorderRadius.all(kRadiusSm),
           border: Border.all(
-              color: connected
+              color: alive
                   ? kGreen.withOpacity(0.35)
-                  : context.tBorder),
+                  : state.status == DeviceConnectionStatus.error ||
+                          state.status == DeviceConnectionStatus.lost
+                      ? Colors.red.withOpacity(0.35)
+                      : context.tBorder),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.usb_rounded, size: 13, color: color),
