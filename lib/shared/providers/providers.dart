@@ -11,6 +11,7 @@ import '../../engine/scene/scene.dart';
 import '../../engine/scene/timeline.dart';
 import '../../services/spotify/spotify_service.dart';
 import '../../services/pomodoro/pomodoro_service.dart';
+import '../../services/autosave/autosave_service.dart';
 
 import '../../features/editor/toolkits/gif_bytes_provider.dart';
 import 'time_service.dart';
@@ -100,7 +101,9 @@ class SceneNotifier extends Notifier<Scene> {
 
   void newScene() {
     state = Scene.blank();
-    _setSelection(null);
+     _setSelection(null);
+    // Erase the autosave slot so re-launching doesn't restore the old scene.
+    ref.read(autosaveServiceProvider).clear();
   }
 }
 

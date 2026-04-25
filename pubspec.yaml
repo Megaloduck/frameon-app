@@ -41,6 +41,9 @@ dependencies:
   #
   window_manager: ^0.5.1
   
+    # Autosave — persists scene JSON across app launches
+  shared_preferences: ^2.3.2
+  
 
 dev_dependencies:
   flutter_test:

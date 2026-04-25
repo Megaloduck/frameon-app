@@ -378,6 +378,7 @@ class _FileMenuBtn extends ConsumerWidget {
               _save(context, ref);
             case 'new':
               ref.read(sceneProvider.notifier).newScene();
+              ref.read(editorControllerProvider.notifier).newProject();
           }
         },
       );
