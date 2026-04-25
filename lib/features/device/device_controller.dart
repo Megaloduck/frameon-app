@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 import '../../engine/scene/timeline.dart';
 import '../../features/export/frame_exporter.dart';

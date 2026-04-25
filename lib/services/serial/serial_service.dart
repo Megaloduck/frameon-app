@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Firmware response constants
