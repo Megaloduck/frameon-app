@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../engine/scene/timeline.dart';
 import '../../features/export/frame_exporter.dart';
+import '../../features/settings/settings_dialog.dart';
 import '../../services/serial/serial_service.dart';
 import '../../services/serial/serial_desktop.dart';
 import '../../shared/providers/providers.dart';
@@ -95,7 +96,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /// Refresh the list of available ports.
+  /// Refresh the list of available serial ports.
   Future<List<String>> scanPorts() async {
     state = state.copyWith(status: DeviceConnectionStatus.scanning);
     try {
@@ -113,17 +114,24 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   }
 
   /// Connect to [portName].
+  ///
+  /// Reads the baud rate from [settingsProvider] so the setting in the
+  /// Device section of Settings is actually applied. Previously this always
+  /// used the default 115200 regardless of what the user configured.
   Future<void> connect(String portName) async {
     state = state.copyWith(
-      status: DeviceConnectionStatus.connecting,
-      portName: portName,
+      status:       DeviceConnectionStatus.connecting,
+      portName:     portName,
+      errorMessage: null, // clear any previous error when starting a new connect
     );
     try {
-      await _serial.connect(portName);
+      // FIX: read baud rate from settings instead of always using the default.
+      final int baudRate = ref.read(settingsProvider).baudRate;
+      await _serial.connect(portName, baudRate: baudRate);
       state = state.copyWith(status: DeviceConnectionStatus.connected);
     } catch (e) {
       state = state.copyWith(
-        status: DeviceConnectionStatus.error,
+        status:       DeviceConnectionStatus.error,
         errorMessage: 'Connect failed: $e',
       );
     }
@@ -156,16 +164,17 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
     final Timeline? timeline = ref.read(timelineProvider).value;
     if (timeline == null || timeline.frameCount == 0) {
-  state = state.copyWith(
-    status: DeviceConnectionStatus.error,
-    errorMessage: 'Nothing to send — add some content to the canvas first.',
-  );
-  return;
-}
+      state = state.copyWith(
+        status:       DeviceConnectionStatus.error,
+        errorMessage: 'Nothing to send — add some content to the canvas first.',
+      );
+      return;
+    }
 
     state = state.copyWith(
-      status: DeviceConnectionStatus.sending,
+      status:       DeviceConnectionStatus.sending,
       sendProgress: 0,
+      errorMessage: null, // clear any previous error at the start of a new send
     );
 
     try {
@@ -176,24 +185,35 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
       await _sendWithRetry(packet);
 
+      // FIX: explicitly pass errorMessage: null so copyWith actually clears
+      // any error message from a previous failed send. The old code omitted
+      // errorMessage here, which left stale error text visible even after a
+      // successful send because copyWith's ?? operator can never set it to null.
+      // FIX: reset sendProgress to 0 after success so the next send starts
+      // from a clean 0% state rather than jumping from 100%.
       state = state.copyWith(
-        status: DeviceConnectionStatus.connected,
-        sendProgress: 1.0,
+        status:       DeviceConnectionStatus.connected,
+        sendProgress: 0,
+        errorMessage: null,
       );
-      } on SerialException catch (e) {
-  final bool portStillOpen = _serial.isConnected;
-  // If port closed during error, clean it up properly
-  if (!portStillOpen) await _serial.disconnect();
-  state = state.copyWith(
-    status: portStillOpen
-        ? DeviceConnectionStatus.connected
-        : DeviceConnectionStatus.error,
-    errorMessage: e.message,
-    sendProgress: 0,
-  );
-} catch (e) {
+    } on SerialException catch (e) {
+      final bool portStillOpen = _serial.isConnected;
+      // If the port closed during the send, clean it up properly so the next
+      // connect() starts with a clean LibSerialPortService state.
+      if (!portStillOpen) await _serial.disconnect();
       state = state.copyWith(
-        status: DeviceConnectionStatus.error,
+        // FIX: if the port dropped, use `lost` status instead of `error` so
+        // the UI can show a distinct "connection lost" message and the
+        // auto-reconnect logic (if enabled) knows it should attempt reconnect.
+        status:       portStillOpen
+            ? DeviceConnectionStatus.error
+            : DeviceConnectionStatus.lost,
+        errorMessage: e.message,
+        sendProgress: 0,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status:       DeviceConnectionStatus.error,
         errorMessage: 'Unexpected error: $e',
         sendProgress: 0,
       );
@@ -261,7 +281,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
         default:
           // Unknown byte — likely a firmware debug Serial.print() line that
-          // slipped through. Treat it as a timeout and surface the error.
+          // slipped through the protocol filter. Treat as a timeout.
           throw SerialException(
             'Unexpected response byte: '
             '0x${response!.toRadixString(16).toUpperCase()}. '

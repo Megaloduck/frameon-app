@@ -99,7 +99,7 @@ class EditorPage extends ConsumerWidget {
   static Future<void> _saveFile(BuildContext context, WidgetRef ref) async {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
-    final result = await FilePicker.platform.saveFile(
+    final result = await FilePicker.saveFile(
       dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom,
@@ -395,7 +395,7 @@ class _FileMenuBtn extends ConsumerWidget {
       );
 
   Future<void> _open(BuildContext context, WidgetRef ref) async {
-    final r = await FilePicker.platform.pickFiles(
+    final r = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['frameon'],
       withData: true,
@@ -417,7 +417,7 @@ class _FileMenuBtn extends ConsumerWidget {
   Future<void> _save(BuildContext context, WidgetRef ref) async {
     final json  = ref.exportJson();
     final bytes = Uint8List.fromList(json.codeUnits);
-    final result = await FilePicker.platform.saveFile(
+    final result = await FilePicker.saveFile(
       dialogTitle: 'Save Frameon project',
       fileName: '${ref.read(sceneProvider).name}.frameon',
       type: FileType.custom,

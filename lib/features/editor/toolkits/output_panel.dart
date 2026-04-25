@@ -29,8 +29,10 @@ class OutputPanel extends ConsumerWidget {
               children: [
                 const SizedBox(height: 5),
                 timelineAsync.when(
-                  loading: () => const _StatsGrid(frames: '—', bytes: '—', duration: '—', perFrame: '—'),
-                  error:   (_, __) => const _StatsGrid(frames: '!', bytes: '!', duration: '!', perFrame: '!'),
+                  loading: () => const _StatsGrid(
+                      frames: '—', bytes: '—', duration: '—', perFrame: '—'),
+                  error: (_, __) => const _StatsGrid(
+                      frames: '!', bytes: '!', duration: '!', perFrame: '!'),
                   data: (t) => _StatsGrid(
                     frames:   '${t.frameCount}',
                     bytes:    _fmtBytes(t.totalBytes),
@@ -63,10 +65,15 @@ class OutputPanel extends ConsumerWidget {
               const Hairline(margin: EdgeInsets.only(bottom: 10)),
               _SendButton(
                 enabled: device.isConnected && !device.isSending,
-                onTap:   () => ref.read(deviceConnectionProvider.notifier).sendToDevice(),
+                onTap:   () =>
+                    ref.read(deviceConnectionProvider.notifier).sendToDevice(),
               ),
               const SizedBox(height: 6),
-              _SyncButton(layerType: selectedLayer?.type),
+              _SyncButton(
+                layerType: selectedLayer?.type,
+                // Only enable Sync when connected and not currently sending.
+                enabled: device.isConnected && !device.isSending,
+              ),
             ],
           ),
         ),
@@ -82,8 +89,12 @@ class OutputPanel extends ConsumerWidget {
 
 class _StatsGrid extends StatelessWidget {
   final String frames, bytes, duration, perFrame;
-  const _StatsGrid({required this.frames, required this.bytes,
-      required this.duration, required this.perFrame});
+  const _StatsGrid({
+    required this.frames,
+    required this.bytes,
+    required this.duration,
+    required this.perFrame,
+  });
 
   @override
   Widget build(BuildContext context) => GridView.count(
@@ -151,31 +162,66 @@ class _DeviceStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final connected = state.isConnected;
-    final color = connected ? kGreen : context.tTextDim;
+    // FIX: the original used `state.isConnected` (only true for `connected`
+    // status) to pick the dot colour. This made the dot go grey while sending,
+    // which looks identical to "disconnected" and confuses users into thinking
+    // the connection dropped when they hit Send.
+    //
+    // Now the dot stays green for both `connected` and `sending`.
+    final bool alive = state.isConnected || state.isSending;
+    final color = alive ? kGreen : _statusColor(state.status);
+
     final statusStr = switch (state.status) {
       DeviceConnectionStatus.connected    => 'Connected',
       DeviceConnectionStatus.connecting   => 'Connecting…',
       DeviceConnectionStatus.sending      => 'Sending…',
       DeviceConnectionStatus.scanning     => 'Scanning…',
       DeviceConnectionStatus.error        => 'Error',
-      DeviceConnectionStatus.lost         => 'Lost',
-      DeviceConnectionStatus.disconnected => 'Not connected',
+      DeviceConnectionStatus.lost         => 'Connection lost',
+      DeviceConnectionStatus.disconnected => 'No device',
     };
 
     return Row(children: [
-      Container(width: 7, height: 7,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
       const SizedBox(width: 6),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(statusStr, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500)),
-        if (state.portName != null)
-          Text(state.portName!, style: TextStyle(fontSize: 10, color: context.tTextDim)),
-        if (state.errorMessage != null)
-          Text(state.errorMessage!, style: TextStyle(fontSize: 10, color: Colors.red.shade400)),
-      ])),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              statusStr,
+              style: TextStyle(
+                fontSize: 12,
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (state.portName != null)
+              Text(
+                state.portName!,
+                style: TextStyle(fontSize: 10, color: context.tTextDim),
+              ),
+            if (state.errorMessage != null)
+              Text(
+                state.errorMessage!,
+                style: TextStyle(fontSize: 10, color: Colors.red.shade400),
+              ),
+          ],
+        ),
+      ),
     ]);
   }
+
+  /// Returns the appropriate colour for non-alive statuses.
+  Color _statusColor(DeviceConnectionStatus status) => switch (status) {
+        DeviceConnectionStatus.error => Colors.red.shade400,
+        DeviceConnectionStatus.lost  => Colors.orange.shade400,
+        _                            => const Color(0xFF555555),
+      };
 }
 
 // ── Send progress ─────────────────────────────────────────────────────────────
@@ -188,16 +234,28 @@ class _SendProgress extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Uploading', style: TextStyle(fontSize: 10, color: context.tTextMuted)),
-            Text('${(progress * 100).round()}%',
-                style: const TextStyle(fontSize: 10, color: kGreen, fontWeight: FontWeight.w600)),
-          ]),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Uploading',
+                  style: TextStyle(
+                      fontSize: 10, color: context.tTextMuted)),
+              Text(
+                '${(progress * 100).round()}%',
+                style: const TextStyle(
+                    fontSize: 10,
+                    color: kGreen,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: const BorderRadius.all(kRadiusSm),
             child: LinearProgressIndicator(
-              value: progress, minHeight: 4, backgroundColor: context.tBorder,
+              value: progress,
+              minHeight: 4,
+              backgroundColor: context.tBorder,
               valueColor: const AlwaysStoppedAnimation<Color>(kGreen),
             ),
           ),
@@ -216,22 +274,45 @@ class _SendButton extends StatelessWidget {
   Widget build(BuildContext context) => FilledButton.icon(
         onPressed: enabled ? onTap : null,
         icon: const Icon(Icons.upload_rounded, size: 14),
-        label: const Text('Send to Device',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.04)),
+        label: const Text(
+          'Send to Device',
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.04),
+        ),
         style: FilledButton.styleFrom(
-          backgroundColor: kGreen,
+          backgroundColor:         kGreen,
           disabledBackgroundColor: context.tBorder,
-          foregroundColor: Colors.white,
+          foregroundColor:         Colors.white,
           disabledForegroundColor: context.tTextDim,
           padding: const EdgeInsets.symmetric(vertical: 10),
           shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(kRadiusMd))),
+              borderRadius: BorderRadius.all(kRadiusMd)),
+        ),
       );
 }
 
-class _SyncButton extends StatelessWidget {
+/// Sync / re-encode button — label changes based on the selected layer type.
+///
+/// ## What it does
+///
+/// The timeline provider intentionally does NOT auto-update for clock ticks,
+/// Spotify track changes, or Pomodoro state (those would cause a full ~1.2 MB
+/// re-render every second). Instead the user explicitly triggers a re-export
+/// via this button.
+///
+/// Pressing it:
+///   1. Invalidates [timelineProvider], forcing a fresh render of the current
+///      scene with up-to-date time / track / timer state.
+///   2. If the device is connected, immediately sends the new timeline.
+///
+/// This is the correct way to "sync time", "refresh track", or "re-encode" a
+/// GIF — the button was previously wired to `onPressed: () {}` (a no-op).
+class _SyncButton extends ConsumerWidget {
   final LayerType? layerType;
-  const _SyncButton({required this.layerType});
+  final bool enabled;
+  const _SyncButton({required this.layerType, required this.enabled});
 
   String get _label => switch (layerType) {
         LayerType.clock    => 'Sync Time',
@@ -243,16 +324,34 @@ class _SyncButton extends StatelessWidget {
       };
 
   @override
-  Widget build(BuildContext context) => OutlinedButton.icon(
-        onPressed: () {},
+  Widget build(BuildContext context, WidgetRef ref) => OutlinedButton.icon(
+        // FIX: was `onPressed: () {}` — completely non-functional.
+        // Now invalidates the timeline (forcing a re-render with current state)
+        // and sends to device if connected.
+        onPressed: enabled
+            ? () {
+                // Force a fresh timeline render with the latest scene state
+                // (current time for clock, current track for Spotify, etc.).
+                ref.invalidate(timelineProvider);
+
+                // Send the newly rendered timeline to the device.
+                ref.read(deviceConnectionProvider.notifier).sendToDevice();
+              }
+            : null,
         icon: const Icon(Icons.sync_rounded, size: 13),
-        label: Text(_label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+        label: Text(
+          _label,
+          style: const TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w500),
+        ),
         style: OutlinedButton.styleFrom(
-          foregroundColor: kGreen,
+          foregroundColor:         kGreen,
+          disabledForegroundColor: const Color(0xFF555555),
           side: BorderSide(color: kGreen.withOpacity(0.4)),
           padding: const EdgeInsets.symmetric(vertical: 9),
           shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(kRadiusMd))),
+              borderRadius: BorderRadius.all(kRadiusMd)),
+        ),
       );
 }
 

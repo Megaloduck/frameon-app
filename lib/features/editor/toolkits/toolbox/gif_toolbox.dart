@@ -27,7 +27,7 @@ class _GifToolboxLeftState extends ConsumerState<GifToolboxLeft> {
   Future<void> _pick() async {
     FilePickerResult? result;
     try {
-      result = await FilePicker.platform.pickFiles(
+      result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['gif', 'png', 'jpg', 'jpeg'],
         withData: true,

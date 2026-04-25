@@ -21,7 +21,7 @@ dependencies:
   image: ^4.1.7
 
   # File picker for GIF/image upload
-  file_picker: ^9.2.3
+  file_picker: ^11.0.2
 
   # NTP for time sync 
   ntp: ^2.0.0

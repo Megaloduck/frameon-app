@@ -15,7 +15,7 @@ enum DeviceConnectionStatus {
   /// A transmission is in progress.
   sending,
 
-  /// The connection was lost unexpectedly.
+  /// The connection was lost unexpectedly (USB removed, device reset, etc.).
   lost,
 
   /// An error occurred during connect or send.
@@ -42,24 +42,46 @@ class DeviceConnectionState {
     this.sendProgress = 0,
   });
 
-  bool get isConnected  => status == DeviceConnectionStatus.connected;
-  bool get isSending    => status == DeviceConnectionStatus.sending;
+  bool get isConnected   => status == DeviceConnectionStatus.connected;
+  bool get isSending     => status == DeviceConnectionStatus.sending;
   bool get isDisconnected => status == DeviceConnectionStatus.disconnected;
 
+  /// Creates a copy with the given fields replaced.
+  ///
+  /// ## Clearing nullable fields
+  ///
+  /// The original implementation used `??` for every field, which made it
+  /// impossible to set [portName] or [errorMessage] back to null once they
+  /// were set — passing `null` was indistinguishable from "not provided".
+  ///
+  /// This version uses a private sentinel [_keep] object. Omitting a nullable
+  /// parameter leaves the existing value; passing `null` explicitly clears it.
+  ///
+  /// ```dart
+  /// // Clear the error message after a successful send:
+  /// state = state.copyWith(
+  ///   status: DeviceConnectionStatus.connected,
+  ///   errorMessage: null,   // ← actually clears it now
+  /// );
+  /// ```
   DeviceConnectionState copyWith({
     DeviceConnectionStatus? status,
-    String? portName,
-    String? errorMessage,
-    double? sendProgress,
+    Object?                 portName     = _keep,
+    Object?                 errorMessage = _keep,
+    double?                 sendProgress,
   }) =>
       DeviceConnectionState(
-        status: status ?? this.status,
-        portName: portName ?? this.portName,
-        errorMessage: errorMessage ?? this.errorMessage,
+        status:       status       ?? this.status,
+        portName:     portName     == _keep ? this.portName     : portName     as String?,
+        errorMessage: errorMessage == _keep ? this.errorMessage : errorMessage as String?,
         sendProgress: sendProgress ?? this.sendProgress,
       );
 
   @override
   String toString() =>
-      'DeviceConnectionState(status: $status, port: $portName)';
+      'DeviceConnectionState(status: $status, port: $portName, err: $errorMessage)';
 }
+
+/// Sentinel used by [DeviceConnectionState.copyWith] to distinguish
+/// "field not provided" from "field explicitly set to null".
+const Object _keep = Object();
