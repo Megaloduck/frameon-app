@@ -175,7 +175,7 @@ final previewFrameProvider = Provider<PixelBuffer>((ref) {
   // Wire live service state into renderer before rendering this frame.
   if (visible.any((l) => l.type == LayerType.spotify)) {
     final spotify = ref.watch(spotifyServiceProvider);
-    renderer.currentTrack = spotify.isConnected ? spotify.toTrack() : null;
+     renderer.currentTrack = spotify.isConnected ? spotify.toPreviewTrack() : null;
   }
 
   if (visible.any((l) =>

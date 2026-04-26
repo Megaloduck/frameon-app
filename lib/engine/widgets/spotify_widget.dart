@@ -13,26 +13,66 @@ import '../renderer/pixel_buffer.dart';
 import '../scene/layer.dart';
 import 'matrix_widget.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SpotifyTrack
+//
+// Progress bar fix
+// ────────────────
+// The old design stored only a scalar `progress` (0–1 snapshot from the last
+// API poll). Every frame in the pre-rendered timeline therefore had the same
+// frozen bar position — it never moved on the device.
+//
+// The new design stores:
+//   • startPositionMs — the song's playback position at export time.
+//   • durationMs      — total track duration in milliseconds.
+//
+// progressAt(elapsedMs) = clamp((startPositionMs + elapsedMs) / durationMs, 0, 1)
+//
+// Because elapsedMs advances by frameDurationMs each frame, the bar moves
+// linearly across the exported loop — matching real playback exactly.
+// Falls back to the static `progress` field when durationMs == 0.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class SpotifyTrack {
-  final String title;
-  final String artist;
+  final String      title;
+  final String      artist;
   final Uint32List? artPixels;
-  final int artWidth;
-  final int artHeight;
+  final int         artWidth;
+  final int         artHeight;
+
+  /// Playback position at export time (ms).
+  final int startPositionMs;
+
+  /// Total track duration (ms). 0 = unknown.
+  final int durationMs;
+
+  /// Fallback static progress (0–1). Used only when [durationMs] == 0.
   final double progress;
+
   final bool isPlaying;
 
   const SpotifyTrack({
     required this.title,
     required this.artist,
     this.artPixels,
-    this.artWidth = 0,
-    this.artHeight = 0,
-    this.progress = 0,
-    this.isPlaying = false,
+    this.artWidth        = 0,
+    this.artHeight       = 0,
+    this.startPositionMs = 0,
+    this.durationMs      = 0,
+    this.progress        = 0,
+    this.isPlaying       = false,
   });
 
   static const SpotifyTrack empty = SpotifyTrack(title: '', artist: '');
+
+  /// Per-frame progress for the animated progress bar.
+  ///
+  /// Advances linearly from [startPositionMs] using [elapsedMs] so the bar
+  /// moves smoothly across the pre-rendered device loop.
+  double progressAt(int elapsedMs) {
+    if (durationMs <= 0) return progress;
+    return ((startPositionMs + elapsedMs) / durationMs).clamp(0.0, 1.0);
+  }
 }
 
 enum ArtLayoutMode { stretch, letterbox, fill }
@@ -72,7 +112,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     final int textX = artSize + 1;
     final int textW = buffer.width - textX;
     final int fontH = font.charHeight;
-    final int titleY = (buffer.height - fontH * 2 - 2) ~/ 2;
+    final int titleY  = (buffer.height - fontH * 2 - 2) ~/ 2;
     final int artistY = titleY + fontH + 2;
 
     if (layer.showTitle && track.title.isNotEmpty) {
@@ -88,7 +128,8 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
           layer.artistEffectSpeedMs);
     }
     if (layer.showProgress) {
-      _drawProgressBar(buffer, track.progress, textX,
+      // progressAt(elapsedMs) advances linearly — bar moves on the device.
+      _drawProgressBar(buffer, track.progressAt(elapsedMs), textX,
           buffer.height - 3, buffer.width - textX - 1, layer.progressColor);
     }
   }
@@ -97,7 +138,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       int elapsedMs, SpotifyTrack track) {
     final font = LedFontLibrary.get(layer.fontId);
     final int fontH = font.charHeight;
-    final int titleY = (buffer.height - fontH * 2 - 2) ~/ 2;
+    final int titleY  = (buffer.height - fontH * 2 - 2) ~/ 2;
     final int artistY = titleY + fontH + 2;
 
     if (layer.showTitle && track.title.isNotEmpty) {
@@ -113,7 +154,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
           layer.artistEffectSpeedMs);
     }
     if (layer.showProgress) {
-      _drawProgressBar(buffer, track.progress, 0,
+      _drawProgressBar(buffer, track.progressAt(elapsedMs), 0,
           buffer.height - 2, buffer.width - 1, layer.progressColor);
     }
   }
@@ -226,7 +267,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       dst.fillRect(x, y, w, h, const Color(0xFF1E1E1E));
       return;
     }
-    final src = track.artPixels!;
+    final src    = track.artPixels!;
     final int srcW = track.artWidth, srcH = track.artHeight;
     int srcX = 0, srcY = 0, srcWidth = srcW, srcHeight = srcH;
     int dstX = x, dstY = y, dstWidth = w, dstHeight = h;
@@ -256,12 +297,16 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
 
     final double scaleX = srcWidth / dstWidth, scaleY = srcHeight / dstHeight;
     if (mode == ArtLayoutMode.letterbox) {
-      if (dstY > y) dst.fillRect(x, y, w, dstY - y, const Color(0xFF000000));
+      if (dstY > y)
+        dst.fillRect(x, y, w, dstY - y, const Color(0xFF000000));
       if (dstY + dstHeight < y + h)
-        dst.fillRect(x, dstY + dstHeight, w, y + h - dstY - dstHeight, const Color(0xFF000000));
-      if (dstX > x) dst.fillRect(x, dstY, dstX - x, dstHeight, const Color(0xFF000000));
+        dst.fillRect(x, dstY + dstHeight, w, y + h - dstY - dstHeight,
+            const Color(0xFF000000));
+      if (dstX > x)
+        dst.fillRect(x, dstY, dstX - x, dstHeight, const Color(0xFF000000));
       if (dstX + dstWidth < x + w)
-        dst.fillRect(dstX + dstWidth, dstY, x + w - dstX - dstWidth, dstHeight, const Color(0xFF000000));
+        dst.fillRect(dstX + dstWidth, dstY, x + w - dstX - dstWidth,
+            dstHeight, const Color(0xFF000000));
     }
     for (int dy = 0; dy < dstHeight; dy++) {
       final int sy = srcY + (dy * scaleY).toInt().clamp(0, srcHeight - 1);

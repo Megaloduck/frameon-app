@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../engine/widgets/spotify_widget.dart';
+import '../../features/device/device_controller.dart';
+import '../../shared/providers/providers.dart';
 import 'spotify_auth.dart';
 import 'spotify_api_client.dart';
 
@@ -52,14 +54,36 @@ class SpotifyState {
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
   bool get isConnecting => status == SpotifyConnectionStatus.connecting;
 
-  SpotifyTrack toTrack() => SpotifyTrack(
+  /// Convert to [SpotifyTrack] for the **live preview**.
+  ///
+  /// Does NOT set [durationMs] (leaves it 0) so [progressAt()] falls back
+  /// to the static [progress] field. The preview uses the ever-growing
+  /// ticker elapsedMs — passing durationMs here would make the bar race to 100%.
+  SpotifyTrack toPreviewTrack() => SpotifyTrack(
         title:     currentTrackTitle ?? '',
         artist:    currentArtist ?? '',
         artPixels: albumArtPixels,
         artWidth:  albumArtPixels != null ? albumArtSize : 0,
         artHeight: albumArtPixels != null ? albumArtSize : 0,
+        // durationMs omitted (defaults to 0) → progressAt() uses progress fallback
         progress:  progress,
         isPlaying: isPlaying,
+      );
+
+  /// Convert to [SpotifyTrack] for the **device export**.
+  ///
+  /// Passes [startPositionMs] and [durationMs] so the renderer computes
+  /// per-frame progress linearly on the device.
+  SpotifyTrack toTrack() => SpotifyTrack(
+        title:           currentTrackTitle ?? '',
+        artist:          currentArtist ?? '',
+        artPixels:       albumArtPixels,
+        artWidth:        albumArtPixels != null ? albumArtSize : 0,
+        artHeight:       albumArtPixels != null ? albumArtSize : 0,
+        startPositionMs: currentPosition.inMilliseconds,
+        durationMs:      currentDuration.inMilliseconds,
+        progress:        progress,
+        isPlaying:       isPlaying,
       );
 
   SpotifyState copyWith({
@@ -106,7 +130,6 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   final _auth   = SpotifyAuth();
   final _client = SpotifyApiClient();
   Timer? _pollTimer;
-  // Ticks every second to interpolate progress between API polls
   Timer? _progressTimer;
 
   static const _pollInterval = Duration(seconds: 5);
@@ -153,7 +176,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
 
-    // Interpolate progress every second so matrix preview bar moves smoothly
+    // Interpolate progress every second so the matrix preview bar moves smoothly.
     _progressTimer?.cancel();
     _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!state.isPlaying) return;
@@ -211,10 +234,54 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
       state = state.copyWith(isShuffling: shuffleState);
     }
 
-    if (trackChanged && np.albumArtUrl != null) {
-      _fetchAlbumArt(np.albumArtUrl!);
+    if (trackChanged) {
+      // Await art fetch so pixels are in state before we trigger the export.
+      if (np.albumArtUrl != null) {
+        await _fetchAlbumArt(np.albumArtUrl!);
+      }
+      _autoSyncToDevice();
     }
   }
+
+  // ── Auto-sync ─────────────────────────────────────────────────────────────
+
+  /// Invalidates the timeline and triggers a device send when track changes.
+  ///
+  /// ## Why we do NOT touch matrixRendererProvider here
+  ///
+  /// matrixRendererProvider listens to spotifyServiceProvider during its own
+  /// build (via ref.listen). If we called ref.read(matrixRendererProvider)
+  /// here, Riverpod would detect:
+  ///
+  ///   matrixRendererProvider → spotifyServiceProvider → matrixRendererProvider
+  ///
+  /// ...and throw a CircularDependencyError.
+  ///
+  /// Instead, renderer.currentTrack is updated through two existing paths
+  /// that are already wired without causing a cycle:
+  ///
+  ///   1. matrixRendererProvider's ref.listen(spotifyServiceProvider) updates
+  ///      it whenever state changes — this fires immediately after we set
+  ///      state above, before invalidate() triggers a rebuild.
+  ///
+  ///   2. TimelineNotifier.build() calls ref.read(spotifyServiceProvider) and
+  ///      sets renderer.currentTrack itself before calling renderer.render().
+  ///
+  /// Both paths guarantee the renderer has fresh track data before any frame
+  /// is encoded — without introducing a dependency cycle.
+  void _autoSyncToDevice() {
+    // Invalidating triggers TimelineNotifier.build(), which reads the latest
+    // spotifyServiceProvider state and sets renderer.currentTrack directly
+    // before calling renderer.render().
+    ref.invalidate(timelineProvider);
+
+    final device = ref.read(deviceConnectionProvider);
+    if (device.isConnected && !device.isSending) {
+      ref.read(deviceConnectionProvider.notifier).sendToDevice();
+    }
+  }
+
+  // ── Album art ─────────────────────────────────────────────────────────────
 
   Future<void> _fetchAlbumArt(String url) async {
     final result = await _client.fetchAlbumArt(url);
