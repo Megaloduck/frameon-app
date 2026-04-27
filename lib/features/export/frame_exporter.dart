@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'dart:typed_data';
 import '../../engine/scene/layer.dart';
 import '../../engine/scene/timeline.dart';
@@ -19,18 +20,26 @@ const int _kVersionNext   = 0x4E; // 'N' — queue as next-song preload
 ///   textOnly   → full-width bar at very bottom
 ///                barX = 0,  barY = height-2 = 30,  barW = width-1 = 63
 ///
-///   artOnly    → no progress bar (showProgress is ignored for artOnly)
-///                barX = 0,  barY = 0,  barW = 0
+///   artOnly    → full-width bar at bottom when showProgress is true
+///                barX = 0,  barY = 30, barW = 64  (barW = 0 if showProgress off)
 ///
 /// barW = 0 tells the firmware to skip overdrawProgressBar entirely,
 /// leaving album art completely untouched.
+/// Convert a Flutter [Color] to RGB565 big-endian uint16.
+int _colorToRgb565(Color color) {
+  final int r = (color.red   >> 3) & 0x1F;
+  final int g = (color.green >> 2) & 0x3F;
+  final int b = (color.blue  >> 3) & 0x1F;
+  return (r << 11) | (g << 5) | b;
+}
+
 ({int barX, int barY, int barW}) _barGeometry(
     SpotifyLayout layout, bool showProgress) {
   if (!showProgress) return (barX: 0, barY: 0, barW: 0);
   return switch (layout) {
     SpotifyLayout.artAndText => (barX: 33, barY: 29, barW: 30),
     SpotifyLayout.textOnly   => (barX: 0,  barY: 30, barW: 64),
-    SpotifyLayout.artOnly    => (barX: 0,  barY: 0,  barW: 0),
+    SpotifyLayout.artOnly    => (barX: 0,  barY: 30, barW: 64),
   };
 }
 
@@ -51,7 +60,7 @@ const int _kVersionNext   = 0x4E; // 'N' — queue as next-song preload
 /// [4]  trackDurationMs     (uint32 BE)
 /// [1]  barX                (uint8)   — progress bar left edge
 /// [1]  barY                (uint8)   — progress bar top edge
-/// [1]  barW                (uint8)   — bar width; 0 = no bar (artOnly)
+/// [1]  barW                (uint8)   — bar width; 0 = no bar
 /// [1]  reserved            (uint8)   — 0x00
 /// [N]  RGB565 pixel data
 /// [2]  CRC-16/CCITT
@@ -65,7 +74,7 @@ class FrameExporter {
 
   const FrameExporter({this.matrixWidth = 64, this.matrixHeight = 32});
 
-  static const int _headerSize = 28; // v1.3
+  static const int _headerSize = 30; // v1.4
 
   /// Build a normal-commit packet.
   ///
@@ -79,6 +88,7 @@ class FrameExporter {
     int trackDurationMs = 0,
     SpotifyLayout? layout,
     bool showProgress = false,
+    Color progressColor = const Color(0xFF21C32C),
   }) =>
       _build(
         timeline,
@@ -87,6 +97,7 @@ class FrameExporter {
         trackDurationMs: trackDurationMs,
         layout: layout,
         showProgress: showProgress,
+        progressColor: progressColor,
       );
 
   /// Build a next-song preload packet (firmware flag 0x4E).
@@ -96,6 +107,7 @@ class FrameExporter {
     int trackDurationMs = 0,
     SpotifyLayout? layout,
     bool showProgress = false,
+    Color progressColor = const Color(0xFF21C32C),
   }) =>
       _build(
         timeline,
@@ -104,6 +116,7 @@ class FrameExporter {
         trackDurationMs: trackDurationMs,
         layout: layout,
         showProgress: showProgress,
+        progressColor: progressColor,
       );
 
   Uint8List _build(
@@ -113,6 +126,7 @@ class FrameExporter {
     required int trackDurationMs,
     SpotifyLayout? layout,
     bool showProgress = false,
+    Color progressColor = const Color(0xFF21C32C),
   }) {
     if (timeline.frameCount == 0) {
       throw StateError('Cannot export an empty timeline.');
@@ -152,11 +166,14 @@ class FrameExporter {
     bd.setUint32(off, startPositionMs,  Endian.big); off += 4;
     bd.setUint32(off, trackDurationMs,  Endian.big); off += 4;
 
-    // Bar geometry (v1.3)
+    // Bar geometry + color (v1.4)
+    final int barColorRgb565 = _colorToRgb565(progressColor);
     packet[off++] = bar.barX;
     packet[off++] = bar.barY;
     packet[off++] = bar.barW;
-    packet[off++] = 0x00; // reserved
+    packet[off++] = (barColorRgb565 >> 8) & 0xFF; // barColor high byte [27]
+    packet[off++] = barColorRgb565 & 0xFF;         // barColor low byte  [28]
+    packet[off++] = 0x00; // reserved [29]
 
     assert(off == _headerSize, 'Header size mismatch: $off != $_headerSize');
 

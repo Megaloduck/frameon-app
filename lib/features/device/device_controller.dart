@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -50,15 +51,17 @@ class _PacketArgs {
   final Timeline      timeline;
   final int           startPositionMs;
   final int           trackDurationMs;
-  final SpotifyLayout? layout;       // null for non-Spotify scenes
+  final SpotifyLayout? layout;
   final bool          showProgress;
-  final bool          isNext;        // true → exportNext(), false → export()
+  final Color         progressColor;
+  final bool          isNext;
   const _PacketArgs({
     required this.timeline,
     required this.startPositionMs,
     required this.trackDurationMs,
     this.layout,
     this.showProgress = false,
+    this.progressColor = const Color(0xFF21C32C),
     this.isNext = false,
   });
 }
@@ -72,6 +75,7 @@ Uint8List _buildPacket(_PacketArgs args) {
           trackDurationMs: args.trackDurationMs,
           layout:          args.layout,
           showProgress:    args.showProgress,
+          progressColor:   args.progressColor,
         )
       : exporter.export(
           args.timeline,
@@ -79,6 +83,7 @@ Uint8List _buildPacket(_PacketArgs args) {
           trackDurationMs: args.trackDurationMs,
           layout:          args.layout,
           showProgress:    args.showProgress,
+          progressColor:   args.progressColor,
         );
 }
 
@@ -164,8 +169,9 @@ class DeviceController extends Notifier<DeviceConnectionState> {
         .whereType<SpotifyLayer>()
         .cast<SpotifyLayer?>()
         .firstOrNull;
-    final spotifyLayout = spotifyLayer?.layout;
-    final showProgress  = spotifyLayer?.showProgress ?? false;
+    final spotifyLayout   = spotifyLayer?.layout;
+    final showProgress    = spotifyLayer?.showProgress ?? false;
+    final progressColor   = spotifyLayer?.progressColor ?? const Color(0xFF21C32C);
 
     state = state.copyWith(
       status:       DeviceConnectionStatus.sending,
@@ -182,6 +188,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
           trackDurationMs: trackDur,
           layout:          spotifyLayout,
           showProgress:    showProgress,
+          progressColor:   progressColor,
         ),
       );
 

@@ -185,28 +185,6 @@ final previewFrameProvider = Provider<PixelBuffer>((ref) {
 // Frame count calculation — used only for device export (Timeline)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Maximum frames for a Spotify layer export.
-///
-/// WHY 50 — bandwidth / progress-bar accuracy tradeoff:
-///
-/// The progress bar position is baked per-frame as:
-///   (startPositionMs + frameIndex × frameDurationMs) / durationMs
-///
-/// But real time keeps passing during the serial transfer. At 921600 baud
-/// (115,200 B/s) with 4096 bytes per frame:
-///
-///   old uncapped (281 frames): 281 × 4096 = 1,151,936 B ÷ 115,200 ≈ 10 s
-///   new cap      ( 50 frames):  50 × 4096 =   204,800 B ÷ 115,200 ≈  1.8 s
-///
-/// On a 3-min song across a 31 px bar, 10 s of unaccounted transfer latency
-/// = ~1.7 px of visible lag. With 50 frames the unaccounted portion drops
-/// to ~1.3 s → ~0.22 px — imperceptible.
-///
-/// Scroll animations still look smooth: 50 frames at 10 fps = 5 s of motion,
-/// which covers any full marquee cycle. The service re-syncs every 5 s poll
-/// so the bar re-anchors to real playback constantly regardless.
-const int _kSpotifyMaxFrames = 50;
-
 int _calculateFrameCount(
   Scene scene,
   Map<String, dynamic> gifAssetCounts,
@@ -228,10 +206,41 @@ int _calculateFrameCount(
         layerFrames = twoSecondFrames;
 
       case LayerType.spotify:
-        // Hard cap — keeps the packet small so serial transfer latency is
-        // short enough for livePosition compensation to keep the bar accurate.
-        // See _kSpotifyMaxFrames for the full math.
-        layerFrames = _kSpotifyMaxFrames;
+        // Calculate the exact number of frames needed for one full scroll loop.
+        //
+        // The firmware (v1.3+) predicts the progress bar position using
+        // millis() from the commit timestamp, so bar accuracy no longer
+        // depends on keeping the frame count small. We can now use the full
+        // scroll loop length so the text completes a full pass without
+        // cutting off or jumping back to the start mid-sentence.
+        //
+        // The global 300-frame cap at the end of this function still applies,
+        // so packets cannot exceed ~1.2 MB regardless of text length.
+        {
+          final sp = layer as SpotifyLayer;
+          // Viewport width: artAndText has 31 px of text space; others use 64.
+          final int viewportW = sp.layout == SpotifyLayout.artAndText ? 31 : 64;
+          int maxSpotifyFrames = twoSecondFrames;
+
+          for (final pair in [
+            (sp.titleEffect,  sp.titleEffectSpeedMs),
+            (sp.artistEffect, sp.artistEffectSpeedMs),
+          ]) {
+            final effect  = pair.$1;
+            final speedMs = pair.$2;
+            if (effect == AnimationEffect.scrollLeft ||
+                effect == AnimationEffect.scrollRight) {
+              // One full loop = (estimatedContentW + viewportW) × speedMs ms.
+              // 150 px covers titles/artists up to ~40 chars in Polymorph font.
+              const int estimatedContentW = 119;
+              final int bufW   = estimatedContentW + viewportW;
+              final int loopMs = bufW * speedMs;
+              final int frames = (loopMs / frameDurationMs).ceil();
+              if (frames > maxSpotifyFrames) maxSpotifyFrames = frames;
+            }
+          }
+          layerFrames = maxSpotifyFrames;
+        }
 
       case LayerType.text:
         final t = layer as TextLayer;

@@ -15,22 +15,6 @@ import 'matrix_widget.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SpotifyTrack
-//
-// Progress bar fix
-// ────────────────
-// The old design stored only a scalar `progress` (0–1 snapshot from the last
-// API poll). Every frame in the pre-rendered timeline therefore had the same
-// frozen bar position — it never moved on the device.
-//
-// The new design stores:
-//   • startPositionMs — the song's playback position at export time.
-//   • durationMs      — total track duration in milliseconds.
-//
-// progressAt(elapsedMs) = clamp((startPositionMs + elapsedMs) / durationMs, 0, 1)
-//
-// Because elapsedMs advances by frameDurationMs each frame, the bar moves
-// linearly across the exported loop — matching real playback exactly.
-// Falls back to the static `progress` field when durationMs == 0.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyTrack {
@@ -39,17 +23,10 @@ class SpotifyTrack {
   final Uint32List? artPixels;
   final int         artWidth;
   final int         artHeight;
-
-  /// Playback position at export time (ms).
-  final int startPositionMs;
-
-  /// Total track duration (ms). 0 = unknown.
-  final int durationMs;
-
-  /// Fallback static progress (0–1). Used only when [durationMs] == 0.
-  final double progress;
-
-  final bool isPlaying;
+  final int         startPositionMs;
+  final int         durationMs;
+  final double      progress;
+  final bool        isPlaying;
 
   const SpotifyTrack({
     required this.title,
@@ -65,10 +42,6 @@ class SpotifyTrack {
 
   static const SpotifyTrack empty = SpotifyTrack(title: '', artist: '');
 
-  /// Per-frame progress for the animated progress bar.
-  ///
-  /// Advances linearly from [startPositionMs] using [elapsedMs] so the bar
-  /// moves smoothly across the pre-rendered device loop.
   double progressAt(int elapsedMs) {
     if (durationMs <= 0) return progress;
     return ((startPositionMs + elapsedMs) / durationMs).clamp(0.0, 1.0);
@@ -93,7 +66,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       case SpotifyLayout.textOnly:
         _renderTextOnly(layer, buffer, elapsedMs, track);
       case SpotifyLayout.artOnly:
-        _renderArtOnly(layer, buffer, track);
+        _renderArtOnly(layer, buffer, elapsedMs, track);
     }
   }
 
@@ -128,7 +101,6 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
           layer.artistEffectSpeedMs);
     }
     if (layer.showProgress) {
-      // progressAt(elapsedMs) advances linearly — bar moves on the device.
       _drawProgressBar(buffer, track.progressAt(elapsedMs), textX,
           buffer.height - 3, buffer.width - textX - 1, layer.progressColor);
     }
@@ -160,22 +132,17 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
   }
 
   void _renderArtOnly(SpotifyLayer layer, PixelBuffer buffer,
-      SpotifyTrack track) {
+      int elapsedMs, SpotifyTrack track) {
     _blitArt(buffer, track, 0, 0, buffer.width, buffer.height,
         layer.artLayoutMode ?? ArtLayoutMode.stretch);
+    if (layer.showProgress) {
+      _drawProgressBar(buffer, track.progressAt(elapsedMs), 0,
+          buffer.height - 2, buffer.width, layer.progressColor);
+    }
   }
 
   // ── Text rendering ────────────────────────────────────────────────────────
 
-  /// Renders [text] into a PixelBuffer with two independent effects:
-  ///
-  /// 1. [scrollEffect] — moves the text (scrollLeft / scrollRight / none).
-  ///    Applied first, using a wide buffer so the marquee wraps seamlessly.
-  /// 2. [overlayEffect] — alpha modulation on top of the scrolled result
-  ///    (blink / pulse / fade / burst / none). Applied second so it layers
-  ///    over the moving text.
-  ///
-  /// Either or both may be [AnimationEffect.none].
   void _drawText(
     LedFont font,
     PixelBuffer buffer,
@@ -193,24 +160,20 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     final int contentW = font.textWidth(text);
     final bool isScroll = scrollEffect == AnimationEffect.scrollLeft ||
                           scrollEffect == AnimationEffect.scrollRight;
-    // Only marquee when text is wider than the viewport.
     final bool needsScroll = isScroll && contentW > maxW;
 
     final int bufW = needsScroll ? contentW + maxW : maxW;
     final srcBuf = PixelBuffer(width: bufW, height: buffer.height);
 
     if (needsScroll) {
-      // Text at x=0 so the scroll processor can sweep it across bufW.
       font.draw(buffer: srcBuf, text: text, color: color,
           x: 0, y: y, opacity: baseOpacity);
     } else {
-      // Centre short text (or text shown with a non-scroll effect).
       final int x = ((maxW - contentW) ~/ 2).clamp(0, maxW - 1);
       font.draw(buffer: srcBuf, text: text, color: color,
           x: x, y: y, opacity: baseOpacity);
     }
 
-    // ── Step 1: apply scroll ─────────────────────────────────────────────
     PixelBuffer scrolledBuf;
     if (needsScroll) {
       final scrollProcessor = _resolveTextEffect(scrollEffect, speedMs);
@@ -224,7 +187,6 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
       scrolledBuf = srcBuf;
     }
 
-    // ── Step 2: apply overlay on top of scrolled result ──────────────────
     PixelBuffer finalBuf;
     if (overlayEffect != AnimationEffect.none) {
       final overlayProcessor = _resolveTextEffect(overlayEffect, speedMs);
@@ -241,8 +203,6 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     buffer.blit(finalBuf, dx: startX);
   }
 
-  /// Maps [AnimationEffect] → [AnimationEffectProcessor] parameterised
-  /// by [speedMs] (ms per scroll pixel for scroll effects).
   AnimationEffectProcessor? _resolveTextEffect(
       AnimationEffect effect, int speedMs) {
     final double pps = 1000.0 / speedMs.clamp(10, 500);
