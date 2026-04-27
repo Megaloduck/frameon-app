@@ -155,7 +155,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   Timer? _pollTimer;
   Timer? _progressTimer;
 
-  static const _pollInterval = Duration(seconds: 5);
+  static const _pollInterval = Duration(seconds: 3);
 
   @override
   SpotifyState build() => SpotifyState();
