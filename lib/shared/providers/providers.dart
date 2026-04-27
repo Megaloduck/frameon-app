@@ -227,6 +227,7 @@ int _calculateFrameCount(
         layerFrames = twoSecondFrames;
 
       case LayerType.spotify:
+        layerFrames = 50;
         final sp = layer as SpotifyLayer;
         // Viewport width: artAndText uses ~31px (64 - 32art - 1gap), else 64.
         final int viewportW = sp.layout == SpotifyLayout.artAndText ? 31 : 64;

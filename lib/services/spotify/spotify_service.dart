@@ -34,7 +34,11 @@ class SpotifyState {
   final Duration    currentDuration;
   final bool        isShuffling;
 
-  const SpotifyState({
+  /// Wall-clock time when [currentPosition] was last set from the Spotify API.
+  /// Used to compensate for render + transfer latency in [toTrack()].
+  final DateTime?   positionCapturedAt;
+
+  SpotifyState({
     this.status            = SpotifyConnectionStatus.disconnected,
     this.currentTrackTitle,
     this.currentArtist,
@@ -49,38 +53,55 @@ class SpotifyState {
     this.currentPosition   = Duration.zero,
     this.currentDuration   = Duration.zero,
     this.isShuffling       = false,
+    this.positionCapturedAt,
   });
 
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
   bool get isConnecting => status == SpotifyConnectionStatus.connecting;
 
-  /// Convert to [SpotifyTrack] for the **live preview**.
+  /// Returns [currentPosition] compensated for however much real time has
+  /// elapsed since the API told us that position.
   ///
-  /// Does NOT set [durationMs] (leaves it 0) so [progressAt()] falls back
-  /// to the static [progress] field. The preview uses the ever-growing
-  /// ticker elapsedMs — passing durationMs here would make the bar race to 100%.
+  /// Every millisecond between the API call and the moment the ESP32 shows
+  /// frame 0 is latency the progress bar must account for. This includes:
+  ///   - Debounce delay (120 ms in TimelineNotifier)
+  ///   - Frame render loop (one await per frame × N frames)
+  ///   - CRC computation on background isolate
+  ///   - USB serial transfer (~1.2 MB at 921600 baud ≈ 10–13 s)
+  ///
+  /// By reading DateTime.now() at export time (inside toTrack()), we bake in
+  /// the real elapsed time so frame 0's progress bar pixel is correct.
+  Duration get livePosition {
+    if (!isPlaying || positionCapturedAt == null) return currentPosition;
+    final elapsed = DateTime.now().difference(positionCapturedAt!);
+    final live = currentPosition + elapsed;
+    return live > currentDuration ? currentDuration : live;
+  }
+
   SpotifyTrack toPreviewTrack() => SpotifyTrack(
         title:     currentTrackTitle ?? '',
         artist:    currentArtist ?? '',
         artPixels: albumArtPixels,
         artWidth:  albumArtPixels != null ? albumArtSize : 0,
         artHeight: albumArtPixels != null ? albumArtSize : 0,
-        // durationMs omitted (defaults to 0) → progressAt() uses progress fallback
+        // Preview uses the ever-growing ticker elapsedMs, not wall-clock.
+        // durationMs omitted so progressAt() falls back to scalar progress.
         progress:  progress,
         isPlaying: isPlaying,
       );
 
-  /// Convert to [SpotifyTrack] for the **device export**.
-  ///
-  /// Passes [startPositionMs] and [durationMs] so the renderer computes
-  /// per-frame progress linearly on the device.
+  /// toTrack() is called inside TimelineNotifier.build() at render time.
+  /// At that point, livePosition already includes the debounce delay.
+  /// elapsedMs then adds per-frame render time on top, so by the time the
+  /// ESP32 receives and displays frame N, progressAt(N * frameDurationMs)
+  /// closely matches the real playback position.
   SpotifyTrack toTrack() => SpotifyTrack(
         title:           currentTrackTitle ?? '',
         artist:          currentArtist ?? '',
         artPixels:       albumArtPixels,
         artWidth:        albumArtPixels != null ? albumArtSize : 0,
         artHeight:       albumArtPixels != null ? albumArtSize : 0,
-        startPositionMs: currentPosition.inMilliseconds,
+        startPositionMs: livePosition.inMilliseconds,
         durationMs:      currentDuration.inMilliseconds,
         progress:        progress,
         isPlaying:       isPlaying,
@@ -101,24 +122,26 @@ class SpotifyState {
     Duration?   currentPosition,
     Duration?   currentDuration,
     bool?       isShuffling,
+    DateTime?   positionCapturedAt,
     bool        clearError = false,
     bool        clearArt   = false,
   }) =>
       SpotifyState(
-        status:            status            ?? this.status,
-        currentTrackTitle: currentTrackTitle ?? this.currentTrackTitle,
-        currentArtist:     currentArtist     ?? this.currentArtist,
-        currentAlbum:      currentAlbum      ?? this.currentAlbum,
-        albumArtUrl:       albumArtUrl       ?? this.albumArtUrl,
-        albumArtPixels:    clearArt  ? null  : (albumArtPixels ?? this.albumArtPixels),
-        albumArtSize:      albumArtSize      ?? this.albumArtSize,
-        progress:          progress          ?? this.progress,
-        isPlaying:         isPlaying         ?? this.isPlaying,
-        errorMessage:      clearError ? null : (errorMessage   ?? this.errorMessage),
-        trackId:           trackId           ?? this.trackId,
-        currentPosition:   currentPosition   ?? this.currentPosition,
-        currentDuration:   currentDuration   ?? this.currentDuration,
-        isShuffling:       isShuffling       ?? this.isShuffling,
+        status:             status            ?? this.status,
+        currentTrackTitle:  currentTrackTitle ?? this.currentTrackTitle,
+        currentArtist:      currentArtist     ?? this.currentArtist,
+        currentAlbum:       currentAlbum      ?? this.currentAlbum,
+        albumArtUrl:        albumArtUrl       ?? this.albumArtUrl,
+        albumArtPixels:     clearArt  ? null  : (albumArtPixels ?? this.albumArtPixels),
+        albumArtSize:       albumArtSize      ?? this.albumArtSize,
+        progress:           progress          ?? this.progress,
+        isPlaying:          isPlaying         ?? this.isPlaying,
+        errorMessage:       clearError ? null : (errorMessage   ?? this.errorMessage),
+        trackId:            trackId           ?? this.trackId,
+        currentPosition:    currentPosition   ?? this.currentPosition,
+        currentDuration:    currentDuration   ?? this.currentDuration,
+        isShuffling:        isShuffling       ?? this.isShuffling,
+        positionCapturedAt: positionCapturedAt ?? this.positionCapturedAt,
       );
 }
 
@@ -135,7 +158,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   static const _pollInterval = Duration(seconds: 5);
 
   @override
-  SpotifyState build() => const SpotifyState();
+  SpotifyState build() => SpotifyState();
 
   // ── Connection ────────────────────────────────────────────────────────────
 
@@ -167,7 +190,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   void disconnect() {
     _stopPolling();
     _auth.clear();
-    state = const SpotifyState();
+    state = SpotifyState();
   }
 
   // ── Polling ───────────────────────────────────────────────────────────────
@@ -176,18 +199,19 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
 
-    // Interpolate progress every second so the matrix preview bar moves smoothly.
+    // Advance progress locally every second — no network call.
     _progressTimer?.cancel();
     _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!state.isPlaying) return;
       if (state.currentDuration.inMilliseconds == 0) return;
       final newPos = state.currentPosition + const Duration(seconds: 1);
       if (newPos > state.currentDuration) return;
-      final newProgress =
-          newPos.inMilliseconds / state.currentDuration.inMilliseconds;
       state = state.copyWith(
         currentPosition: newPos,
-        progress: newProgress.clamp(0.0, 1.0),
+        // Keep positionCapturedAt in sync so livePosition stays accurate.
+        positionCapturedAt: DateTime.now(),
+        progress: (newPos.inMilliseconds / state.currentDuration.inMilliseconds)
+            .clamp(0.0, 1.0),
       );
     });
   }
@@ -205,7 +229,19 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     final token = await _auth.validAccessToken;
     if (token == null) return;
 
-    final np = await _client.getNowPlaying(token);
+    // Snapshot the time immediately before the API call so positionCapturedAt
+    // reflects when this position was valid, not when we processed the response.
+    final capturedAt = DateTime.now();
+
+    // Fire both calls in parallel.
+    final results = await Future.wait([
+      _client.getNowPlaying(token),
+      _client.getShuffleState(token),
+    ]);
+
+    final np           = results[0] as SpotifyNowPlaying?;
+    final shuffleState = results[1] as bool?;
+
     if (np == null) {
       state = state.copyWith(
         status:    SpotifyConnectionStatus.connected,
@@ -215,66 +251,44 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     }
 
     final trackChanged = np.trackId != state.trackId;
+
     state = state.copyWith(
-      status:            SpotifyConnectionStatus.connected,
-      currentTrackTitle: np.title,
-      currentArtist:     np.artist,
-      currentAlbum:      np.album,
-      albumArtUrl:       np.albumArtUrl,
-      progress:          np.progress,
-      isPlaying:         np.isPlaying,
-      trackId:           np.trackId,
-      currentPosition:   np.currentPosition,
-      currentDuration:   np.currentDuration,
-      clearArt:          trackChanged,
+      status:             SpotifyConnectionStatus.connected,
+      currentTrackTitle:  np.title,
+      currentArtist:      np.artist,
+      currentAlbum:       np.album,
+      albumArtUrl:        np.albumArtUrl,
+      progress:           np.progress,
+      isPlaying:          np.isPlaying,
+      trackId:            np.trackId,
+      currentPosition:    np.currentPosition,
+      currentDuration:    np.currentDuration,
+      isShuffling:        shuffleState ?? state.isShuffling,
+      // Record exactly when the API told us the position.
+      positionCapturedAt: capturedAt,
+      clearArt:           trackChanged,
     );
 
-    final shuffleState = await _client.getShuffleState(token);
-    if (shuffleState != null) {
-      state = state.copyWith(isShuffling: shuffleState);
-    }
-
     if (trackChanged) {
-      // Await art fetch so pixels are in state before we trigger the export.
+      // Sync immediately with text — don't wait for art.
+      _autoSyncToDevice();
+
+      // Fetch art in background; re-sync once pixels are ready.
       if (np.albumArtUrl != null) {
-        await _fetchAlbumArt(np.albumArtUrl!);
+        _fetchAlbumArtAndResync(np.albumArtUrl!);
       }
+    } else if (np.isPlaying) {
+      // Re-sync every poll so the device loop re-anchors to real playback.
+      // livePosition in toTrack() will compensate for the render + transfer
+      // latency that happens between now and when frame 0 is displayed.
       _autoSyncToDevice();
     }
   }
 
   // ── Auto-sync ─────────────────────────────────────────────────────────────
 
-  /// Invalidates the timeline and triggers a device send when track changes.
-  ///
-  /// ## Why we do NOT touch matrixRendererProvider here
-  ///
-  /// matrixRendererProvider listens to spotifyServiceProvider during its own
-  /// build (via ref.listen). If we called ref.read(matrixRendererProvider)
-  /// here, Riverpod would detect:
-  ///
-  ///   matrixRendererProvider → spotifyServiceProvider → matrixRendererProvider
-  ///
-  /// ...and throw a CircularDependencyError.
-  ///
-  /// Instead, renderer.currentTrack is updated through two existing paths
-  /// that are already wired without causing a cycle:
-  ///
-  ///   1. matrixRendererProvider's ref.listen(spotifyServiceProvider) updates
-  ///      it whenever state changes — this fires immediately after we set
-  ///      state above, before invalidate() triggers a rebuild.
-  ///
-  ///   2. TimelineNotifier.build() calls ref.read(spotifyServiceProvider) and
-  ///      sets renderer.currentTrack itself before calling renderer.render().
-  ///
-  /// Both paths guarantee the renderer has fresh track data before any frame
-  /// is encoded — without introducing a dependency cycle.
   void _autoSyncToDevice() {
-    // Invalidating triggers TimelineNotifier.build(), which reads the latest
-    // spotifyServiceProvider state and sets renderer.currentTrack directly
-    // before calling renderer.render().
     ref.invalidate(timelineProvider);
-
     final device = ref.read(deviceConnectionProvider);
     if (device.isConnected && !device.isSending) {
       ref.read(deviceConnectionProvider.notifier).sendToDevice();
@@ -283,13 +297,14 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
 
   // ── Album art ─────────────────────────────────────────────────────────────
 
-  Future<void> _fetchAlbumArt(String url) async {
+  Future<void> _fetchAlbumArtAndResync(String url) async {
     final result = await _client.fetchAlbumArt(url);
     if (result == null) return;
     state = state.copyWith(
       albumArtPixels: result.pixels,
       albumArtSize:   result.width,
     );
+    _autoSyncToDevice();
   }
 
   // ── Transport ─────────────────────────────────────────────────────────────
