@@ -155,7 +155,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   Timer? _pollTimer;
   Timer? _progressTimer;
 
-  static const _pollInterval = Duration(seconds: 3);
+  static const _pollInterval = Duration(seconds: 5);
 
   @override
   SpotifyState build() => SpotifyState();
@@ -279,9 +279,19 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
       }
     } else if (np.isPlaying) {
       // Re-sync every poll so the device loop re-anchors to real playback.
-      // livePosition in toTrack() will compensate for the render + transfer
-      // latency that happens between now and when frame 0 is displayed.
       _autoSyncToDevice();
+
+      // ── Next-song preload ───────────────────────────────────────────────
+      // Send a next-song packet when ~12 s remain (10 s firmware swap
+      // threshold + ~1.8 s transfer time). The firmware swaps it in
+      // seamlessly at the 10 s mark — no gap, no manual re-send needed.
+      final int remainingMs = np.currentDuration.inMilliseconds
+                            - np.currentPosition.inMilliseconds;
+      if (remainingMs > 0 && remainingMs <= 12000 && !_nextSongSent) {
+        _nextSongSent = true;
+        _sendNextSongPreload();
+      }
+      if (remainingMs > 15000) _nextSongSent = false;
     }
   }
 
@@ -300,10 +310,25 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
   Future<void> _fetchAlbumArtAndResync(String url) async {
     final result = await _client.fetchAlbumArt(url);
     if (result == null) return;
+
     state = state.copyWith(
       albumArtPixels: result.pixels,
       albumArtSize:   result.width,
     );
+
+    // BUG FIX: the first sync (text-only) is still sending when art arrives —
+    // _autoSyncToDevice() silently drops the art sync because isSending == true.
+    //
+    // Fix: wait for the in-flight send to finish, then sync with art.
+    // Poll up to 20 × 500 ms = 10 s. If the device is still busy after that,
+    // the next regular poll (5 s) will pick up the art anyway.
+    for (int i = 0; i < 20; i++) {
+      final device = ref.read(deviceConnectionProvider);
+      if (!device.isConnected) return;     // disconnected — give up
+      if (!device.isSending) break;        // ready — proceed
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+
     _autoSyncToDevice();
   }
 
@@ -343,6 +368,37 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     await action(token);
     await Future<void>.delayed(delay);
     await refresh();
+  }
+
+  bool _nextSongSent = false;
+
+  /// Build and send a next-song preload packet.
+  ///
+  /// Uses the current scene and a zeroed SpotifyTrack (startPositionMs=0,
+  /// trackDurationMs=0) because we don't know the next song yet — Spotify
+  /// doesn't expose the queue via its public API.  The packet carries the
+  /// same visual frames as the current track but with the bar reset to 0,
+  /// which looks natural for a new song starting.  When Spotify actually
+  /// changes tracks, the next normal poll will send a fresh packet with the
+  /// real track data anyway.
+  ///
+  /// This is fire-and-forget — failures are swallowed in sendNextSong().
+  Future<void> _sendNextSongPreload() async {
+    final device = ref.read(deviceConnectionProvider);
+    if (!device.isConnected || device.isSending) return;
+
+    // Build a timeline with the current scene but bar at position 0.
+    ref.invalidate(timelineProvider);
+    // Wait for timeline to be available (it's async).
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final timeline = ref.read(timelineProvider).value;
+    if (timeline == null || timeline.frameCount == 0) return;
+
+    await ref.read(deviceConnectionProvider.notifier).sendNextSong(
+      timeline,
+      startPositionMs: 0,
+      trackDurationMs: 0, // unknown — firmware will skip bar overdraw
+    );
   }
 
   @override

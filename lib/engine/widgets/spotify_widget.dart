@@ -155,7 +155,7 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     }
     if (layer.showProgress) {
       _drawProgressBar(buffer, track.progressAt(elapsedMs), 0,
-          buffer.height - 2, buffer.width - 1, layer.progressColor);
+          buffer.height - 2, buffer.width, layer.progressColor);
     }
   }
 
