@@ -13,7 +13,6 @@ enum LayerType { text, clock, gif, spotify, pomodoro }
 enum AnimationEffect { none, blink, scrollLeft, scrollRight, pulse, fade, burst }
 enum TextAlignment { left, center, right }
 enum ClockFormat { h24, h12 }
-enum ClockAlignment { left, center, right }
 enum MediaLayout { letterbox, fill, stretch }
 enum SpotifyLayout { artAndText, textOnly, artOnly }
 enum PomodoroState { focus, shortBreak, longBreak }
@@ -110,9 +109,9 @@ String _migrateFontId(String raw) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Clock Layer  (unchanged — omitted for brevity, same as document)
+// Clock Layer
 // ─────────────────────────────────────────────────────────────────────────────
-
+ 
 class ClockLayer extends Layer {
   final Color color;
   final Color hoursColor;
@@ -120,14 +119,14 @@ class ClockLayer extends Layer {
   final Color secondsColor;
   final Color dateColor;
   final Color colonColor;
+  final Color ampmColor;
   final ClockFormat format;
-  final ClockAlignment alignment;
   final bool showDate;
   final bool showSeconds;
   final bool blinkColon;
   final String timezone;
   final LedFontId fontId;
-
+ 
   const ClockLayer({
     required super.id, required super.name,
     this.color = const Color(0xFF21C32C),
@@ -136,19 +135,21 @@ class ClockLayer extends Layer {
     this.secondsColor = const Color(0xFF21C32C),
     this.dateColor = const Color(0xFF21C32C),
     this.colonColor = const Color(0xFF21C32C),
-    this.format = ClockFormat.h24, this.alignment = ClockAlignment.center,
+    this.ampmColor = const Color(0xFF21C32C),
+    this.format = ClockFormat.h24,
     this.showDate = false, this.showSeconds = false, this.blinkColon = true,
     this.timezone = 'local', this.fontId = LedFontId.polymorph,
     super.visible, super.zIndex, super.opacity, super.offset,
   });
-
+ 
   @override LayerType get type => LayerType.clock;
-
+ 
   @override
   ClockLayer copyWith({String? id, String? name, Color? color,
       Color? hoursColor, Color? minutesColor, Color? secondsColor,
-      Color? dateColor, Color? colonColor, ClockFormat? format,
-      ClockAlignment? alignment, bool? showDate, bool? showSeconds,
+      Color? dateColor, Color? colonColor, Color? ampmColor,
+      ClockFormat? format,
+      bool? showDate, bool? showSeconds,
       bool? blinkColon, String? timezone, LedFontId? fontId,
       bool? visible, int? zIndex, double? opacity, Offset? offset}) =>
       ClockLayer(
@@ -157,26 +158,28 @@ class ClockLayer extends Layer {
         minutesColor: minutesColor ?? this.minutesColor,
         secondsColor: secondsColor ?? this.secondsColor,
         dateColor: dateColor ?? this.dateColor, colonColor: colonColor ?? this.colonColor,
-        format: format ?? this.format, alignment: alignment ?? this.alignment,
+        ampmColor: ampmColor ?? this.ampmColor,
+        format: format ?? this.format,
         showDate: showDate ?? this.showDate, showSeconds: showSeconds ?? this.showSeconds,
         blinkColon: blinkColon ?? this.blinkColon, timezone: timezone ?? this.timezone,
         fontId: fontId ?? this.fontId, visible: visible ?? this.visible,
         zIndex: zIndex ?? this.zIndex, opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
       );
-
+ 
   @override
   Map<String, dynamic> toJson() => {
         'type': 'clock', 'id': id, 'name': name, 'color': color.value,
         'hoursColor': hoursColor.value, 'minutesColor': minutesColor.value,
         'secondsColor': secondsColor.value, 'dateColor': dateColor.value,
-        'colonColor': colonColor.value, 'format': format.name,
-        'alignment': alignment.name, 'showDate': showDate, 'showSeconds': showSeconds,
+        'colonColor': colonColor.value, 'ampmColor': ampmColor.value,
+        'format': format.name,
+        'showDate': showDate, 'showSeconds': showSeconds,
         'blinkColon': blinkColon, 'timezone': timezone, 'fontId': fontId.name,
         'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
         'offsetX': offset.dx, 'offsetY': offset.dy,
       };
-
+ 
   factory ClockLayer.fromJson(Map<String, dynamic> j) => ClockLayer(
         id: j['id'] as String, name: j['name'] as String,
         color: Color(j['color'] as int? ?? 0xFF21C32C),
@@ -185,8 +188,10 @@ class ClockLayer extends Layer {
         secondsColor: Color(j['secondsColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         dateColor: Color(j['dateColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         colonColor: Color(j['colonColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
+        // Migrate old saves: fall back to minutesColor, then color
+        ampmColor: Color(j['ampmColor'] as int? ?? j['minutesColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         format: ClockFormat.values.byName(j['format'] as String? ?? 'h24'),
-        alignment: ClockAlignment.values.byName(j['alignment'] as String? ?? 'center'),
+        // 'alignment' key is silently ignored for forward-compat with old saves
         showDate: j['showDate'] as bool? ?? false,
         showSeconds: j['showSeconds'] as bool? ?? false,
         blinkColon: j['blinkColon'] as bool? ?? true,

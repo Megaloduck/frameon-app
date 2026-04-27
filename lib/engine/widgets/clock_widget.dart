@@ -33,7 +33,7 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     final dateStr    = layer.showDate
         ? '${_pad(now.day)}.${_pad(now.month)}.${now.year % 100}'
         : '';
-    final ampmStr = layer.format != ClockFormat.h24
+    final ampmStr = layer.format == ClockFormat.h12
         ? (now.hour < 12 ? 'AM' : 'PM')
         : '';
 
@@ -51,10 +51,10 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     final int timeY  = startY;
     final int dateY  = startY + font.charHeight + 2;
 
-    // ── Time row ──────────────────────────────────────────────────────────
+    // ── Time row — always centered, shifted by offset.dx ─────────────────
     final int totalWidth = _calcTimeWidth(
         font, hoursStr, minutesStr, secondsStr, hasAmPm, ampmStr);
-    int cx = _startX(buffer, totalWidth, layer.alignment, layer.offset.dx.round());
+    int cx = ((buffer.width - totalWidth) ~/ 2) + layer.offset.dx.round();
 
     font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
         x: cx, y: timeY, opacity: layer.opacity);
@@ -81,22 +81,16 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 
     if (hasAmPm) {
       cx += spacingGeneral;
-      font.draw(buffer: buffer, text: ampmStr, color: layer.minutesColor,
+      font.draw(buffer: buffer, text: ampmStr, color: layer.ampmColor,
           x: cx, y: timeY, opacity: layer.opacity);
     }
 
-    // ── Date row — rendered below the time ────────────────────────────────
+    // ── Date row — rendered below the time, also centered ────────────────
     if (hasDate) {
-      _drawAligned(font,
-        buffer:      buffer,
-        text:        dateStr,
-        color:       layer.dateColor,
-        alignment:   layer.alignment,
-        offsetX:     layer.offset.dx.round(),
-        y:           dateY,
-        opacity:     layer.opacity,
-        bufferWidth: buffer.width,
-      );
+      final int dateX = (buffer.width - font.textWidth(dateStr)) ~/ 2
+          + layer.offset.dx.round();
+      font.draw(buffer: buffer, text: dateStr, color: layer.dateColor,
+          x: dateX, y: dateY, opacity: layer.opacity);
     }
   }
 
@@ -134,38 +128,6 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     }
     if (hasAmPm) w += spacingGeneral + font.textWidth(ampm);
     return w;
-  }
-
-  int _startX(PixelBuffer buffer, int totalWidth,
-      ClockAlignment alignment, int offsetX) =>
-      switch (alignment) {
-        ClockAlignment.left   => offsetX,
-        ClockAlignment.center => ((buffer.width - totalWidth) ~/ 2) + offsetX,
-        ClockAlignment.right  => buffer.width - totalWidth + offsetX,
-      };
-
-  void _drawAligned(LedFont font, {
-    required PixelBuffer buffer,
-    required String text,
-    required Color color,
-    required ClockAlignment alignment,
-    required int offsetX,
-    required int y,
-    required double opacity,
-    required int bufferWidth,
-  }) {
-    if (text.isEmpty) return;
-    // All three branches compute x manually so that offsetX (the horizontal
-    // drag offset) is always respected. Previously the center branch called
-    // font.drawCentered() which ignores offsetX, causing the date to stay
-    // horizontally fixed even when the clock was dragged left/right.
-    final int x = switch (alignment) {
-      ClockAlignment.left   => offsetX,
-      ClockAlignment.center => (bufferWidth - font.textWidth(text)) ~/ 2 + offsetX,
-      ClockAlignment.right  => bufferWidth - font.textWidth(text) + offsetX,
-    };
-    font.draw(buffer: buffer, text: text, color: color,
-        x: x, y: y, opacity: opacity);
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
