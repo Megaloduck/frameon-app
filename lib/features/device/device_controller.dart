@@ -40,32 +40,43 @@ final availablePortsProvider = FutureProvider<List<String>>((ref) async {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Isolate-safe packet builders
+// Isolate-safe packet builder args
 //
 // compute() requires top-level or static functions.
-// We pass a _PacketArgs record so both the timeline and the position metadata
-// travel to the background isolate together.
+// We pass a _PacketArgs record so all metadata travels to the background
+// isolate together — including the clock layer and commit time introduced
+// in protocol v1.5.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PacketArgs {
-  final Timeline      timeline;
-  final int           startPositionMs;
-  final int           trackDurationMs;
+  final Timeline       timeline;
+  final int            startPositionMs;
+  final int            trackDurationMs;
   final SpotifyLayout? layout;
-  final bool          showProgress;
-  final Color         progressColor;
-  final bool          isNext;
+  final bool           showProgress;
+  final Color          progressColor;
+  final bool           isNext;
+  final ClockLayer?    clockLayer;
+  final DateTime?      clockCommitTime;
+
   const _PacketArgs({
     required this.timeline,
     required this.startPositionMs,
     required this.trackDurationMs,
     this.layout,
-    this.showProgress = false,
-    this.progressColor = const Color(0xFF21C32C),
-    this.isNext = false,
+    this.showProgress    = false,
+    this.progressColor   = const Color(0xFF21C32C),
+    this.isNext          = false,
+    this.clockLayer,
+    this.clockCommitTime,
   });
 }
 
+/// Converts a [_PacketArgs] into the binary FRM packet on a background isolate.
+///
+/// Called via `compute(_buildPacket, args)` in [DeviceController.sendToDevice]
+/// and [DeviceController.sendNextSong]. Runs CRC-16/CCITT over ~1.2 MB off
+/// the UI thread so the app never freezes during a send.
 Uint8List _buildPacket(_PacketArgs args) {
   const exporter = FrameExporter();
   return args.isNext
@@ -76,6 +87,8 @@ Uint8List _buildPacket(_PacketArgs args) {
           layout:          args.layout,
           showProgress:    args.showProgress,
           progressColor:   args.progressColor,
+          // next-song preload packets do not carry a clock descriptor —
+          // the firmware will keep the existing clock from the active buffer.
         )
       : exporter.export(
           args.timeline,
@@ -84,6 +97,8 @@ Uint8List _buildPacket(_PacketArgs args) {
           layout:          args.layout,
           showProgress:    args.showProgress,
           progressColor:   args.progressColor,
+          clockLayer:      args.clockLayer,
+          clockCommitTime: args.clockCommitTime,
         );
 }
 
@@ -91,6 +106,23 @@ Uint8List _buildPacket(_PacketArgs args) {
 // DeviceController
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Manages the full device lifecycle: scan → connect → send → disconnect.
+///
+/// ## Send flow
+///
+/// 1. Export the current [Timeline] to a binary packet via [FrameExporter],
+///    running on a **background isolate** via `compute()` so the UI thread
+///    is never blocked by the CRC-16 computation over ~1.2 MB.
+/// 2. Stream the packet to the device in 4 KB chunks (progress 0 → 1).
+/// 3. Wait up to [_kResponseTimeoutMs] ms for a 1-byte firmware response:
+///    - `0x06` ACK → success, update state to connected.
+///    - `0x15` NAK → CRC mismatch; automatically retry from step 2 (once).
+///    - `0x1B` ERR → device rejected the header; surface error immediately.
+///    - `null`     → timeout; surface error.
+/// 4. If the retry also NAKs, surface a CRC error.
+///
+/// The UI reads [deviceConnectionProvider] for reactive state and calls
+/// methods on the notifier to drive transitions.
 class DeviceController extends Notifier<DeviceConnectionState> {
   @override
   DeviceConnectionState build() => const DeviceConnectionState();
@@ -99,6 +131,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
+  /// Refresh the list of available ports.
   Future<List<String>> scanPorts() async {
     state = state.copyWith(status: DeviceConnectionStatus.scanning);
     try {
@@ -108,13 +141,14 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       return ports;
     } catch (e) {
       state = state.copyWith(
-        status: DeviceConnectionStatus.error,
+        status:       DeviceConnectionStatus.error,
         errorMessage: 'Scan failed: $e',
       );
       return [];
     }
   }
 
+  /// Connect to [portName].
   Future<void> connect(String portName) async {
     state = state.copyWith(
       status:       DeviceConnectionStatus.connecting,
@@ -133,15 +167,20 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     }
   }
 
+  /// Disconnect from the current port.
   Future<void> disconnect() async {
     await _serial.disconnect();
     state = const DeviceConnectionState();
   }
 
-  /// Export the current timeline and send it to the device as a normal packet.
+  /// Export the current timeline and send it to the connected device.
   ///
   /// Reads [spotifyServiceProvider] to embed the live song position into the
   /// packet header, enabling the firmware's progress-bar prediction feature.
+  ///
+  /// Also extracts any visible [ClockLayer] from the scene and embeds it in
+  /// the v1.5 clock descriptor so the firmware can render the clock live via
+  /// overdrawClock() — no pixels are baked, time is always accurate.
   Future<void> sendToDevice() async {
     if (!state.isConnected) return;
 
@@ -156,22 +195,31 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
     // Embed current song position so firmware can predict bar position.
     final spotify = ref.read(spotifyServiceProvider);
-    final int startPos  = spotify.isConnected
+    final int startPos = spotify.isConnected
         ? spotify.livePosition.inMilliseconds
         : 0;
-    final int trackDur  = spotify.isConnected
+    final int trackDur = spotify.isConnected
         ? spotify.currentDuration.inMilliseconds
         : 0;
 
     // Derive bar geometry from the active Spotify layer (if any).
-    final scene         = ref.read(sceneProvider);
-    final spotifyLayer  = scene.visibleLayers
+    final scene        = ref.read(sceneProvider);
+    final spotifyLayer = scene.visibleLayers
         .whereType<SpotifyLayer>()
         .cast<SpotifyLayer?>()
         .firstOrNull;
-    final spotifyLayout   = spotifyLayer?.layout;
-    final showProgress    = spotifyLayer?.showProgress ?? false;
-    final progressColor   = spotifyLayer?.progressColor ?? const Color(0xFF21C32C);
+    final spotifyLayout  = spotifyLayer?.layout;
+    final showProgress   = spotifyLayer?.showProgress ?? false;
+    final progressColor  = spotifyLayer?.progressColor ?? const Color(0xFF21C32C);
+
+    // Extract the first visible ClockLayer (if any) for the v1.5 clock
+    // descriptor. Capture commit time now — this becomes clockEpochSec.
+    final ClockLayer? clockLayer = scene.visibleLayers
+        .whereType<ClockLayer>()
+        .cast<ClockLayer?>()
+        .firstOrNull;
+    final DateTime? clockCommitTime =
+        clockLayer != null ? DateTime.now() : null;
 
     state = state.copyWith(
       status:       DeviceConnectionStatus.sending,
@@ -189,6 +237,8 @@ class DeviceController extends Notifier<DeviceConnectionState> {
           layout:          spotifyLayout,
           showProgress:    showProgress,
           progressColor:   progressColor,
+          clockLayer:      clockLayer,
+          clockCommitTime: clockCommitTime,
         ),
       );
 
@@ -223,9 +273,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   /// The firmware stores it in a separate buffer and swaps it in automatically
   /// 10 s before the current track ends — no visible gap or manual re-send.
   ///
-  /// Called by [spotifyServiceProvider] ~10 s before song end (when
-  /// [currentPosition] >= [currentDuration] - 12 s, giving ~1.8 s build time
-  /// + ~1.8 s transfer time before the 10 s swap threshold triggers).
+  /// Called by [spotifyServiceProvider] ~12 s before song end.
   Future<void> sendNextSong(
     Timeline timeline, {
     required int startPositionMs,
@@ -253,6 +301,13 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   // ── Private ───────────────────────────────────────────────────────────────
 
+  /// Send [packet] with automatic NAK retry.
+  ///
+  /// Attempts up to [_kMaxAttempts] times. On each attempt:
+  ///   1. Streams the full packet with progress callbacks.
+  ///   2. Reads the 1-byte device response within [_kResponseTimeoutMs] ms.
+  ///
+  /// Throws [SerialException] if all attempts fail or a hard error occurs.
   Future<void> _sendWithRetry(Uint8List packet) async {
     for (int attempt = 1; attempt <= _kMaxAttempts; attempt++) {
       if (attempt > 1) {
@@ -301,6 +356,10 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+// ─────────────────────────────────────────────────────────────────────────────
 
 final deviceConnectionProvider =
     NotifierProvider<DeviceController, DeviceConnectionState>(

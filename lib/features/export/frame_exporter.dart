@@ -127,6 +127,7 @@ class FrameExporter {
         layout: layout,
         showProgress: showProgress,
         progressColor: progressColor,
+        // next-song preload packets never carry a clock descriptor.
       );
 
   Uint8List _build(
@@ -193,11 +194,17 @@ class FrameExporter {
       if (clockLayer.blinkColon)                clockFlags |= _kClkBlink;
       if (clockLayer.format == ClockFormat.h12) clockFlags |= _kClkAmPm;
 
-      // Unix epoch seconds at commit time
+      // Unix epoch seconds at commit time (always UTC).
       final int epochSec = clockCommitTime.toUtc().millisecondsSinceEpoch ~/ 1000;
 
-      // Timezone offset in minutes from the _kTzOffsets table
-      final int tzMin = _tzOffsetMinutes(clockLayer.timezone);
+      // Timezone offset in minutes.
+      //
+      // 'local' is special: instead of looking up a fixed offset table entry
+      // (which would yield 0 = UTC), we read the actual OS timezone offset
+      // directly from the commit DateTime. clockCommitTime is created by
+      // DateTime.now() on the host machine, so timeZoneOffset is the real
+      // local UTC offset including DST.
+      final int tzMin = _tzOffsetMinutes(clockLayer.timezone, clockCommitTime);
 
       packet[off++] = clockFlags;                                    // [29]
       bd.setUint32(off, epochSec,   Endian.big); off += 4;          // [30-33]
@@ -215,7 +222,7 @@ class FrameExporter {
       bd.setUint16(off, _colorToRgb565(clockLayer.dateColor),     Endian.big); off += 2;
       bd.setUint16(off, _colorToRgb565(clockLayer.ampmColor),     Endian.big); off += 2;
     } else {
-      // No clock — zero out all clock fields
+      // No clock — zero out all 23 clock descriptor bytes.
       for (int i = 0; i < 23; i++) packet[off++] = 0x00;
     }
 
@@ -228,7 +235,7 @@ class FrameExporter {
       off += bytesPerFrame;
     }
 
-    // CRC
+    // CRC-16/CCITT trailer
     bd.setUint16(off, _crc16(packet, 0, off), Endian.big);
     return packet;
   }
@@ -247,40 +254,55 @@ class FrameExporter {
   }
 }
 
-/// Returns the signed timezone offset in minutes for the given timezone ID.
-/// Matches _kTzOffsets in clock_widget.dart (hours → minutes).
-int _tzOffsetMinutes(String timezone) {
+/// Returns the signed timezone offset in minutes for the given [timezone] ID.
+///
+/// For the special value `'local'`, the offset is derived directly from
+/// [commitTime]'s [DateTime.timeZoneOffset] — this is the real OS-level local
+/// offset including DST, and avoids the old bug where 'local' mapped to 0
+/// (UTC+0) via the lookup table.
+///
+/// For all named timezones, a static fixed-offset table is used. Note these
+/// are standard (non-DST) offsets — users in DST regions should pick the
+/// explicit timezone that matches their current wall time if DST is a concern.
+int _tzOffsetMinutes(String timezone, DateTime commitTime) {
+  // 'local' — use the host machine's actual UTC offset at commit time.
+  // This is always correct regardless of DST because DateTime.now() already
+  // has the right timeZoneOffset baked in by the Dart runtime.
+  if (timezone == 'local') {
+    return commitTime.timeZoneOffset.inMinutes;
+  }
+
   const Map<String, double> offsets = {
-    'UTC':                  0,   'Europe/London':        0,
-    'Europe/Lisbon':        0,   'Europe/Paris':         1,
-    'Europe/Berlin':        1,   'Europe/Rome':          1,
-    'Europe/Amsterdam':     1,   'Europe/Madrid':        1,
-    'Europe/Warsaw':        1,   'Europe/Athens':        2,
-    'Europe/Bucharest':     2,   'Europe/Helsinki':      2,
-    'Europe/Istanbul':      3,   'Europe/Moscow':        3,
-    'Asia/Riyadh':          3,   'Asia/Dubai':           4,
-    'Asia/Baku':            4,   'Asia/Kabul':           4.5,
-    'Asia/Karachi':         5,   'Asia/Tashkent':        5,
-    'Asia/Kolkata':         5.5, 'Asia/Colombo':         5.5,
-    'Asia/Kathmandu':       5.75,'Asia/Dhaka':           6,
-    'Asia/Almaty':          6,   'Asia/Rangoon':         6.5,
-    'Asia/Bangkok':         7,   'Asia/Jakarta':         7,
-    'Asia/Ho_Chi_Minh':     7,   'Asia/Singapore':       8,
-    'Asia/Shanghai':        8,   'Asia/Taipei':          8,
-    'Asia/Kuala_Lumpur':    8,   'Asia/Manila':          8,
-    'Asia/Seoul':           9,   'Asia/Tokyo':           9,
-    'Australia/Darwin':     9.5, 'Australia/Brisbane':   10,
-    'Australia/Adelaide':   9.5, 'Australia/Sydney':     10,
-    'Pacific/Auckland':     12,  'Pacific/Fiji':         12,
-    'Pacific/Honolulu':    -10,  'America/Anchorage':   -9,
-    'America/Los_Angeles': -8,   'America/Denver':      -7,
-    'America/Phoenix':     -7,   'America/Chicago':     -6,
-    'America/New_York':    -5,   'America/Toronto':     -5,
-    'America/Halifax':     -4,   'America/Sao_Paulo':   -3,
-    'America/Buenos_Aires':-3,   'Atlantic/Azores':     -1,
+    'UTC':                  0,
+    'Europe/London':        0,   'Europe/Lisbon':        0,
+    'Europe/Paris':         1,   'Europe/Berlin':        1,
+    'Europe/Rome':          1,   'Europe/Amsterdam':     1,
+    'Europe/Madrid':        1,   'Europe/Warsaw':        1,
+    'Europe/Athens':        2,   'Europe/Bucharest':     2,
+    'Europe/Helsinki':      2,   'Europe/Istanbul':      3,
+    'Europe/Moscow':        3,   'Asia/Riyadh':          3,
+    'Asia/Dubai':           4,   'Asia/Baku':            4,
+    'Asia/Kabul':           4.5, 'Asia/Karachi':         5,
+    'Asia/Tashkent':        5,   'Asia/Kolkata':         5.5,
+    'Asia/Colombo':         5.5, 'Asia/Kathmandu':       5.75,
+    'Asia/Dhaka':           6,   'Asia/Almaty':          6,
+    'Asia/Rangoon':         6.5, 'Asia/Bangkok':         7,
+    'Asia/Jakarta':         7,   'Asia/Ho_Chi_Minh':     7,
+    'Asia/Singapore':       8,   'Asia/Shanghai':        8,
+    'Asia/Taipei':          8,   'Asia/Kuala_Lumpur':    8,
+    'Asia/Manila':          8,   'Asia/Seoul':           9,
+    'Asia/Tokyo':           9,   'Australia/Darwin':     9.5,
+    'Australia/Brisbane':   10,  'Australia/Adelaide':   9.5,
+    'Australia/Sydney':     10,  'Pacific/Auckland':     12,
+    'Pacific/Fiji':         12,  'Pacific/Honolulu':    -10,
+    'America/Anchorage':   -9,   'America/Los_Angeles': -8,
+    'America/Denver':      -7,   'America/Phoenix':     -7,
+    'America/Chicago':     -6,   'America/New_York':    -5,
+    'America/Toronto':     -5,   'America/Halifax':     -4,
+    'America/Sao_Paulo':   -3,   'America/Buenos_Aires':-3,
+    'Atlantic/Azores':     -1,
   };
-  // 'local' → 0 offset; firmware on device won't have OS TZ, so local
-  // is treated as UTC+0 here. The user should pick an explicit timezone.
+
   final double hours = offsets[timezone] ?? 0;
   return (hours * 60).round();
 }
