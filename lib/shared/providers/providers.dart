@@ -315,13 +315,31 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     await completer.future;
     if (gen != _generation) return state.value ?? Timeline();
 
+    // When a clock with showSeconds is visible, force 1 frame per second
+    // (frameDurationMs = 1000) so 60 frames covers exactly one full minute.
+    // This sidesteps the 300-frame cap that would otherwise truncate the loop
+    // at 30 s (at 10 fps) and cause seconds to reset mid-way on the device.
+    final bool hasClockSeconds = scene.visibleLayers.any(
+        (l) => l is ClockLayer && l.showSeconds);
+
     final frameCount      = _calculateFrameCount(scene, gifFrameCounts);
     final frameDurationMs = (1000 / scene.fps).round();
+
+    // Extract the first visible ClockLayer (if any) to embed in the header.
+    // The firmware will render it live via overdrawClock().
+    final ClockLayer? clockLayer = scene.visibleLayers
+        .whereType<ClockLayer>()
+        .cast<ClockLayer?>()
+        .firstOrNull;
+    // Capture commit time now — this is what goes into clockEpochSec.
+    final DateTime? clockCommitTime = clockLayer != null ? DateTime.now() : null;
 
     return renderer.render(
       scene,
       frameDurationMs: frameDurationMs,
       frameCount: frameCount,
+      clockLayer: clockLayer,
+      clockCommitTime: clockCommitTime,
     );
   }
 }

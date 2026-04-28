@@ -19,8 +19,22 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
   static ProviderContainer? _container;
   static void init(ProviderContainer container) => _container = container;
 
+  /// Render the clock layer into [buffer] for the live preview only.
+  ///
+  /// During device export this method is a no-op — the clock descriptor
+  /// is embedded in the packet header (v1.5) and the firmware renders the
+  /// clock live via overdrawClock() using millis(). This means all time
+  /// fields (seconds, minutes, hours, blink-colon, date) are always accurate
+  /// on the device with no baked pixels and no latency compensation.
+  ///
+  /// [isExport] is set true by the renderer during timeline baking so the
+  /// buffer stays transparent, leaving the frame background untouched.
   @override
-  void render(ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
+  void render(ClockLayer layer, PixelBuffer buffer, int elapsedMs,
+      {bool isExport = false}) {
+    // Export path: return immediately — firmware handles clock rendering.
+    if (isExport) return;
+
     final font = LedFontLibrary.get(layer.fontId);
     final DateTime now = _getTimeForZone(layer.timezone);
 
