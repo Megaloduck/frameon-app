@@ -165,11 +165,11 @@ class PomodoroToolboxRight extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        tbGreenDropdown<PomodoroLayout>(
-            context,
-            PomodoroLayout.values,
-            layer.layout,
-            (v) => n.updateLayer(layer.copyWith(layout: v))),
+        // ── Layout dropdown with human-readable labels ──────────────────
+        _PomodoroLayoutDropdown(
+          current: layer.layout,
+          onChanged: (v) => n.updateLayer(layer.copyWith(layout: v)),
+        ),
         const SizedBox(height: 8),
         TbToggleRow(
             label: 'Show seconds',
@@ -195,4 +195,55 @@ class PomodoroToolboxRight extends ConsumerWidget {
       ],
     );
   }
-} 
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom layout dropdown  — maps enum values to readable names
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PomodoroLayoutDropdown extends StatelessWidget {
+  final PomodoroLayout current;
+  final ValueChanged<PomodoroLayout> onChanged;
+
+  const _PomodoroLayoutDropdown({
+    required this.current,
+    required this.onChanged,
+  });
+
+  static String _label(PomodoroLayout v) => switch (v) {
+        PomodoroLayout.splitLayout  => 'Split Layout',
+        PomodoroLayout.minimalist   => 'Minimalist',
+
+      };
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: kGreen.withOpacity(0.1),
+          border: Border.all(color: kGreen.withOpacity(0.5)),
+          borderRadius: const BorderRadius.all(kRadiusSm),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<PomodoroLayout>(
+            value: current,
+            isExpanded: true,
+            isDense: true,
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: kGreen),
+            dropdownColor: context.tSurface,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                size: 16, color: kGreen),
+            items: PomodoroLayout.values
+                .map((v) => DropdownMenuItem(
+                      value: v,
+                      child: Text(_label(v)),
+                    ))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
+        ),
+      );
+}

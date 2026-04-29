@@ -16,7 +16,7 @@ enum ClockFormat { h24, h12 }
 enum MediaLayout { letterbox, fill, stretch }
 enum SpotifyLayout { artAndText, textOnly, artOnly }
 enum PomodoroState { focus, shortBreak, longBreak }
-enum PomodoroLayout { defaultTimer }
+enum PomodoroLayout { splitLayout, minimalist}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Base Layer
@@ -435,7 +435,7 @@ class PomodoroLayer extends Layer {
     required super.id, required super.name,
     this.focusDurationMinutes = 25, this.shortBreakMinutes = 5,
     this.longBreakMinutes = 15, this.sessionsBeforeLongBreak = 4,
-    this.layout = PomodoroLayout.defaultTimer,
+    this.layout = PomodoroLayout.splitLayout,
     this.showSeconds = true, this.showSession = false, this.blinkColor = true,
     this.focusColor = const Color(0xFFFFCC00),
     this.breakColor = const Color(0xFF21C32C),
@@ -494,7 +494,7 @@ class PomodoroLayer extends Layer {
         shortBreakMinutes: j['shortBreakMinutes'] as int? ?? 5,
         longBreakMinutes: j['longBreakMinutes'] as int? ?? 15,
         sessionsBeforeLongBreak: j['sessionsBeforeLongBreak'] as int? ?? 4,
-        layout: PomodoroLayout.values.byName(j['layout'] as String? ?? 'defaultTimer'),
+        layout: PomodoroLayout.values.byName(j['layout'] as String? ?? 'splitLayout'),
         showSeconds: j['showSeconds'] as bool? ?? true,
         showSession: j['showSession'] as bool? ?? false,
         blinkColor: j['blinkColor'] as bool? ?? true,

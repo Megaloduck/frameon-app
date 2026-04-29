@@ -8,6 +8,7 @@ import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 import '../../engine/scene/layer.dart';
 import '../../engine/scene/timeline.dart';
+import '../../engine/widgets/pomodoro_widget.dart';
 import '../../features/export/frame_exporter.dart';
 import '../../features/settings/settings_dialog.dart';
 import '../../services/serial/serial_service.dart';
@@ -44,20 +45,22 @@ final availablePortsProvider = FutureProvider<List<String>>((ref) async {
 //
 // compute() requires top-level or static functions.
 // We pass a _PacketArgs record so all metadata travels to the background
-// isolate together — including the clock layer and commit time introduced
-// in protocol v1.5.
+// isolate together — including clock (v1.5) and pomodoro state (v1.8).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PacketArgs {
-  final Timeline       timeline;
-  final int            startPositionMs;
-  final int            trackDurationMs;
-  final SpotifyLayout? layout;
-  final bool           showProgress;
-  final Color          progressColor;
-  final bool           isNext;
-  final ClockLayer?    clockLayer;
-  final DateTime?      clockCommitTime;
+  final Timeline            timeline;
+  final int                 startPositionMs;
+  final int                 trackDurationMs;
+  final SpotifyLayout?      layout;
+  final bool                showProgress;
+  final Color               progressColor;
+  final bool                isNext;
+  final ClockLayer?         clockLayer;
+  final DateTime?           clockCommitTime;
+  // v1.8 — Pomodoro live overdraw
+  final PomodoroLayer?      pomodoroLayer;
+  final PomodoroTimerState? pomodoroState;
 
   const _PacketArgs({
     required this.timeline,
@@ -69,6 +72,8 @@ class _PacketArgs {
     this.isNext          = false,
     this.clockLayer,
     this.clockCommitTime,
+    this.pomodoroLayer,
+    this.pomodoroState,
   });
 }
 
@@ -87,8 +92,7 @@ Uint8List _buildPacket(_PacketArgs args) {
           layout:          args.layout,
           showProgress:    args.showProgress,
           progressColor:   args.progressColor,
-          // next-song preload packets do not carry a clock descriptor —
-          // the firmware will keep the existing clock from the active buffer.
+          // next-song preload packets do not carry clock or pomodoro descriptors.
         )
       : exporter.export(
           args.timeline,
@@ -99,6 +103,8 @@ Uint8List _buildPacket(_PacketArgs args) {
           progressColor:   args.progressColor,
           clockLayer:      args.clockLayer,
           clockCommitTime: args.clockCommitTime,
+          pomodoroLayer:   args.pomodoroLayer,
+          pomodoroState:   args.pomodoroState,
         );
 }
 
@@ -181,6 +187,10 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   /// Also extracts any visible [ClockLayer] from the scene and embeds it in
   /// the v1.5 clock descriptor so the firmware can render the clock live via
   /// overdrawClock() — no pixels are baked, time is always accurate.
+  ///
+  /// Also extracts any visible [PomodoroLayer] + live timer state and embeds
+  /// them in the v1.8 pomodoro descriptor so the firmware can tick the
+  /// countdown live via overdrawPomodoro().
   Future<void> sendToDevice() async {
     if (!state.isConnected) return;
 
@@ -221,6 +231,16 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     final DateTime? clockCommitTime =
         clockLayer != null ? DateTime.now() : null;
 
+    // Extract the first visible PomodoroLayer + live timer state (v1.8).
+    final PomodoroLayer? pomodoroLayer = scene.visibleLayers
+        .whereType<PomodoroLayer>()
+        .cast<PomodoroLayer?>()
+        .firstOrNull;
+    // Snapshot the timer state at this exact moment (the commit instant).
+    // The firmware subtracts elapsed millis() from remainingSec each frame.
+    final PomodoroTimerState? pomodoroState =
+        pomodoroLayer != null ? ref.read(pomodoroServiceProvider) : null;
+
     state = state.copyWith(
       status:       DeviceConnectionStatus.sending,
       sendProgress: 0,
@@ -239,6 +259,8 @@ class DeviceController extends Notifier<DeviceConnectionState> {
           progressColor:   progressColor,
           clockLayer:      clockLayer,
           clockCommitTime: clockCommitTime,
+          pomodoroLayer:   pomodoroLayer,
+          pomodoroState:   pomodoroState,
         ),
       );
 
@@ -253,7 +275,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       final bool portStillOpen = _serial.isConnected;
       if (!portStillOpen) await _serial.disconnect();
       state = state.copyWith(
-        status:       portStillOpen
+        status: portStillOpen
             ? DeviceConnectionStatus.error
             : DeviceConnectionStatus.lost,
         errorMessage: e.message,
@@ -289,6 +311,8 @@ class DeviceController extends Notifier<DeviceConnectionState> {
           startPositionMs: startPositionMs,
           trackDurationMs: trackDurationMs,
           isNext:          true,
+          // next-song preload carries no clock or pomodoro descriptor —
+          // the firmware keeps the existing overdraw state from the active buffer.
         ),
       );
       await _sendWithRetry(packet);
@@ -346,22 +370,11 @@ class DeviceController extends Notifier<DeviceConnectionState> {
             '${_kResponseTimeoutMs ~/ 1000} s. '
             'Check the connection and try again.',
           );
-
-        default:
-          throw SerialException(
-            'Unexpected response byte: '
-            '0x${response!.toRadixString(16).toUpperCase()}.',
-          );
       }
     }
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
-
 final deviceConnectionProvider =
     NotifierProvider<DeviceController, DeviceConnectionState>(
-  DeviceController.new,
-);
+        DeviceController.new);

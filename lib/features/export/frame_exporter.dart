@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'dart:typed_data';
 import '../../engine/scene/layer.dart';
 import '../../engine/scene/timeline.dart';
+import '../../engine/widgets/pomodoro_widget.dart';
 
 /// Packet header magic bytes.
 const List<int> _kMagic = [0x46, 0x52, 0x4D]; // "FRM"
@@ -17,6 +18,18 @@ const int _kClkSeconds = 0x04;
 const int _kClkDate    = 0x08;
 const int _kClkBlink   = 0x10;
 const int _kClkAmPm    = 0x20;
+
+// ── Pomodoro flag bits (must match frameon.h POMO_FLAG_*) ────────────────────
+const int _kPomoPresent  = 0x01;
+const int _kPomoRunning  = 0x02;
+const int _kPomoSeconds  = 0x04;
+const int _kPomoSession  = 0x08;
+const int _kPomoBlink    = 0x10;
+
+// ── Pomodoro phase values (must match POMO_PHASE_* in pomodorohelper.h) ──────
+const int _kPomoPhasesFocus      = 0;
+const int _kPomoPhasesShortBreak = 1;
+const int _kPomoPhasesLongBreak  = 2;
 
 /// Progress bar geometry per [SpotifyLayout].
 int _colorToRgb565(Color color) {
@@ -46,7 +59,7 @@ int _tzMinToInt16(int minutes) => minutes.clamp(-1440, 1440);
 /// The [FrameExporter] converts a [Timeline] into the binary packet format
 /// transmitted to the LED matrix device over Serial.
 ///
-/// ## Packet Layout v1.5 (header = 52 bytes)
+/// ## Packet Layout v1.8 (header = 68 bytes)
 ///
 /// ```
 /// [0-2]   "FRM" magic
@@ -76,7 +89,17 @@ int _tzMinToInt16(int minutes) => minutes.clamp(-1440, 1440);
 /// [46-47] colonColor    uint16 BE RGB565
 /// [48-49] dateColor     uint16 BE RGB565
 /// [50-51] ampmColor     uint16 BE RGB565
-/// [52..N] RGB565 pixel data
+/// ── v1.8 Pomodoro descriptor ─────────────────────────────────────────────
+/// [52]    pomodoroFlags  uint8   bit0=present bit1=running bit2=seconds
+///                                bit3=session bit4=blink
+/// [53-56] pomodoroRemSec uint32 BE  seconds remaining at commit
+/// [57]    pomodoroPhase  uint8   0=focus 1=shortBreak 2=longBreak
+/// [58]    pomodoroSession uint8  current session (1-based)
+/// [59]    pomodoroOffsetX int8
+/// [60]    pomodoroOffsetY int8
+/// [61-62] pomodoroColor  uint16 BE RGB565  (active phase colour)
+/// [63-67] reserved       5 × 0x00
+/// [68..N] RGB565 pixel data
 /// [N+1-2] CRC-16/CCITT
 /// ```
 class FrameExporter {
@@ -85,7 +108,7 @@ class FrameExporter {
 
   const FrameExporter({this.matrixWidth = 64, this.matrixHeight = 32});
 
-  static const int _headerSize = 52; // v1.5
+  static const int _headerSize = 68; // v1.8
 
   /// Build a normal-commit packet.
   Uint8List export(
@@ -97,6 +120,8 @@ class FrameExporter {
     Color progressColor = const Color(0xFF21C32C),
     ClockLayer? clockLayer,
     DateTime? clockCommitTime,
+    PomodoroLayer? pomodoroLayer,
+    PomodoroTimerState? pomodoroState,
   }) =>
       _build(
         timeline,
@@ -108,6 +133,8 @@ class FrameExporter {
         progressColor: progressColor,
         clockLayer: clockLayer,
         clockCommitTime: clockCommitTime,
+        pomodoroLayer: pomodoroLayer,
+        pomodoroState: pomodoroState,
       );
 
   /// Build a next-song preload packet.
@@ -127,7 +154,7 @@ class FrameExporter {
         layout: layout,
         showProgress: showProgress,
         progressColor: progressColor,
-        // next-song preload packets never carry a clock descriptor.
+        // next-song preload packets never carry clock or pomodoro descriptors.
       );
 
   Uint8List _build(
@@ -140,6 +167,8 @@ class FrameExporter {
     Color progressColor = const Color(0xFF21C32C),
     ClockLayer? clockLayer,
     DateTime? clockCommitTime,
+    PomodoroLayer? pomodoroLayer,
+    PomodoroTimerState? pomodoroState,
   }) {
     if (timeline.frameCount == 0) {
       throw StateError('Cannot export an empty timeline.');
@@ -186,7 +215,6 @@ class FrameExporter {
 
     // ── v1.5 Clock descriptor [29..51] ───────────────────────────────────
     if (clockLayer != null && clockCommitTime != null) {
-      // Build clockFlags
       int clockFlags = _kClkPresent;
       if (clockLayer.format == ClockFormat.h12) clockFlags |= _kClkH12;
       if (clockLayer.showSeconds)               clockFlags |= _kClkSeconds;
@@ -194,115 +222,130 @@ class FrameExporter {
       if (clockLayer.blinkColon)                clockFlags |= _kClkBlink;
       if (clockLayer.format == ClockFormat.h12) clockFlags |= _kClkAmPm;
 
-      // Unix epoch seconds at commit time (always UTC).
       final int epochSec = clockCommitTime.toUtc().millisecondsSinceEpoch ~/ 1000;
 
-      // Timezone offset in minutes.
-      //
-      // 'local' is special: instead of looking up a fixed offset table entry
-      // (which would yield 0 = UTC), we read the actual OS timezone offset
-      // directly from the commit DateTime. clockCommitTime is created by
-      // DateTime.now() on the host machine, so timeZoneOffset is the real
-      // local UTC offset including DST.
-      final int tzMin = _tzOffsetMinutes(clockLayer.timezone, clockCommitTime);
+      final int tzMin = clockLayer.timezone == 'local'
+          ? clockCommitTime.timeZoneOffset.inMinutes
+          : _tzOffsetForId(clockLayer.timezone);
 
-      packet[off++] = clockFlags;                                    // [29]
-      bd.setUint32(off, epochSec,   Endian.big); off += 4;          // [30-33]
-      bd.setInt16(off,  tzMin,      Endian.big); off += 2;          // [34-35]
-      packet[off++] = _fontIdToByte(clockLayer.fontId);             // [36]
-      packet[off++] = clockLayer.offset.dx.round().clamp(-128,127); // [37] int8
-      packet[off++] = clockLayer.offset.dy.round().clamp(-128,127); // [38] int8
-      packet[off++] = 0x00;                                         // [39] reserved
-
-      // Per-element colors [40-51]
+      packet[off++] = clockFlags;
+      bd.setUint32(off, epochSec,                   Endian.big); off += 4;
+      bd.setInt16 (off, _tzMinToInt16(tzMin),        Endian.big); off += 2;
+      packet[off++] = _fontIdToByte(clockLayer.fontId);
+      packet[off++] = clockLayer.offset.dx.round().clamp(-128, 127) & 0xFF;
+      packet[off++] = clockLayer.offset.dy.round().clamp(-128, 127) & 0xFF;
+      packet[off++] = 0x00; // reserved [39]
       bd.setUint16(off, _colorToRgb565(clockLayer.hoursColor),   Endian.big); off += 2;
-      bd.setUint16(off, _colorToRgb565(clockLayer.minutesColor),  Endian.big); off += 2;
-      bd.setUint16(off, _colorToRgb565(clockLayer.secondsColor),  Endian.big); off += 2;
-      bd.setUint16(off, _colorToRgb565(clockLayer.colonColor),    Endian.big); off += 2;
-      bd.setUint16(off, _colorToRgb565(clockLayer.dateColor),     Endian.big); off += 2;
-      bd.setUint16(off, _colorToRgb565(clockLayer.ampmColor),     Endian.big); off += 2;
+      bd.setUint16(off, _colorToRgb565(clockLayer.minutesColor), Endian.big); off += 2;
+      bd.setUint16(off, _colorToRgb565(clockLayer.secondsColor), Endian.big); off += 2;
+      bd.setUint16(off, _colorToRgb565(clockLayer.colonColor),   Endian.big); off += 2;
+      bd.setUint16(off, _colorToRgb565(clockLayer.dateColor),    Endian.big); off += 2;
+      bd.setUint16(off, _colorToRgb565(clockLayer.ampmColor),    Endian.big); off += 2;
     } else {
-      // No clock — zero out all 23 clock descriptor bytes.
-      for (int i = 0; i < 23; i++) packet[off++] = 0x00;
+      // No clock — write 23 zero bytes to fill [29..51].
+      off += 23;
     }
 
-    assert(off == _headerSize, 'Header size mismatch: $off != $_headerSize');
+    // ── v1.8 Pomodoro descriptor [52..67] ─────────────────────────────────
+    if (pomodoroLayer != null && pomodoroState != null) {
+      int pomoFlags = _kPomoPresent;
+      if (pomodoroState.isRunning)    pomoFlags |= _kPomoRunning;
+      if (pomodoroLayer.showSeconds)  pomoFlags |= _kPomoSeconds;
+      if (pomodoroLayer.showSession)  pomoFlags |= _kPomoSession;
+      if (pomodoroLayer.blinkColor)   pomoFlags |= _kPomoBlink;
 
-    // Pixel payload
+      final int remainingSec = pomodoroState.remaining.inSeconds;
+
+      final int phase = switch (pomodoroState.phase) {
+        PomodoroState.focus      => _kPomoPhasesFocus,
+        PomodoroState.shortBreak => _kPomoPhasesShortBreak,
+        PomodoroState.longBreak  => _kPomoPhasesLongBreak,
+      };
+
+      // Active phase colour (focus / short break / long break).
+      final Color activeColor = switch (pomodoroState.phase) {
+        PomodoroState.focus      => pomodoroLayer.focusColor,
+        PomodoroState.shortBreak => pomodoroLayer.breakColor,
+        PomodoroState.longBreak  => pomodoroLayer.longBreakColor,
+      };
+
+      packet[off++] = pomoFlags;
+      bd.setUint32(off, remainingSec,                     Endian.big); off += 4;
+      packet[off++] = phase;
+      packet[off++] = pomodoroState.session.clamp(0, 255);
+      packet[off++] = pomodoroLayer.offset.dx.round().clamp(-128, 127) & 0xFF;
+      packet[off++] = pomodoroLayer.offset.dy.round().clamp(-128, 127) & 0xFF;
+      bd.setUint16(off, _colorToRgb565(activeColor),      Endian.big); off += 2;
+      // 5 reserved bytes [63..67]
+      for (int i = 0; i < 5; i++) packet[off++] = 0x00;
+    } else {
+      // No pomodoro — write 16 zero bytes to fill [52..67].
+      off += 16;
+    }
+
+    // ── Pixel payload ─────────────────────────────────────────────────────
+    assert(off == _headerSize, 'Header size mismatch: wrote $off, expected $_headerSize');
+    int pixOff = _headerSize;
     for (final frame in timeline.frames) {
-      assert(frame.data.length == bytesPerFrame);
-      packet.setRange(off, off + bytesPerFrame, frame.data);
-      off += bytesPerFrame;
+      for (int i = 0; i < frame.data.length; i++) {
+        packet[pixOff++] = frame.data[i];
+      }
     }
 
-    // CRC-16/CCITT trailer
-    bd.setUint16(off, _crc16(packet, 0, off), Endian.big);
+    // ── CRC-16/CCITT ──────────────────────────────────────────────────────
+    final int crc = _crc16(packet, _headerSize + payloadBytes);
+    packet[_headerSize + payloadBytes]     = (crc >> 8) & 0xFF;
+    packet[_headerSize + payloadBytes + 1] =  crc       & 0xFF;
+
     return packet;
   }
 
-  static int _crc16(Uint8List data, int start, int end) {
+  // ── CRC-16/CCITT (poly 0x1021, init 0xFFFF) ──────────────────────────────
+  int _crc16(Uint8List data, int length) {
     int crc = 0xFFFF;
-    for (int i = start; i < end; i++) {
+    for (int i = 0; i < length; i++) {
       crc ^= data[i] << 8;
       for (int j = 0; j < 8; j++) {
-        crc = (crc & 0x8000) != 0
-            ? ((crc << 1) ^ 0x1021) & 0xFFFF
-            : (crc << 1) & 0xFFFF;
+        crc = (crc & 0x8000) != 0 ? ((crc << 1) ^ 0x1021) : (crc << 1);
+        crc &= 0xFFFF;
       }
     }
     return crc;
   }
-}
 
-/// Returns the signed timezone offset in minutes for the given [timezone] ID.
-///
-/// For the special value `'local'`, the offset is derived directly from
-/// [commitTime]'s [DateTime.timeZoneOffset] — this is the real OS-level local
-/// offset including DST, and avoids the old bug where 'local' mapped to 0
-/// (UTC+0) via the lookup table.
-///
-/// For all named timezones, a static fixed-offset table is used. Note these
-/// are standard (non-DST) offsets — users in DST regions should pick the
-/// explicit timezone that matches their current wall time if DST is a concern.
-int _tzOffsetMinutes(String timezone, DateTime commitTime) {
-  // 'local' — use the host machine's actual UTC offset at commit time.
-  // This is always correct regardless of DST because DateTime.now() already
-  // has the right timeZoneOffset baked in by the Dart runtime.
-  if (timezone == 'local') {
-    return commitTime.timeZoneOffset.inMinutes;
+  // ── Timezone offset lookup (non-local IDs) ────────────────────────────────
+  // Only a representative subset — extend as needed.
+  static int _tzOffsetForId(String id) {
+    const Map<String, int> _table = {
+      'UTC': 0,
+      'Europe/London': 0,
+      'Europe/Lisbon': 0,
+      'Europe/Paris': 60,
+      'Europe/Berlin': 60,
+      'Europe/Rome': 60,
+      'Europe/Amsterdam': 60,
+      'Europe/Madrid': 60,
+      'Europe/Warsaw': 60,
+      'Europe/Athens': 120,
+      'Europe/Helsinki': 120,
+      'Europe/Moscow': 180,
+      'Asia/Dubai': 240,
+      'Asia/Karachi': 300,
+      'Asia/Kolkata': 330,
+      'Asia/Dhaka': 360,
+      'Asia/Bangkok': 420,
+      'Asia/Singapore': 480,
+      'Asia/Tokyo': 540,
+      'Australia/Sydney': 600,
+      'Pacific/Auckland': 720,
+      'America/Sao_Paulo': -180,
+      'America/New_York': -300,
+      'America/Chicago': -360,
+      'America/Denver': -420,
+      'America/Los_Angeles': -480,
+      'America/Anchorage': -540,
+      'Pacific/Honolulu': -600,
+    };
+    return _table[id] ?? 0;
   }
-
-  const Map<String, double> offsets = {
-    'UTC':                  0,
-    'Europe/London':        0,   'Europe/Lisbon':        0,
-    'Europe/Paris':         1,   'Europe/Berlin':        1,
-    'Europe/Rome':          1,   'Europe/Amsterdam':     1,
-    'Europe/Madrid':        1,   'Europe/Warsaw':        1,
-    'Europe/Athens':        2,   'Europe/Bucharest':     2,
-    'Europe/Helsinki':      2,   'Europe/Istanbul':      3,
-    'Europe/Moscow':        3,   'Asia/Riyadh':          3,
-    'Asia/Dubai':           4,   'Asia/Baku':            4,
-    'Asia/Kabul':           4.5, 'Asia/Karachi':         5,
-    'Asia/Tashkent':        5,   'Asia/Kolkata':         5.5,
-    'Asia/Colombo':         5.5, 'Asia/Kathmandu':       5.75,
-    'Asia/Dhaka':           6,   'Asia/Almaty':          6,
-    'Asia/Rangoon':         6.5, 'Asia/Bangkok':         7,
-    'Asia/Jakarta':         7,   'Asia/Ho_Chi_Minh':     7,
-    'Asia/Singapore':       8,   'Asia/Shanghai':        8,
-    'Asia/Taipei':          8,   'Asia/Kuala_Lumpur':    8,
-    'Asia/Manila':          8,   'Asia/Seoul':           9,
-    'Asia/Tokyo':           9,   'Australia/Darwin':     9.5,
-    'Australia/Brisbane':   10,  'Australia/Adelaide':   9.5,
-    'Australia/Sydney':     10,  'Pacific/Auckland':     12,
-    'Pacific/Fiji':         12,  'Pacific/Honolulu':    -10,
-    'America/Anchorage':   -9,   'America/Los_Angeles': -8,
-    'America/Denver':      -7,   'America/Phoenix':     -7,
-    'America/Chicago':     -6,   'America/New_York':    -5,
-    'America/Toronto':     -5,   'America/Halifax':     -4,
-    'America/Sao_Paulo':   -3,   'America/Buenos_Aires':-3,
-    'Atlantic/Azores':     -1,
-  };
-
-  final double hours = offsets[timezone] ?? 0;
-  return (hours * 60).round();
 }
