@@ -139,9 +139,9 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
         // Is this pixel in the "filled" arc?
         final bool filled = _inArc(angle, -math.pi / 2, sweepEnd);
 
-        final int br = filled ? color.red   : (color.red   * 0.18).round();
-        final int bg = filled ? color.green : (color.green * 0.18).round();
-        final int bb = filled ? color.blue  : (color.blue  * 0.18).round();
+        final int br = filled ? color.red   : (color.red   * 0.2).round();
+        final int bg = filled ? color.green : (color.green * 0.2).round();
+        final int bb = filled ? color.blue  : (color.blue  * 0.2).round();
         buf.setPixel(px2, py,
             0xFF000000 | (br << 16) | (bg << 8) | bb);
       }
@@ -165,9 +165,9 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
 
     final Color dimColor = Color.fromARGB(
       color.alpha,
-      (color.red   * 0.35).round(),
-      (color.green * 0.35).round(),
-      (color.blue  * 0.35).round(),
+      (color.red   * 1.0).round(),
+      (color.green * 1.0).round(),
+      (color.blue  * 1.0).round(),
     );
     font.draw(buffer: buf, text: label, color: dimColor, x: lx, y: ly);
   }
@@ -240,9 +240,9 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
       final int sw = font.textWidth(sStr);
       final Color dimColor = Color.fromARGB(
         color.alpha,
-        (color.red   * 0.5).round(),
-        (color.green * 0.5).round(),
-        (color.blue  * 0.5).round(),
+        (color.red   * 1.0).round(),
+        (color.green * 1.0).round(),
+        (color.blue  * 1.0).round(),
       );
       font.draw(
         buffer: buf,
