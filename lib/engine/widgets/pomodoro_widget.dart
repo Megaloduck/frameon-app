@@ -82,11 +82,8 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
       case PomodoroLayout.splitLayout:
         _renderSplit(buffer, state.remaining, activeLayer, elapsedMs, progress);
       case PomodoroLayout.minimalist:
-        _renderMinimalist(buffer, state.remaining, activeLayer, elapsedMs,
-            progress, state.session);
-        if (layer.showSession) {
-          _renderSessionDots(buffer, state.session, activeLayer.activeColor);
-        }
+  _renderMinimalist(buffer, state.remaining, activeLayer, elapsedMs,
+      progress, state.session);
     }
   }
 
@@ -180,100 +177,65 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   // Small seconds bottom-right.
 
   void _renderMinimalist(
-    PixelBuffer buf,
-    Duration d,
-    PomodoroLayer layer,
-    int elapsedMs,
-    double progress,
-    int session,
-  ) {
-    final font  = _font;
-    final color = layer.activeColor;
+  PixelBuffer buf,
+  Duration d,
+  PomodoroLayer layer,
+  int elapsedMs,
+  double progress,
+  int session,
+) {
+  final font  = _font;
+  final color = layer.activeColor;
 
-    // ── Large minutes ────────────────────────────────────────────────────
-    final String mStr = _pad(d.inMinutes.remainder(60));
-    // Draw at scale 2 — each pixel becomes a 2×2 block.
-    _drawScale2(buf, mStr, 2, 9, color, font);
+  // ── Small minutes (above big seconds) ────────────────────────────────
+  final String mStr = _pad(d.inMinutes.remainder(60));
+  font.draw(buffer: buf, text: mStr, color: color, x: 1, y: 9);
 
-    // ── Vertical bar (far right, 2 px wide) ──────────────────────────────
-    const int barX   = 61;
-    const int barTop = 2;
-    const int barBot = 30; // leaves room for dots above & seconds below
-    final int barH   = barBot - barTop;
-    final int filled = (progress * barH).round();
+  // ── Large seconds (bottom left, 1px margin) ──────────────────────────
+  final String sStr = _pad(d.inSeconds.remainder(60));
+  // Position at bottom of screen: y = height - charHeight*2 (since scale-2) - 1px margin
+  // Scale-2 makes each char 14px tall (7px * 2). For "00", that's 2 chars * 14px = 28px.
+  final int secondsY = buf.height - 14 - 1; // 14 = 7px * 2, 1px margin at bottom
+  _drawScale2(buf, sStr, 1, secondsY, color, font);
 
-    for (int y = barTop; y < barBot; y++) {
-      final bool on = y >= (barTop + barH - filled);
-      final int br = on ? color.red   : (color.red   * 0.15).round();
-      final int bg = on ? color.green : (color.green * 0.15).round();
-      final int bb = on ? color.blue  : (color.blue  * 0.15).round();
+  // ── Vertical bar (far right, 2 px wide) ──────────────────────────────
+  const int barX   = 61; // 1px right margin
+  const int barTop = 1;  // 1px top margin
+  const int barBot = 31; // 1px bottom margin
+  final int barH   = barBot - barTop;
+  final int filled = (progress * barH).round();
+
+  for (int y = barTop; y < barBot; y++) {
+    final bool on = y >= (barTop + barH - filled);
+    final int br = on ? color.red   : (color.red   * 0.15).round();
+    final int bg = on ? color.green : (color.green * 0.15).round();
+    final int bb = on ? color.blue  : (color.blue  * 0.15).round();
+    final int argb = 0xFF000000 | (br << 16) | (bg << 8) | bb;
+    buf.setPixel(barX,     y, argb);
+    buf.setPixel(barX + 1, y, argb);
+  }
+
+  // ── Session dots (top-right, above bar) ──────────────────────────────
+  if (layer.showSession) {
+    const int dotsY = 1;
+    // up to 8 sessions; draw right-aligned just left of bar
+    final int total = layer.sessionsBeforeLongBreak.clamp(1, 8);
+    for (int i = 0; i < total; i++) {
+      final int dotX = 58 - i * 4; // right→left
+      final bool done = i < (session - 1);
+      final bool active = i == (session - 1);
+      final int br = (done || active) ? color.red   : (color.red   * 0.18).round();
+      final int bg = (done || active) ? color.green : (color.green * 0.18).round();
+      final int bb = (done || active) ? color.blue  : (color.blue  * 0.18).round();
       final int argb = 0xFF000000 | (br << 16) | (bg << 8) | bb;
-      buf.setPixel(barX,     y, argb);
-      buf.setPixel(barX + 1, y, argb);
-      buf.setPixel(barX + 2, y, argb);
-    }
-
-    // ── Session dots (top-right, above bar) ──────────────────────────────
-    if (layer.showSession) {
-      const int dotsY = 0;
-      // up to 8 sessions; draw right-aligned just left of bar
-      final int total = layer.sessionsBeforeLongBreak.clamp(1, 8);
-      for (int i = 0; i < total; i++) {
-        final int dotX = 58 - i * 4; // right→left
-        final bool done = i < (session - 1);
-        final bool active = i == (session - 1);
-        final int br = (done || active) ? color.red   : (color.red   * 0.18).round();
-        final int bg = (done || active) ? color.green : (color.green * 0.18).round();
-        final int bb = (done || active) ? color.blue  : (color.blue  * 0.18).round();
-        final int argb = 0xFF000000 | (br << 16) | (bg << 8) | bb;
-        // 2×2 dot
-        buf.setPixel(dotX,     dotsY,     argb);
-        buf.setPixel(dotX + 1, dotsY,     argb);
-        buf.setPixel(dotX,     dotsY + 1, argb);
-        buf.setPixel(dotX + 1, dotsY + 1, argb);
-      }
-    }
-
-    // ── Small seconds (bottom-right) ─────────────────────────────────────
-    if (layer.showSeconds) {
-      final String sStr = _pad(d.inSeconds.remainder(60));
-      final int sw = font.textWidth(sStr);
-      final Color dimColor = Color.fromARGB(
-        color.alpha,
-        (color.red   * 1.0).round(),
-        (color.green * 1.0).round(),
-        (color.blue  * 1.0).round(),
-      );
-      font.draw(
-        buffer: buf,
-        text:   sStr,
-        color:  dimColor,
-        x:      barX - sw - 2,
-        y:      buf.height - font.charHeight - 1,
-      );
+      // 2×2 dot
+      buf.setPixel(dotX,     dotsY,     argb);
+      buf.setPixel(dotX + 1, dotsY,     argb);
+      buf.setPixel(dotX,     dotsY + 1, argb);
+      buf.setPixel(dotX + 1, dotsY + 1, argb);
     }
   }
-
-  // ── Layout: defaultTimer (original) ──────────────────────────────────────
-
-  void _renderTime(PixelBuffer buf, Duration d, PomodoroLayer layer, int t) {
-    final font      = _font;
-    final bool colonOn = (t % 1000) < 500;
-    final String text  = _fmt(d, layer.showSeconds, colonOn);
-    final int y = (buf.height - font.charHeight) ~/ 2 + layer.offset.dy.round();
-    final int x = (buf.width  - font.textWidth(text)) ~/ 2 + layer.offset.dx.round();
-    font.draw(buffer: buf, text: text, color: layer.activeColor, x: x, y: y);
-  }
-
-  void _renderSessionDots(PixelBuffer buf, int session, Color color) {
-    const int ds = 2, dg = 1;
-    int x = buf.width - (session * ds + (session - 1) * dg) - 2;
-    final int y = buf.height - ds - 1;
-    for (int i = 0; i < session; i++) {
-      buf.fillRect(x, y, ds, ds, color);
-      x += ds + dg;
-    }
-  }
+}
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
