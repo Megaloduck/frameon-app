@@ -13,6 +13,7 @@ import '../../features/export/frame_exporter.dart';
 import '../../features/settings/settings_dialog.dart';
 import '../../services/serial/serial_service.dart';
 import '../../services/serial/serial_desktop.dart';
+import '../../services/serial/port_info.dart';
 import '../../shared/providers/providers.dart';
 import 'connection_state.dart';
 
@@ -35,7 +36,7 @@ final serialServiceProvider = Provider<SerialService>((ref) {
   return StubSerialService();
 });
 
-final availablePortsProvider = FutureProvider<List<String>>((ref) async {
+final availablePortsProvider = FutureProvider<List<PortInfo>>((ref) async {
   final service = ref.watch(serialServiceProvider);
   return service.availablePorts();
 });
@@ -138,7 +139,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   // ── Public API ────────────────────────────────────────────────────────────
 
   /// Refresh the list of available ports.
-  Future<List<String>> scanPorts() async {
+  Future<List<PortInfo>> scanPorts() async {
     state = state.copyWith(status: DeviceConnectionStatus.scanning);
     try {
       final ports = await _serial.availablePorts();

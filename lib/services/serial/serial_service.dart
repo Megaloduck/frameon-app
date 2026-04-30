@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'port_info.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ const int kFirmwareErr = 0x1B;
 /// All implementations must be safe to call from async Dart code.
 abstract class SerialService {
   /// List all currently available serial port names.
-  Future<List<String>> availablePorts();
+  Future<List<PortInfo>> availablePorts();
 
   /// Open a connection to [portName] at [baudRate].
   /// Throws [SerialException] on failure.
@@ -87,10 +88,18 @@ class StubSerialService implements SerialService {
   String? _port;
 
   @override
-  Future<List<String>> availablePorts() async {
-    await Future<void>.delayed(const Duration(milliseconds: 150));
-    return ['COM3', 'COM4', '/dev/ttyUSB0'];
-  }
+Future<List<PortInfo>> availablePorts() async {
+  return SerialPort.availablePorts.map((name) {
+    final sp = SerialPort(name);
+    final info = PortInfo(
+      name: name,
+      description:  sp.description,
+      manufacturer: sp.manufacturer,
+    );
+    sp.dispose(); // IMPORTANT — dispose immediately, we're just reading metadata
+    return info;
+  }).toList();
+}
 
   @override
   Future<void> connect(String portName, {int baudRate = 115200}) async {

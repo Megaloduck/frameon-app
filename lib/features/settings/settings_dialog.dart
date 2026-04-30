@@ -433,13 +433,13 @@ class _DeviceSection extends ConsumerWidget {
                           )
                         : Column(
                             children: ports.map((p) {
-                              final isActive = p == device.portName;
+                              final isActive = p.name == device.portName;
                               return GestureDetector(
                                 onTap: device.isConnected && isActive
                                     ? null
                                     : () => ref
                                         .read(deviceConnectionProvider.notifier)
-                                        .connect(p),
+                                        .connect(p.name),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 100),
                                   margin: const EdgeInsets.only(bottom: 6),
@@ -465,15 +465,26 @@ class _DeviceSection extends ConsumerWidget {
                                             : context.tTextMuted),
                                     const SizedBox(width: 8),
                                     Expanded(
-                                      child: Text(p,
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              color: isActive
-                                                  ? kGreen
-                                                  : context.tTextPrimary,
-                                              fontWeight: isActive
-                                                  ? FontWeight.w600
-                                                  : FontWeight.w400)),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(p.displayLabel,
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isActive
+                                                      ? kGreen
+                                                      : context.tTextPrimary,
+                                                  fontWeight: isActive
+                                                      ? FontWeight.w600
+                                                      : FontWeight.w400)),
+                                          if (p.description != null)
+                                            Text(p.name,
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: context.tTextDim)),
+                                        ],
+                                      ),
                                     ),
                                     if (device.status ==
                                             DeviceConnectionStatus.connecting &&

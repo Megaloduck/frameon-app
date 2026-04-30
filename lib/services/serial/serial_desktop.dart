@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'port_info.dart';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
@@ -61,8 +62,17 @@ class LibSerialPortService implements SerialService {
   // ── Public API ────────────────────────────────────────────────────────────
 
   @override
-  Future<List<String>> availablePorts() async {
-    return Future.value(SerialPort.availablePorts);
+  Future<List<PortInfo>> availablePorts() async {
+    return SerialPort.availablePorts.map((name) {
+      final sp = SerialPort(name);
+      final info = PortInfo(
+        name: name,
+        description:  sp.description,
+        manufacturer: sp.manufacturer,
+      );
+      sp.dispose(); // IMPORTANT — dispose immediately, we're just reading metadata
+      return info;
+    }).toList();
   }
 
   @override

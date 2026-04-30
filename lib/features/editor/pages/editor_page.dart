@@ -13,6 +13,8 @@ import '../../../features/settings/settings_dialog.dart';
 import '../../../app.dart' show themeModeProvider;
 import '../../../features/device/connection_state.dart';
 import '../../../features/device/device_controller.dart';
+import '../../../services/serial/port_info.dart' show PortInfo;
+import '../../../services/serial/serial_service.dart';
 import '../../../features/editor/presentation/controller.dart';
 import '../../../services/storage/project_service.dart';
 import '../../../shared/providers/preset_provider.dart';
@@ -148,6 +150,7 @@ class _TopBar extends ConsumerWidget {
             const SizedBox(width: 12),
             Container(width: 1, height: 20, color: context.tBorder),
             const SizedBox(width: 12),
+            if (!editor.isNewProject)
             Text(
               scene.name,
               style: TextStyle(
@@ -586,7 +589,7 @@ class _PortSheet extends ConsumerWidget {
   final String? connectedPort;
   final Future<void> Function(String) onConnect;
   final Future<void> Function() onDisconnect;
-  final Future<List<String>> Function() onScan;
+  final Future<List<PortInfo>> Function() onScan;
 
   const _PortSheet({
     required this.isConnected,
@@ -636,15 +639,19 @@ class _PortSheet extends ConsumerWidget {
                             .map((p) => ListTile(
                                   dense: true,
                                   leading: Icon(Icons.usb_rounded,
-                                      color: p == connectedPort
+                                      color: p.name == connectedPort
                                           ? kGreen
                                           : null),
-                                  title: Text(p),
-                                  trailing: p == connectedPort
+                                  title: Text(p.displayLabel),
+                                  subtitle: p.description != null
+                                      ? Text(p.name,
+                                          style: const TextStyle(fontSize: 10))
+                                      : null,
+                                  trailing: p.name == connectedPort
                                       ? const Icon(Icons.check_rounded,
                                           color: kGreen)
                                       : null,
-                                  onTap: () => onConnect(p),
+                                  onTap: () => onConnect(p.name),
                                 ))
                             .toList()),
               ),

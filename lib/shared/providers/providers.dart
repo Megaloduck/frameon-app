@@ -28,7 +28,7 @@ const _uuid = Uuid();
 
 class SceneNotifier extends Notifier<Scene> {
   @override
-  Scene build() => Scene.blank(name: 'Untitled Project');
+  Scene build() => Scene.blank();
 
   void addTextLayer() => _add(TextLayer(
         id: _uuid.v4(),
