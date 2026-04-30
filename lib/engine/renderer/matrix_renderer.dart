@@ -168,9 +168,9 @@ class MatrixRenderer {
         final p = layer as PomodoroLayer;
         final s = currentPomodoroState;
         if (s != null) {
-          _pomodoro.renderWithState(p, buf, t, s);
+          _pomodoro.renderWithState(p, buf, t, s, isExport: isExport);
         } else {
-          _pomodoro.render(p, buf, t);
+          _pomodoro.render(p, buf, t, isExport: isExport);
         }
     }
   }

@@ -7,7 +7,7 @@ import '../scene/layer.dart';
 import 'matrix_widget.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PomodoroTimerState  (unchanged)
+// PomodoroTimerState
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Runtime state for a running Pomodoro timer.
@@ -50,11 +50,17 @@ class PomodoroTimerState {
 
 /// Renders a [PomodoroLayer] into a [PixelBuffer].
 ///
-/// Three layouts are supported via [PomodoroLayout]:
+/// Two layouts are supported via [PomodoroLayout]:
 ///
 ///   splitLayout  — progress arc on left half, MM:SS + phase label on right.
-///   minimalist   — large minute digits, thin vertical bar drain on far right,
-///                  session dots top-right, small seconds bottom-right.
+///   minimalist   — small MM label top-left, large SS scale-2 below it,
+///                  2-px vertical bar on far right, session dots top-right.
+///
+/// Export behaviour (isExport = true):
+///   Both render paths return immediately without drawing anything.
+///   The firmware renders the pomodoro live via overdrawPomodoro() on every
+///   frame using millis() + the descriptor embedded in the packet header
+///   (v1.8/v1.9). Baking pixels would cause double-rendering on the device.
 class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   const PomodoroWidget();
 
@@ -62,12 +68,22 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
 
   // ── Public entry points ───────────────────────────────────────────────────
 
+  /// Render with live timer state (live preview path).
+  ///
+  /// [isExport] must be true during device export so no pixels are baked —
+  /// the firmware owns rendering via overdrawPomodoro().
   void renderWithState(
     PomodoroLayer layer,
     PixelBuffer buffer,
     int elapsedMs,
-    PomodoroTimerState state,
-  ) {
+    PomodoroTimerState state, {
+    bool isExport = false,
+  }) {
+    // Export path: leave buffer blank — firmware renders live.
+    if (isExport) return;
+
+    buffer.clear();
+
     if (layer.blinkColor && state.remaining.inSeconds <= 10) {
       if ((elapsedMs ~/ 500) % 2 == 1) return;
     }
@@ -82,14 +98,22 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
       case PomodoroLayout.splitLayout:
         _renderSplit(buffer, state.remaining, activeLayer, elapsedMs, progress);
       case PomodoroLayout.minimalist:
-  _renderMinimalist(buffer, state.remaining, activeLayer, elapsedMs,
-      progress, state.session);
+        _renderMinimalist(buffer, state.remaining, activeLayer, elapsedMs,
+            progress, state.session);
     }
   }
 
+  /// Render a static preview (no live state, 0 % progress).
+  ///
+  /// [isExport] must be true during device export so no pixels are baked.
   @override
-  void render(PomodoroLayer layer, PixelBuffer buffer, int elapsedMs) {
-    // Preview render — no live state, show 0% progress.
+  void render(PomodoroLayer layer, PixelBuffer buffer, int elapsedMs,
+      {bool isExport = false}) {
+    // Export path: leave buffer blank — firmware renders live.
+    if (isExport) return;
+
+    buffer.clear();
+
     switch (layer.layout) {
       case PomodoroLayout.splitLayout:
         _renderSplit(buffer,
@@ -102,8 +126,8 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
 
   // ── Layout: splitLayout ───────────────────────────────────────────────────
   //
-  // Left 28 px — arc ring showing elapsed progress.
-  // Right 36 px — MM:SS on top, dim phase label below.
+  // Left 28 px  — hollow arc ring (outerR=11, innerR=7) showing elapsed %.
+  // Right 36 px — MM:SS centred at x=46, dim phase label one line below.
 
   void _renderSplit(
     PixelBuffer buf,
@@ -171,10 +195,12 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
 
   // ── Layout: minimalist ────────────────────────────────────────────────────
   //
-  // Large minute digits (scale-2) on the left.
-  // Thin 3-px vertical bar on far right draining top→bottom.
-  // 2×2 session dots top-right (inside bar area).
-  // Small seconds bottom-right.
+  // Small MM label   — normal-scale, top-left at (2, 1).
+  // Large SS         — scale-2 (14 px tall), at (2, 9) below the MM label.
+  // Vertical bar     — 2 px wide at x=62..63, y=1..30, drains bottom-up.
+  //                    Filled = activeColor; unfilled = 15 % dim.
+  // Session dots     — 2×2 px, y=1..2, right→left from x=58, if showSession.
+  //                    Active/done = activeColor; future = 18 % dim.
 
   void _renderMinimalist(
   PixelBuffer buf,
@@ -243,7 +269,9 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
     final String sep = colonOn ? ':' : ' ';
     final int m = d.inMinutes.remainder(60);
     final int s = d.inSeconds.remainder(60);
-    return showSeconds ? '${_pad(m)}$sep${_pad(s)}' : '${_pad(m)}$sep${_pad(00)}';
+    return showSeconds
+        ? '${_pad(m)}$sep${_pad(s)}'
+        : '${_pad(m)}$sep${_pad(0)}';
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
@@ -263,13 +291,12 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
   /// Returns true if [angle] lies in the arc drawn clockwise from [start]
   /// to [end], where all angles are in radians in [-π, π].
   bool _inArc(double angle, double start, double end) {
-    // Normalise everything to [0, 2π) relative to start.
     double norm(double a) => (a - start) % (2 * math.pi);
-    if (norm(end) < 0.001) return false; // 0% — nothing filled
+    if (norm(end) < 0.001) return false; // 0 % — nothing filled
     return norm(angle) <= norm(end);
   }
 
-  /// Draws [text] at (x, y) with each pixel doubled to 2×2 blocks.
+  /// Draws [text] at (x, y) with each source pixel doubled to a 2×2 block.
   void _drawScale2(
     PixelBuffer buf,
     String text,
@@ -278,17 +305,14 @@ class PomodoroWidget extends MatrixWidget<PomodoroLayer> {
     Color color,
     LedFont font,
   ) {
-    // We draw into a tiny temp buffer then blit scaled into buf.
-    // Temp buffer width: measure text at scale 1.
-    final int tw = font.textWidth(text);
-    final tmp = PixelBuffer(width: tw, height: font.charHeight);
+    final int tw  = font.textWidth(text);
+    final tmp     = PixelBuffer(width: tw, height: font.charHeight);
     font.draw(buffer: tmp, text: text, color: color, x: 0, y: 0);
 
     for (int row = 0; row < font.charHeight; row++) {
       for (int col = 0; col < tw; col++) {
         final int argb = tmp.getPixel(col, row);
         if ((argb >> 24) & 0xFF == 0) continue;
-        // 2×2 block
         buf.setPixel(x + col * 2,     y + row * 2,     argb);
         buf.setPixel(x + col * 2 + 1, y + row * 2,     argb);
         buf.setPixel(x + col * 2,     y + row * 2 + 1, argb);
