@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/device/connection_state.dart';
 import '../../features/device/device_controller.dart';
 import '../../features/editor/toolkits/ui_primitives.dart';
+import '../../services/serial/port_info.dart' show PortInfo;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings state
@@ -466,7 +467,8 @@ class _DeviceSection extends ConsumerWidget {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Text(p.displayLabel,

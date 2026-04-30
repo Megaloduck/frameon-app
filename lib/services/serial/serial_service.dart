@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'port_info.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
+
+import 'port_info.dart';
+export 'port_info.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Firmware response constants
@@ -28,7 +30,12 @@ const int kFirmwareErr = 0x1B;
 ///
 /// All implementations must be safe to call from async Dart code.
 abstract class SerialService {
-  /// List all currently available serial port names.
+  /// List all currently available serial ports with metadata.
+  ///
+  /// Each [PortInfo] carries the port name plus whatever description /
+  /// manufacturer strings the OS exposes for that port. Callers should
+  /// use [PortInfo.name] when opening a connection and
+  /// [PortInfo.displayLabel] for UI display.
   Future<List<PortInfo>> availablePorts();
 
   /// Open a connection to [portName] at [baudRate].
@@ -80,26 +87,30 @@ class SerialException implements Exception {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Development stub — returns fake ports and simulates a successful send.
-///
-/// Replace by selecting [LibSerialPortService] via [serialServiceProvider]
-/// at runtime on desktop platforms.
 class StubSerialService implements SerialService {
   bool _connected = false;
   String? _port;
 
   @override
-Future<List<PortInfo>> availablePorts() async {
-  return SerialPort.availablePorts.map((name) {
-    final sp = SerialPort(name);
-    final info = PortInfo(
-      name: name,
-      description:  sp.description,
-      manufacturer: sp.manufacturer,
-    );
-    sp.dispose(); // IMPORTANT — dispose immediately, we're just reading metadata
-    return info;
-  }).toList();
-}
+  Future<List<PortInfo>> availablePorts() async {
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    return [
+      PortInfo(
+        name: 'COM3',
+        description: 'Silicon Labs CP210x USB to UART Bridge',
+        manufacturer: 'Silicon Laboratories',
+      ),
+      PortInfo(
+        name: 'COM4',
+        description: 'USB Serial Device',
+      ),
+      PortInfo(
+        name: '/dev/ttyUSB0',
+        description: 'CH340 Serial',
+        manufacturer: 'QinHeng Electronics',
+      ),
+    ];
+  }
 
   @override
   Future<void> connect(String portName, {int baudRate = 115200}) async {
@@ -131,7 +142,6 @@ Future<List<PortInfo>> availablePorts() async {
 
   @override
   Future<int?> readResponseByte({int timeoutMs = 15000}) async {
-    // Simulate device processing time then ACK.
     await Future<void>.delayed(const Duration(milliseconds: 300));
     return kFirmwareAck;
   }

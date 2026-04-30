@@ -14,7 +14,6 @@ import '../../../app.dart' show themeModeProvider;
 import '../../../features/device/connection_state.dart';
 import '../../../features/device/device_controller.dart';
 import '../../../services/serial/port_info.dart' show PortInfo;
-import '../../../services/serial/serial_service.dart';
 import '../../../features/editor/presentation/controller.dart';
 import '../../../services/storage/project_service.dart';
 import '../../../shared/providers/preset_provider.dart';

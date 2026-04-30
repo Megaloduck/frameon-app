@@ -1,10 +1,64 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'port_info.dart';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 import 'serial_service.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LibSerialPortService
+//
+// Real serial implementation for macOS / Windows / Linux using the
+// `flutter_libserialport` package (wraps libserialport).
+//
+// ── Why this file is careful about native memory ─────────────────────────────
+//
+// flutter_libserialport wraps a native C library (libserialport). Every
+// SerialPort object holds a raw `sp_port*` pointer. When port.dispose() is
+// called, it calls sp_free_port() — freeing that native struct.
+//
+// Three bugs can cause Windows to crash with:
+//   "Debug Assertion Failed! … debug_heap.cpp … is_block_type_valid"
+//
+// BUG 1 — Dart-level use-after-free
+//   send() and readResponseByte() both contain `await` yield points inside
+//   their loops. If disconnect() fires while either loop is suspended at an
+//   `await`, it frees the native port. When the loop resumes and reads the
+//   old captured `port` local variable, it calls a native method on freed
+//   memory → heap assertion.
+//
+//   FIX: Re-read _port at the TOP of every iteration (after every `await`).
+//   Any iteration that sees _port == null exits immediately without touching
+//   the native object.
+//
+// BUG 2 — Native-level use-after-free (the debug_heap.cpp crash during send)
+//   Even with the Dart guard, port.close() + port.dispose() can be called
+//   while a native sp_port_write() or sp_port_read() is still executing
+//   inside the C library. The C function accesses the freed sp_port* struct
+//   → heap corruption.
+//
+//   FIX: Deferred dispose. When disconnect() is called while an operation
+//   is in flight (_activeOps > 0), the port is closed immediately (which
+//   causes in-flight native calls to fail/return) but dispose() is deferred
+//   until all operations have exited via _endOp(). Only after _activeOps
+//   drops to zero is sp_free_port() called, at which point no native code
+//   holds a live pointer to the struct.
+//
+// BUG 3 — Native-level use-after-free in availablePorts() metadata scan
+//   availablePorts() instantiates a temporary SerialPort(name) for each
+//   discovered port to read OS metadata (description, manufacturer). Each
+//   instantiation allocates a native sp_port* struct. If an exception is
+//   thrown while reading metadata — or if dispose() is simply forgotten —
+//   the native struct is leaked and can corrupt the heap when the real
+//   connected port later calls close()/dispose(). This is the specific
+//   cause of the "Debug Assertion Failed" crash on disconnect.
+//
+//   FIX: Wrap every temporary SerialPort in try/finally to guarantee
+//   dispose() is always called, even on exception. Exceptions from a single
+//   port are swallowed (returning a name-only PortInfo) so a bad port cannot
+//   prevent the scan from returning the rest.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Chunk size for [send] — 4 KB gives smooth progress updates without
 /// overwhelming the USB CDC driver's internal buffers.
@@ -61,18 +115,45 @@ class LibSerialPortService implements SerialService {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
+  /// List available serial ports with OS metadata.
+  ///
+  /// BUG 3 FIX: Each temporary SerialPort is wrapped in try/finally so its
+  /// native sp_port* struct is ALWAYS freed — even if reading metadata throws.
+  /// Without this, leaked native structs corrupt the heap and cause the
+  /// "Debug Assertion Failed / _CrtIsValidHeapPointer" crash on disconnect.
+  ///
+  /// Exceptions from individual ports are caught and swallowed: that port
+  /// returns a name-only [PortInfo] so a single bad port cannot abort the
+  /// whole scan.
   @override
   Future<List<PortInfo>> availablePorts() async {
-    return SerialPort.availablePorts.map((name) {
+    final names = SerialPort.availablePorts;
+    final result = <PortInfo>[];
+
+    for (final name in names) {
       final sp = SerialPort(name);
-      final info = PortInfo(
-        name: name,
-        description:  sp.description,
-        manufacturer: sp.manufacturer,
-      );
-      sp.dispose(); // IMPORTANT — dispose immediately, we're just reading metadata
-      return info;
-    }).toList();
+      try {
+        result.add(PortInfo(
+          name: name,
+          description:  sp.description,
+          manufacturer: sp.manufacturer,
+        ));
+      } catch (_) {
+        // Metadata read failed for this port — still include it by name
+        // so the user can attempt to connect to it.
+        result.add(PortInfo(name: name));
+      } finally {
+        // CRITICAL: always dispose the temporary native struct.
+        // Skipping this is what caused the heap corruption crash.
+        try {
+          sp.dispose();
+        } catch (_) {
+          // Ignore dispose errors — struct may already be freed by the OS.
+        }
+      }
+    }
+
+    return result;
   }
 
   @override
@@ -80,7 +161,7 @@ class LibSerialPortService implements SerialService {
     // Disconnect any existing connection first.
     await disconnect();
 
-    // ── Reset deferred-dispose state (BUG 3 fix) ──────────────────────────
+    // ── Reset deferred-dispose state ──────────────────────────────────────
     // If a previous session left _activeOps stuck > 0 (because a native call
     // threw and the try/finally was missing), _pendingDispose might be true
     // and _disposeTarget might point to a stale port. Resetting here ensures
@@ -174,10 +255,10 @@ class LibSerialPortService implements SerialService {
         throw const SerialException('Connection lost during send');
       }
 
-      final int      end   = (sent + _kChunkSize).clamp(0, data.length);
+      final int       end   = (sent + _kChunkSize).clamp(0, data.length);
       final Uint8List chunk = data.sublist(sent, end);
 
-      // ── Native-level guard (Bug 2 + 3 fix) ───────────────────────────
+      // ── Native-level guard (Bug 2 fix) ────────────────────────────────
       // try/finally guarantees _endOp() runs even if port.write() throws,
       // preventing _activeOps from getting permanently stuck at 1.
       int written = -1;
@@ -221,11 +302,7 @@ class LibSerialPortService implements SerialService {
   ///
   /// Re-reads [_port] at the top of every iteration (after each `await`) to
   /// detect a disconnect() that fired while the loop was suspended.
-  ///
-  /// Uses port.read(1) with the default timeout = -1 (sp_nonblocking_read)
-  /// so the Dart isolate is never blocked waiting for a byte. The 20 ms
-  /// poll interval (via await) keeps the event loop free throughout.
-@override
+  @override
   Future<int?> readResponseByte({int timeoutMs = 15000}) async {
     final DateTime deadline =
         DateTime.now().add(Duration(milliseconds: timeoutMs));
@@ -235,11 +312,8 @@ class LibSerialPortService implements SerialService {
       final port = _port;
       if (port == null || !port.isOpen) return null;
 
-      // ── Native-level guard (Bug 2 + 3 fix) ───────────────────────────
-      // try/finally guarantees _endOp() runs even if port.read() throws,
-      // preventing _activeOps from getting permanently stuck at 1.
-      // This matches the same fix already applied in send().
-      Uint8List bytes;
+      // ── Native-level guard (Bug 2 fix) ────────────────────────────────
+      Uint8List bytes = Uint8List(0);
       _beginOp();
       try {
         bytes = port.read(1);
@@ -250,18 +324,14 @@ class LibSerialPortService implements SerialService {
       if (bytes.isNotEmpty) {
         final int byte = bytes[0];
 
-        // ── Protocol filter (firmware debug text) ───────────────────────
-        // The firmware emits Serial.println() debug strings on the same
-        // serial line as binary ACK/NAK/ERR bytes. Without this filter,
-        // the first byte of a debug string (e.g. '[' = 0x5B) would be
-        // returned as the response, causing a spurious "Unexpected
-        // response byte" error and a false disconnect.
+        // Only return bytes that are valid firmware protocol responses.
+        // The firmware may emit Serial.println() debug strings on the same
+        // serial line — discard those silently.
         if (byte == kFirmwareAck ||
             byte == kFirmwareNak ||
             byte == kFirmwareErr) {
           return byte;
         }
-        // Any other byte is a debug character — discard and keep polling.
       }
 
       // Yield to the event loop. disconnect() may run here.
