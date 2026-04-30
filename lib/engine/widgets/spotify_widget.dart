@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -70,9 +71,142 @@ class SpotifyWidget extends MatrixWidget<SpotifyLayer> {
     }
   }
 
+  /// Called when no Spotify track is available (not connected / not playing).
+  ///
+  /// Renders an idle animation:
+  ///   Left  20 px — pixel-art music note icon, pulsing in Spotify green.
+  ///   Right 44 px — "SPOTIFY" scrolling top line, "NOT CONNECTED" scrolling
+  ///                 bottom line, both in a dimmed green.
+  ///
+  /// The pulse is a smooth sine wave so the icon breathes naturally.
+  /// The text lines scroll continuously using [ScrollLeftEffect] so the
+  /// animation stays alive even when the matrix preview is running.
   @override
-  void render(SpotifyLayer layer, PixelBuffer buffer, int elapsedMs) =>
-      buffer.clear();
+  void render(SpotifyLayer layer, PixelBuffer buffer, int elapsedMs) {
+    buffer.clear();
+    _renderIdle(buffer, elapsedMs);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Idle animation
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Spotify brand green: #1DB954
+  static const _kSpotifyGreen = Color(0xFF1DB954);
+
+  /// Dimmed green for the text lines so the icon stands out.
+  static const _kTextWhite = Color.fromARGB(255, 250, 250, 250);
+
+  /// Pixel-art music note bitmap (11 wide × 14 tall).
+  ///
+  /// Each int is a row bitmask; bit 10 (MSB) = leftmost pixel.
+  /// Shape: filled note head (oval) bottom-left + stem + two flags top-right.
+  static const List<int> _kNote = [
+    // row 0–13, 11 bits wide (bit 10 = left). Values in hex (Dart has no 0b).
+    0x00C, // 0  — stem top         00000001100
+    0x00E, // 1  — stem + flag 1    00000001110
+    0x00F, // 2  — stem + flag 2    00000001111
+    0x00C, // 3  — stem             00000001100
+    0x00C, // 4  — stem             00000001100
+    0x00C, // 5  — stem             00000001100
+    0x00C, // 6  — stem             00000001100
+    0x00C, // 7  — stem             00000001100
+    0x06C, // 8  — head top-left    00001101100
+    0x0FC, // 9  — head upper       00011111100
+    0x1FC, // 10 — head full        00111111100
+    0x1FC, // 11 — head full        00111111100
+    0x0FC, // 12 — head lower       00011111100
+    0x078, // 13 — head base        00001111000
+  ];
+  static const int _kNoteW = 11;
+  static const int _kNoteH = 14;
+
+  void _renderIdle(PixelBuffer buffer, int elapsedMs) {
+    final font = LedFontLibrary.get(LedFontId.polymorph);
+
+    // ── Pulsing note icon ────────────────────────────────────────────────────
+    // Pulse: sine wave with period 2 s, amplitude 0.4 → brightness 0.6..1.0
+    final double pulse =
+        0.6 + 0.4 * (math.sin(elapsedMs * 2 * math.pi / 2000) * 0.5 + 0.5);
+
+    // Centre the note inside the left 20-pixel column, vertically centred.
+    final int noteX = (20 - _kNoteW) ~/ 2;           // = 4
+    final int noteY = (buffer.height - _kNoteH) ~/ 2; // = 9 for 32-row panel
+
+    final int baseR = 0x1D, baseG = 0xB9, baseB = 0x54; // #1DB954
+    final int r = (baseR * pulse).round().clamp(0, 255);
+    final int g = (baseG * pulse).round().clamp(0, 255);
+    final int b = (baseB * pulse).round().clamp(0, 255);
+    final int argb = (0xFF << 24) | (r << 16) | (g << 8) | b;
+
+    for (int row = 0; row < _kNoteH; row++) {
+      final int bits = _kNote[row];
+      for (int col = 0; col < _kNoteW; col++) {
+        if ((bits >> (_kNoteW - 1 - col)) & 1 == 1) {
+          buffer.setPixel(noteX + col, noteY + row, argb);
+        }
+      }
+    }
+
+    // Thin separator line between icon and text area.
+    for (int row = 4; row < buffer.height - 4; row++) {
+      buffer.setPixel(20, row, 0xFF1A4020); // very dim green line
+    }
+
+    // ── Text area (x = 22 .. 63, w = 42) ────────────────────────────────────
+    const int textX = 22;
+    const int textW = 42; // 64 − 22
+    final int fontH = font.charHeight; // 7
+    // Two lines centred vertically: total height = fontH*2 + 3
+    final int topY    = (buffer.height - fontH * 2 - 3) ~/ 2;
+    final int bottomY = topY + fontH + 3;
+
+    // "SPOTIFY" — scrolls left if wider than textW (it isn't, 42 px > ~40 px
+    // at polymorph, but scroll looks nice as idle motion).
+    _drawIdleText(font, buffer, 'SPOTIFY', _kSpotifyGreen,
+        textX, topY, textW, elapsedMs, speedMs: 120);
+
+    // "NOT CONNECTED" — longer, will definitely scroll.
+    _drawIdleText(font, buffer, 'NOT CONNECTED', _kTextWhite,
+        textX, bottomY, textW, elapsedMs, speedMs: 90);
+  }
+
+  /// Draw a single line of idle text that scrolls left if it overflows [maxW].
+  /// Uses [ScrollLeftEffect] directly — no overlay effect.
+  void _drawIdleText(
+    LedFont font,
+    PixelBuffer buffer,
+    String text,
+    Color color,
+    int startX,
+    int y,
+    int maxW,
+    int elapsedMs, {
+    int speedMs = 100,
+  }) {
+    final int contentW = font.textWidth(text);
+    final bool needsScroll = contentW > maxW;
+    final int bufW = needsScroll ? contentW + maxW : maxW;
+
+    final src = PixelBuffer(width: bufW, height: buffer.height);
+    if (needsScroll) {
+      font.draw(buffer: src, text: text, color: color, x: 0, y: y);
+    } else {
+      final int cx = ((maxW - contentW) ~/ 2).clamp(0, maxW - 1);
+      font.draw(buffer: src, text: text, color: color, x: cx, y: y);
+    }
+
+    PixelBuffer finalBuf = src;
+    if (needsScroll) {
+      final double pps = 1000.0 / speedMs.clamp(10, 500);
+      final effect = ScrollLeftEffect(pixelsPerSecond: pps);
+      final scrolled = PixelBuffer(width: bufW, height: buffer.height);
+      effect.apply(src, scrolled, elapsedMs);
+      finalBuf = scrolled;
+    }
+
+    buffer.blit(finalBuf, dx: startX);
+  }
 
   // ── Layouts ───────────────────────────────────────────────────────────────
 
