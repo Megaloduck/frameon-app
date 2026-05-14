@@ -9,6 +9,7 @@ import '../widgets/gif_widget.dart';
 import '../widgets/pomodoro_widget.dart';
 import '../widgets/spotify_widget.dart';
 import '../widgets/text_widget.dart';
+import '../widgets/slot_machine_widget.dart';
 import 'gif_decoder.dart';
 import 'pixel_buffer.dart';
 import 'rgb565_encoder.dart';
@@ -43,6 +44,7 @@ class MatrixRenderer {
   static const _gif      = GifWidget();
   static const _spotify  = SpotifyWidget();
   static const _pomodoro = PomodoroWidget();
+  static const _slotMachine = SlotMachineWidget();
   static const _decoder  = GifDecoder();
 
   final Rgb565Encoder _enc = const Rgb565Encoder();
@@ -174,6 +176,8 @@ class MatrixRenderer {
         } else {
           _pomodoro.render(p, buf, t, isExport: isExport);
         }
+      case LayerType.slotMachine: 
+        _slotMachine.render(layer as SlotMachineLayer, buf, t);
     }
   }
 

@@ -180,17 +180,19 @@ class LayerTypeBadge extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Map<String, Color> kLayerTypeColors = {
-  'text':     Color(0xFF378ADD),
-  'clock':    Color(0xFFEF9F27),
-  'gif':      Color.fromARGB(255, 122, 33, 195),
-  'spotify':  Color(0xFF1DB954),
-  'pomodoro': Color(0xFFFFCC00),
+  'text':        Color(0xFF378ADD),
+  'clock':       Color(0xFFEF9F27),
+  'gif':         Color.fromARGB(255, 122, 33, 195),
+  'spotify':     Color(0xFF1DB954),
+  'pomodoro':    Color(0xFFFFCC00),
+  'slotMachine': Color(0xFFE91E63),   
 };
 
 const Map<String, IconData> kLayerTypeIcons = {
-  'text':     Icons.text_fields_rounded,
-  'clock':    Icons.schedule_rounded,
-  'gif':      Icons.gif_box_rounded,
-  'spotify':  Icons.music_note_rounded,
-  'pomodoro': Icons.timer_rounded,
+  'text':        Icons.text_fields_rounded,
+  'clock':       Icons.schedule_rounded,
+  'gif':         Icons.gif_box_rounded,
+  'spotify':     Icons.music_note_rounded,
+  'pomodoro':    Icons.timer_rounded,
+  'slotMachine': Icons.casino_rounded,  
 };

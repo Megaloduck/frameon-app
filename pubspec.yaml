@@ -1,7 +1,7 @@
 name: frameon
 description: LED matrix frame editor — design, preview, and send animations to your device.
 publish_to: none
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -17,33 +17,39 @@ dependencies:
   # Unique IDs for layers
   uuid: ^4.3.3
 
-  # Image / GIF decoding (wired in next phase)
+  # Image / GIF decoding
   image: ^4.1.7
 
   # File picker for GIF/image upload
   file_picker: ^11.0.2
 
-  # NTP for time sync 
+  # NTP for time sync
   ntp: ^2.0.0
-  
+
   # HTTP client for device communication
   http: ^1.2.1
 
   # URL launcher for opening device web interface
   url_launcher: ^6.3.0
-  
+
   # For hashing animations before sending to device
   crypto: ^3.0.3
 
-  # Serial communication (Windows / macOS)
-  flutter_libserialport: ^0.6.0   # uncomment when wiring device transport
-    
-  #
+  # Serial communication (Windows / macOS / Linux)
+  flutter_libserialport: ^0.6.0
+
+  # Window management — close interception, hide to tray (Run in Background)
   window_manager: ^0.5.1
-  
-    # Autosave — persists scene JSON across app launches
+
+  # Autosave + settings persistence across app launches
   shared_preferences: ^2.3.2
-  
+
+  # Launch at startup — adds / removes app from system login items
+  # Used by SettingsNotifier._applyStartOnStartup() in settings_dialog.dart
+  launch_at_startup: ^0.5.1
+
+  # App version / bundle info — required by launch_at_startup setup()
+  package_info_plus: ^8.0.0
 
 dev_dependencies:
   flutter_test:
@@ -52,4 +58,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-

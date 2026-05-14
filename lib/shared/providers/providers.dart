@@ -56,6 +56,11 @@ class SceneNotifier extends Notifier<Scene> {
         name: 'Pomodoro ${state.layers.length + 1}',
       ));
 
+  void addSlotMachineLayer() => _add(SlotMachineLayer(
+      id: _uuid.v4(),
+      name: 'Slot Machine ${state.layers.length + 1}',
+    ));
+
   void _add(Layer layer) {
     state = state.addLayer(layer);
     _setSelection(layer.id);
@@ -206,16 +211,6 @@ int _calculateFrameCount(
         layerFrames = twoSecondFrames;
 
       case LayerType.spotify:
-        // Calculate the exact number of frames needed for one full scroll loop.
-        //
-        // The firmware (v1.3+) predicts the progress bar position using
-        // millis() from the commit timestamp, so bar accuracy no longer
-        // depends on keeping the frame count small. We can now use the full
-        // scroll loop length so the text completes a full pass without
-        // cutting off or jumping back to the start mid-sentence.
-        //
-        // The global 300-frame cap at the end of this function still applies,
-        // so packets cannot exceed ~1.2 MB regardless of text length.
         {
           final sp = layer as SpotifyLayer;
           // Viewport width: artAndText has 31 px of text space; others use 64.
@@ -264,7 +259,17 @@ int _calculateFrameCount(
         } else {
           layerFrames = 1;
         }
+        case LayerType.slotMachine:
+          final sm = layer as SlotMachineLayer;
+  // One full IDLE → SPIN → STOP_R1 → STOP_R2 → SHOW_RESULT cycle.
+  // Baking exactly one cycle ensures the device loop wraps seamlessly.
+  final cycleMs = sm.idleMs +
+                  sm.spinDurationMs +
+                  2 * sm.reelStopStaggerMs +
+                  sm.resultHoldMs;
+  layerFrames = (cycleMs / frameDurationMs).ceil();
     }
+    
 
     if (layerFrames > maxFrames) maxFrames = layerFrames;
   }

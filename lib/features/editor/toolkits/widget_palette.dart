@@ -50,6 +50,12 @@ class WidgetPalette extends ConsumerWidget {
                 label: 'Pomodoro',
                 onTap: notifier.addPomodoroLayer,
               ),
+              _PaletteEntry(
+  icon:  Icons.casino_rounded,
+  color: const Color(0xFFE91E63),
+  label: 'Slot Machine',
+  onTap: notifier.addSlotMachineLayer,
+),
             ],
           ),
         ),

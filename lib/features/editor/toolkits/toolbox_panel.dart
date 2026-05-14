@@ -8,6 +8,7 @@ import 'toolbox/gif_toolbox.dart';
 import 'toolbox/pomodoro_toolbox.dart';
 import 'toolbox/spotify_toolbox.dart';
 import 'toolbox/text_toolbox.dart';
+import 'toolbox/slot_machine_toolbox.dart';
 import 'ui_primitives.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ class _ToolboxLeft extends ConsumerWidget {
               LayerType.gif      => GifToolboxLeft(layer: layer as GifLayer, n: n),
               LayerType.spotify  => SpotifyToolboxLeft(layer: layer as SpotifyLayer),
               LayerType.pomodoro => const PomodoroToolboxLeft(),
+              LayerType.slotMachine => SlotMachineToolboxLeft(layer: layer as SlotMachineLayer, n: n),
             },
           ),
         ),
@@ -73,6 +75,7 @@ class _ToolboxLeft extends ConsumerWidget {
         LayerType.gif      => 'UPLOAD FILES',
         LayerType.spotify  => 'SPOTIFY SETTINGS',
         LayerType.pomodoro => 'POMODORO SETTINGS',
+        LayerType.slotMachine => 'SLOT MACHINE SETTINGS',
       };
 }
 
@@ -100,6 +103,7 @@ class _ToolboxRight extends ConsumerWidget {
               LayerType.gif      => GifToolboxRight(layer: layer as GifLayer, n: n),
               LayerType.spotify  => SpotifyToolboxRight(layer: layer as SpotifyLayer, n: n),
               LayerType.pomodoro => const PomodoroToolboxRight(),
+              LayerType.slotMachine => SlotMachineToolboxRight(layer: layer as SlotMachineLayer, n: n),         
             },
           ),
         ),
@@ -113,6 +117,7 @@ class _ToolboxRight extends ConsumerWidget {
         LayerType.gif      => 'MEDIA LAYOUT',
         LayerType.spotify  => 'SPOTIFY LAYOUT',
         LayerType.pomodoro => 'POMODORO LAYOUT',
+        LayerType.slotMachine => 'ANIMATION TIMING',
       };
 }
 
