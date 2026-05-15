@@ -34,7 +34,7 @@ class WidgetPalette extends ConsumerWidget {
               ),
               _PaletteEntry(
                 icon:  Icons.gif_box_rounded,
-                color: const Color.fromARGB(255, 122, 33, 195),
+                color: const Color(0xFF7A21C3),
                 label: 'GIF / Image',
                 onTap: notifier.addGifLayer,
               ),
@@ -44,6 +44,12 @@ class WidgetPalette extends ConsumerWidget {
                 label: 'Spotify',
                 onTap: notifier.addSpotifyLayer,
               ),
+_PaletteEntry(
+  icon:  Icons.show_chart_rounded,
+  color: const Color(0xFFC6FA4D),
+  label: 'Finance',
+  onTap: notifier.addFinanceLayer,
+),
               _PaletteEntry(
                 icon:  Icons.timer_rounded,
                 color: const Color(0xFFFFCC00),

@@ -184,6 +184,7 @@ const Map<String, Color> kLayerTypeColors = {
   'clock':       Color(0xFFEF9F27),
   'gif':         Color.fromARGB(255, 122, 33, 195),
   'spotify':     Color(0xFF1DB954),
+  'finance':  Color(0xFFC6FA4D),
   'pomodoro':    Color(0xFFFFCC00),
   'slotMachine': Color(0xFFE91E63),   
 };
@@ -193,6 +194,7 @@ const Map<String, IconData> kLayerTypeIcons = {
   'clock':       Icons.schedule_rounded,
   'gif':         Icons.gif_box_rounded,
   'spotify':     Icons.music_note_rounded,
+  'finance':  Icons.show_chart_rounded, 
   'pomodoro':    Icons.timer_rounded,
   'slotMachine': Icons.casino_rounded,  
 };

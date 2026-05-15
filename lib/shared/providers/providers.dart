@@ -12,6 +12,7 @@ import '../../engine/scene/timeline.dart';
 import '../../services/spotify/spotify_service.dart';
 import '../../services/pomodoro/pomodoro_service.dart';
 import '../../services/slot_machine/slot_machine_service.dart';
+import '../../services/finance/finance_service.dart';
 import '../../services/autosave/autosave_service.dart';
 
 import '../../features/editor/toolkits/gif_bytes_provider.dart';
@@ -22,6 +23,8 @@ export '../../services/spotify/spotify_service.dart'
 export '../../services/pomodoro/pomodoro_service.dart' show pomodoroServiceProvider;
 export '../../services/slot_machine/slot_machine_service.dart'
     show slotMachineServiceProvider, SlotMachineService;
+    export '../../services/finance/finance_service.dart'
+    show financeServiceProvider, FinanceKey, FinanceData, FinanceStatus;
 
 const _uuid = Uuid();
 
@@ -52,6 +55,11 @@ class SceneNotifier extends Notifier<Scene> {
   void addSpotifyLayer() => _add(SpotifyLayer(
         id: _uuid.v4(),
         name: 'Spotify ${state.layers.length + 1}',
+      ));
+
+  void addFinanceLayer() => _add(FinanceLayer(
+        id: _uuid.v4(),
+        name: 'Finance ${state.layers.length + 1}',
       ));
 
   void addPomodoroLayer() => _add(PomodoroLayer(

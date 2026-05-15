@@ -7,6 +7,7 @@ import 'toolbox/clock_toolbox.dart';
 import 'toolbox/gif_toolbox.dart';
 import 'toolbox/pomodoro_toolbox.dart';
 import 'toolbox/spotify_toolbox.dart';
+import 'toolbox/finance_toolbox.dart';
 import 'toolbox/text_toolbox.dart';
 import 'toolbox/slot_machine_toolbox.dart';
 import 'ui_primitives.dart';
@@ -60,6 +61,7 @@ class _ToolboxLeft extends ConsumerWidget {
               LayerType.clock    => ClockToolboxLeft(layer: layer as ClockLayer, n: n),
               LayerType.gif      => GifToolboxLeft(layer: layer as GifLayer, n: n),
               LayerType.spotify  => SpotifyToolboxLeft(layer: layer as SpotifyLayer),
+              LayerType.finance => FinanceToolboxLeft(layer: layer as FinanceLayer, n: n),
               LayerType.pomodoro => const PomodoroToolboxLeft(),
               LayerType.slotMachine => const SlotMachineToolboxLeft(),
             },
@@ -74,6 +76,7 @@ class _ToolboxLeft extends ConsumerWidget {
         LayerType.clock    => 'CLOCK STYLE',
         LayerType.gif      => 'UPLOAD FILES',
         LayerType.spotify  => 'SPOTIFY SETTINGS',
+        LayerType.finance => 'FINANCE SETTINGS',
         LayerType.pomodoro => 'POMODORO SETTINGS',
         LayerType.slotMachine => 'SLOT MACHINE SETTINGS',
       };
@@ -102,6 +105,7 @@ class _ToolboxRight extends ConsumerWidget {
               LayerType.clock    => ClockToolboxRight(layer: layer as ClockLayer, n: n),
               LayerType.gif      => GifToolboxRight(layer: layer as GifLayer, n: n),
               LayerType.spotify  => SpotifyToolboxRight(layer: layer as SpotifyLayer, n: n),
+              LayerType.finance => FinanceToolboxRight(layer: layer as FinanceLayer, n: n),
               LayerType.pomodoro => const PomodoroToolboxRight(),
               LayerType.slotMachine => SlotMachineToolboxRight(layer: layer as SlotMachineLayer, n: n),         
             },
@@ -116,6 +120,7 @@ class _ToolboxRight extends ConsumerWidget {
         LayerType.clock    => 'DISPLAY FORMAT',
         LayerType.gif      => 'MEDIA LAYOUT',
         LayerType.spotify  => 'SPOTIFY LAYOUT',
+        LayerType.finance => 'FINANCE LAYOUT',
         LayerType.pomodoro => 'POMODORO LAYOUT',
         LayerType.slotMachine => 'ANIMATION TIMING',  
       };

@@ -9,12 +9,13 @@ import '../../engine/widgets/spotify_widget.dart';
 
 export '../../engine/renderer/font_organizer.dart' show LedFontId;
 
-enum LayerType { text, clock, gif, spotify, pomodoro, slotMachine }
+enum LayerType { text, clock, gif, spotify, finance, pomodoro, slotMachine}
 enum AnimationEffect { none, blink, scrollLeft, scrollRight, pulse, fade, burst }
 enum TextAlignment { left, center, right }
 enum ClockFormat { h24, h12 }
 enum MediaLayout { letterbox, fill, stretch }
 enum SpotifyLayout { artAndText, textOnly, artOnly }
+enum FinanceLayout { priceAndGraph, priceOnly, graphOnly }
 enum PomodoroState { focus, shortBreak, longBreak }
 enum PomodoroLayout { splitLayout, minimalist}
 
@@ -593,6 +594,134 @@ class SlotMachineLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Finance Layer
+// ─────────────────────────────────────────────────────────────────────────────
+
+class FinanceLayer extends Layer {
+  final String         symbol;             // CoinGecko id e.g. "bitcoin"
+  final String         displayLabel;       // short on-screen label e.g. "BTC"
+  final String         vsCurrency;         // "usd", "eur", ...
+  final FinanceLayout  layout;
+  final Color          symbolColor;
+  final Color          priceColor;
+  final Color          upColor;
+  final Color          downColor;
+  final Color          graphColor;
+  final LedFontId      fontId;
+  final bool           showSymbol;
+  final bool           showChangePercent;
+  final int            decimals;
+  final int            pollIntervalSec;
+ 
+  const FinanceLayer({
+    required super.id,
+    required super.name,
+    this.symbol            = 'bitcoin',
+    this.displayLabel      = 'BTC',
+    this.vsCurrency        = 'usd',
+    this.layout            = FinanceLayout.priceAndGraph,
+    this.symbolColor       = const Color(0xFFFFFFFF),
+    this.priceColor        = const Color(0xFFFFFFFF),
+    this.upColor           = const Color(0xFF21C32C),
+    this.downColor         = const Color(0xFFE05656),
+    this.graphColor        = const Color(0xFF21C32C),
+    this.fontId            = LedFontId.polymorph,
+    this.showSymbol        = true,
+    this.showChangePercent = true,
+    this.decimals          = 2,
+    this.pollIntervalSec   = 60,
+    super.visible,
+    super.zIndex,
+    super.opacity,
+    super.offset,
+  });
+ 
+  @override
+  LayerType get type => LayerType.finance;
+ 
+  @override
+  FinanceLayer copyWith({
+    String? id, String? name,
+    String? symbol, String? displayLabel, String? vsCurrency,
+    FinanceLayout? layout,
+    Color? symbolColor, Color? priceColor, Color? upColor, Color? downColor,
+    Color? graphColor,
+    LedFontId? fontId,
+    bool? showSymbol, bool? showChangePercent,
+    int? decimals, int? pollIntervalSec,
+    bool? visible, int? zIndex, double? opacity, Offset? offset,
+  }) =>
+      FinanceLayer(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        symbol: symbol ?? this.symbol,
+        displayLabel: displayLabel ?? this.displayLabel,
+        vsCurrency: vsCurrency ?? this.vsCurrency,
+        layout: layout ?? this.layout,
+        symbolColor: symbolColor ?? this.symbolColor,
+        priceColor: priceColor ?? this.priceColor,
+        upColor: upColor ?? this.upColor,
+        downColor: downColor ?? this.downColor,
+        graphColor: graphColor ?? this.graphColor,
+        fontId: fontId ?? this.fontId,
+        showSymbol: showSymbol ?? this.showSymbol,
+        showChangePercent: showChangePercent ?? this.showChangePercent,
+        decimals: decimals ?? this.decimals,
+        pollIntervalSec: pollIntervalSec ?? this.pollIntervalSec,
+        visible: visible ?? this.visible,
+        zIndex: zIndex ?? this.zIndex,
+        opacity: opacity ?? this.opacity,
+        offset: offset ?? this.offset,
+      );
+ 
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'finance', 'id': id, 'name': name,
+        'symbol': symbol, 'displayLabel': displayLabel, 'vsCurrency': vsCurrency,
+        'layout': layout.name,
+        'symbolColor': symbolColor.value,
+        'priceColor':  priceColor.value,
+        'upColor':     upColor.value,
+        'downColor':   downColor.value,
+        'graphColor':  graphColor.value,
+        'fontId': fontId.name,
+        'showSymbol': showSymbol,
+        'showChangePercent': showChangePercent,
+        'decimals': decimals,
+        'pollIntervalSec': pollIntervalSec,
+        'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
+        'offsetX': offset.dx, 'offsetY': offset.dy,
+      };
+ 
+  factory FinanceLayer.fromJson(Map<String, dynamic> j) => FinanceLayer(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        symbol: j['symbol'] as String? ?? 'bitcoin',
+        displayLabel: j['displayLabel'] as String? ?? 'BTC',
+        vsCurrency: j['vsCurrency'] as String? ?? 'usd',
+        layout: FinanceLayout.values.byName(
+            j['layout'] as String? ?? 'priceAndGraph'),
+        symbolColor: Color(j['symbolColor'] as int? ?? 0xFFFFFFFF),
+        priceColor:  Color(j['priceColor']  as int? ?? 0xFFFFFFFF),
+        upColor:     Color(j['upColor']     as int? ?? 0xFF21C32C),
+        downColor:   Color(j['downColor']   as int? ?? 0xFFE05656),
+        graphColor:  Color(j['graphColor']  as int? ?? 0xFF21C32C),
+        fontId: LedFontId.values.byName(
+            j['fontId'] as String? ?? 'polymorph'),
+        showSymbol: j['showSymbol'] as bool? ?? true,
+        showChangePercent: j['showChangePercent'] as bool? ?? true,
+        decimals: j['decimals'] as int? ?? 2,
+        pollIntervalSec: j['pollIntervalSec'] as int? ?? 60,
+        visible: j['visible'] as bool? ?? true,
+        zIndex: j['zIndex'] as int? ?? 0,
+        opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
+        offset: Offset(
+            (j['offsetX'] as num?)?.toDouble() ?? 0,
+            (j['offsetY'] as num?)?.toDouble() ?? 0),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Factory: deserialise any Layer from JSON
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -602,6 +731,7 @@ Layer layerFromJson(Map<String, dynamic> j) {
     case 'clock':       return ClockLayer.fromJson(j);
     case 'gif':         return GifLayer.fromJson(j);
     case 'spotify':     return SpotifyLayer.fromJson(j);
+    case 'finance':  return FinanceLayer.fromJson(j);
     case 'pomodoro':    return PomodoroLayer.fromJson(j);
     case 'slotMachine': return SlotMachineLayer.fromJson(j);   
     default: throw ArgumentError('Unknown layer type: ${j['type']}');
