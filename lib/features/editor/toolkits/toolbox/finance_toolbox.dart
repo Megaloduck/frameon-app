@@ -39,14 +39,7 @@ class FinanceToolboxLeft extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
 
-        const TbLabel('Short label'),
-        const SizedBox(height: 4),
-        TbTextField(
-          value: layer.displayLabel,
-          onSubmitted: (v) =>
-              n.updateLayer(layer.copyWith(displayLabel: v.trim())),
-        ),
-        const SizedBox(height: 8),
+        
 
         const TbLabel('Vs Currency'),
         const SizedBox(height: 4),

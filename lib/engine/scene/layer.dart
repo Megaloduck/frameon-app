@@ -599,7 +599,6 @@ class SlotMachineLayer extends Layer {
 
 class FinanceLayer extends Layer {
   final String         symbol;             // CoinGecko id e.g. "bitcoin"
-  final String         displayLabel;       // short on-screen label e.g. "BTC"
   final String         vsCurrency;         // "usd", "eur", ...
   final FinanceLayout  layout;
   final Color          symbolColor;
@@ -617,7 +616,6 @@ class FinanceLayer extends Layer {
     required super.id,
     required super.name,
     this.symbol            = 'bitcoin',
-    this.displayLabel      = 'BTC',
     this.vsCurrency        = 'usd',
     this.layout            = FinanceLayout.priceAndGraph,
     this.symbolColor       = const Color(0xFFFFFFFF),
@@ -642,7 +640,7 @@ class FinanceLayer extends Layer {
   @override
   FinanceLayer copyWith({
     String? id, String? name,
-    String? symbol, String? displayLabel, String? vsCurrency,
+    String? symbol, String? vsCurrency,
     FinanceLayout? layout,
     Color? symbolColor, Color? priceColor, Color? upColor, Color? downColor,
     Color? graphColor,
@@ -655,7 +653,6 @@ class FinanceLayer extends Layer {
         id: id ?? this.id,
         name: name ?? this.name,
         symbol: symbol ?? this.symbol,
-        displayLabel: displayLabel ?? this.displayLabel,
         vsCurrency: vsCurrency ?? this.vsCurrency,
         layout: layout ?? this.layout,
         symbolColor: symbolColor ?? this.symbolColor,
@@ -677,7 +674,7 @@ class FinanceLayer extends Layer {
   @override
   Map<String, dynamic> toJson() => {
         'type': 'finance', 'id': id, 'name': name,
-        'symbol': symbol, 'displayLabel': displayLabel, 'vsCurrency': vsCurrency,
+        'symbol': symbol, 'vsCurrency': vsCurrency,
         'layout': layout.name,
         'symbolColor': symbolColor.value,
         'priceColor':  priceColor.value,
@@ -697,7 +694,6 @@ class FinanceLayer extends Layer {
         id: j['id'] as String,
         name: j['name'] as String,
         symbol: j['symbol'] as String? ?? 'bitcoin',
-        displayLabel: j['displayLabel'] as String? ?? 'BTC',
         vsCurrency: j['vsCurrency'] as String? ?? 'usd',
         layout: FinanceLayout.values.byName(
             j['layout'] as String? ?? 'priceAndGraph'),

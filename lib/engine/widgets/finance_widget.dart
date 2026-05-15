@@ -72,7 +72,7 @@ class FinanceWidget extends MatrixWidget<FinanceLayer> {
     final dxOff = layer.offset.dx.round();
     final dyOff = layer.offset.dy.round();
 
-    final symbolStr = layer.showSymbol ? layer.displayLabel.toUpperCase() : '';
+   final symbolStr = layer.showSymbol ? data.ticker.toUpperCase() : '';
     final priceStr  = _formatPrice(data.price, layer.decimals);
 
     // Row 0–6: header row.
@@ -118,7 +118,7 @@ class FinanceWidget extends MatrixWidget<FinanceLayer> {
     final dxOff = layer.offset.dx.round();
     final dyOff = layer.offset.dy.round();
 
-    final symbolStr = layer.showSymbol ? layer.displayLabel.toUpperCase() : '';
+    final symbolStr = layer.showSymbol ? data.ticker.toUpperCase() : '';
     final priceStr  = _formatPrice(data.price, layer.decimals);
     final changeStr = layer.showChangePercent
         ? '${data.isUp ? '+' : ''}${data.change24hPct.toStringAsFixed(1)}%'
