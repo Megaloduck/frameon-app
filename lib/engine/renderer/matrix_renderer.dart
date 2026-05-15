@@ -164,23 +164,20 @@ class MatrixRenderer {
           g, buf, t,
           g.filePath != null ? _assetCache[g.filePath] : null,
         );
-        case LayerType.spotify:
+      case LayerType.spotify:
         final track = currentTrack;
         if (track != null) {
-           _spotify.renderWithTrack(layer as SpotifyLayer, buf, t, track);
-             } else {
-                  // No Spotify connection — render() shows the idle animation
-    // (pulsing music note + "SPOTIFY / NOT CONNECTED" scrolling text).
-    _spotify.render(layer as SpotifyLayer, buf, t);
-  }
-  case LayerType.finance:
-  _finance.renderWithData(
-    layer as FinanceLayer,
-    buf,
-    t,
-    currentFinance,
-  );
-  
+          _spotify.renderWithTrack(layer as SpotifyLayer, buf, t, track);
+        } else {
+          _spotify.render(layer as SpotifyLayer, buf, t);
+        }
+      case LayerType.finance:
+        _finance.renderWithData(
+          layer as FinanceLayer,
+          buf,
+          t,
+          currentFinance,
+        );
       case LayerType.pomodoro:
         final p = layer as PomodoroLayer;
         final s = currentPomodoroState;

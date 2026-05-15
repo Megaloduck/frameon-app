@@ -23,7 +23,7 @@ export '../../services/spotify/spotify_service.dart'
 export '../../services/pomodoro/pomodoro_service.dart' show pomodoroServiceProvider;
 export '../../services/slot_machine/slot_machine_service.dart'
     show slotMachineServiceProvider, SlotMachineService;
-    export '../../services/finance/finance_service.dart'
+export '../../services/finance/finance_service.dart'
     show financeServiceProvider, FinanceKey, FinanceData, FinanceStatus;
 
 const _uuid = Uuid();
@@ -148,6 +148,18 @@ final selectedLayerProvider = Provider<Layer?>((ref) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Active Finance Key Provider
+// ─────────────────────────────────────────────────────────────────────────────
+
+final activeFinanceKeyProvider = Provider<FinanceKey?>((ref) {
+  final scene = ref.watch(sceneProvider);
+  for (final l in scene.visibleLayers) {
+    if (l is FinanceLayer) return FinanceKey(l.symbol, l.vsCurrency);
+  }
+  return null;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Renderer
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -159,6 +171,19 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
     renderer.currentTrack = next.isConnected ? next.toTrack() : null;
   });
 
+  // Wire Finance data - listens to active key changes
+  ref.listen(activeFinanceKeyProvider, (_, key) {
+    if (key == null) {
+      renderer.currentFinance = null;
+      return;
+    }
+    ref.listen<FinanceData>(
+      financeServiceProvider(key),
+      (_, next) => renderer.currentFinance = next,
+      fireImmediately: true,
+    );
+  }, fireImmediately: true);
+
   // Wire Pomodoro timer state into renderer.
   ref.listen(pomodoroServiceProvider, (_, next) {
     renderer.currentPomodoroState = next;
@@ -166,8 +191,8 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
 
   // Wire Slot Machine state into renderer.
   ref.listen(slotMachineServiceProvider, (_, next) {
-  renderer.currentSlotMachineState = next;
-});
+    renderer.currentSlotMachineState = next;
+  });
 
   return renderer;
 });
@@ -188,14 +213,22 @@ final previewFrameProvider = Provider<PixelBuffer>((ref) {
     renderer.currentTrack = spotify.isConnected ? spotify.toPreviewTrack() : null;
   }
 
+  if (visible.any((l) => l.type == LayerType.finance)) {
+    final key = ref.watch(activeFinanceKeyProvider);
+    if (key != null) {
+      renderer.currentFinance = ref.watch(financeServiceProvider(key));
+    }
+  }
+
   if (visible.any((l) =>
       l.type == LayerType.clock || l.type == LayerType.pomodoro)) {
     ref.watch(timeServiceProvider);
     renderer.currentPomodoroState = ref.watch(pomodoroServiceProvider);
   }
-if (visible.any((l) => l.type == LayerType.slotMachine)) {
-  renderer.currentSlotMachineState = ref.watch(slotMachineServiceProvider);
-}
+
+  if (visible.any((l) => l.type == LayerType.slotMachine)) {
+    renderer.currentSlotMachineState = ref.watch(slotMachineServiceProvider);
+  }
 
   final gifBytes = ref.watch(gifBytesProvider);
   for (final entry in gifBytes.entries) {
@@ -278,12 +311,17 @@ int _calculateFrameCount(
         } else {
           layerFrames = 1;
         }
-        case LayerType.slotMachine:
-  // Playable layer — the device shows whatever the user last spun.
-  // One frame is enough; the global timeline max takes care of the rest.
-  layerFrames = 1;
+
+      case LayerType.slotMachine:
+        // Playable layer — the device shows whatever the user last spun.
+        // One frame is enough; the global timeline max takes care of the rest.
+        layerFrames = 1;
+
+      case LayerType.finance:
+        // Finance is essentially static — 2 seconds of frames is enough;
+        // the firmware re-receives on the next 60 s poll.
+        layerFrames = twoSecondFrames;
     }
-    
 
     if (layerFrames > maxFrames) maxFrames = layerFrames;
   }
@@ -320,6 +358,12 @@ class TimelineNotifier extends AsyncNotifier<Timeline> {
     renderer.currentTrack =
         spotifyState.isConnected ? spotifyState.toTrack() : null;
     renderer.currentPomodoroState = ref.read(pomodoroServiceProvider);
+    
+    // Wire finance data for timeline export
+    final financeKey = ref.read(activeFinanceKeyProvider);
+    if (financeKey != null) {
+      renderer.currentFinance = ref.read(financeServiceProvider(financeKey));
+    }
 
     _debounce?.cancel();
     final int gen = ++_generation;
