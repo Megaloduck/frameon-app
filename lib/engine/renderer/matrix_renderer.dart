@@ -69,6 +69,7 @@ class MatrixRenderer {
 
   SpotifyTrack?       currentTrack;
   PomodoroTimerState? currentPomodoroState;
+  SlotMachineRuntimeState? currentSlotMachineState;
 
   // ── Live preview — single frame ───────────────────────────────────────────
 
@@ -176,8 +177,16 @@ class MatrixRenderer {
         } else {
           _pomodoro.render(p, buf, t, isExport: isExport);
         }
-      case LayerType.slotMachine: 
-        _slotMachine.render(layer as SlotMachineLayer, buf, t);
+      case LayerType.slotMachine:
+  final s = currentSlotMachineState;
+  if (s != null) {
+    _slotMachine.renderWithState(
+      layer as SlotMachineLayer, buf, t, s,
+      isExport: isExport,
+    );
+  } else {
+    _slotMachine.render(layer as SlotMachineLayer, buf, t);
+  }
     }
   }
 

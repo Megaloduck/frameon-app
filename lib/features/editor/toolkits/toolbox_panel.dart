@@ -61,7 +61,7 @@ class _ToolboxLeft extends ConsumerWidget {
               LayerType.gif      => GifToolboxLeft(layer: layer as GifLayer, n: n),
               LayerType.spotify  => SpotifyToolboxLeft(layer: layer as SpotifyLayer),
               LayerType.pomodoro => const PomodoroToolboxLeft(),
-              LayerType.slotMachine => SlotMachineToolboxLeft(layer: layer as SlotMachineLayer, n: n),
+              LayerType.slotMachine => const SlotMachineToolboxLeft(),
             },
           ),
         ),
@@ -117,7 +117,7 @@ class _ToolboxRight extends ConsumerWidget {
         LayerType.gif      => 'MEDIA LAYOUT',
         LayerType.spotify  => 'SPOTIFY LAYOUT',
         LayerType.pomodoro => 'POMODORO LAYOUT',
-        LayerType.slotMachine => 'ANIMATION TIMING',
+        LayerType.slotMachine => 'ANIMATION TIMING',  
       };
 }
 

@@ -11,6 +11,7 @@ import '../../engine/scene/scene.dart';
 import '../../engine/scene/timeline.dart';
 import '../../services/spotify/spotify_service.dart';
 import '../../services/pomodoro/pomodoro_service.dart';
+import '../../services/slot_machine/slot_machine_service.dart';
 import '../../services/autosave/autosave_service.dart';
 
 import '../../features/editor/toolkits/gif_bytes_provider.dart';
@@ -19,6 +20,8 @@ import 'time_service.dart';
 export '../../services/spotify/spotify_service.dart'
     show spotifyServiceProvider, SpotifyState, SpotifyConnectionStatus, SpotifyServiceNotifier;
 export '../../services/pomodoro/pomodoro_service.dart' show pomodoroServiceProvider;
+export '../../services/slot_machine/slot_machine_service.dart'
+    show slotMachineServiceProvider, SlotMachineService;
 
 const _uuid = Uuid();
 
@@ -153,6 +156,11 @@ final matrixRendererProvider = Provider<MatrixRenderer>((ref) {
     renderer.currentPomodoroState = next;
   });
 
+  // Wire Slot Machine state into renderer.
+  ref.listen(slotMachineServiceProvider, (_, next) {
+  renderer.currentSlotMachineState = next;
+});
+
   return renderer;
 });
 
@@ -177,6 +185,9 @@ final previewFrameProvider = Provider<PixelBuffer>((ref) {
     ref.watch(timeServiceProvider);
     renderer.currentPomodoroState = ref.watch(pomodoroServiceProvider);
   }
+if (visible.any((l) => l.type == LayerType.slotMachine)) {
+  renderer.currentSlotMachineState = ref.watch(slotMachineServiceProvider);
+}
 
   final gifBytes = ref.watch(gifBytesProvider);
   for (final entry in gifBytes.entries) {
@@ -260,14 +271,9 @@ int _calculateFrameCount(
           layerFrames = 1;
         }
         case LayerType.slotMachine:
-          final sm = layer as SlotMachineLayer;
-  // One full IDLE → SPIN → STOP_R1 → STOP_R2 → SHOW_RESULT cycle.
-  // Baking exactly one cycle ensures the device loop wraps seamlessly.
-  final cycleMs = sm.idleMs +
-                  sm.spinDurationMs +
-                  2 * sm.reelStopStaggerMs +
-                  sm.resultHoldMs;
-  layerFrames = (cycleMs / frameDurationMs).ceil();
+  // Playable layer — the device shows whatever the user last spun.
+  // One frame is enough; the global timeline max takes care of the rest.
+  layerFrames = 1;
     }
     
 

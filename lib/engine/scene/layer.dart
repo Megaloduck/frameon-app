@@ -518,23 +518,21 @@ class SlotMachineLayer extends Layer {
   final Color frameColor;
   final Color winFlashColor;
   final bool  showFrame;
-  final int   spinSpeedMs;        // ms per symbol-height of scroll
-  final int   spinDurationMs;     // how long PHASE 1 lasts
-  final int   reelStopStaggerMs;  // how long PHASE 2 and PHASE 3 each last
-  final int   idleMs;             // PHASE 0 — pause before the spin
-  final int   resultHoldMs;       // PHASE 4 — show result + flash window
-  final int   winOddsDenominator; // ~1 in N cycles is a 3-of-a-kind jackpot
+  final int   spinSpeedMs;         // ms per symbol-height of scroll
+  final int   spinDurationMs;      // how long reel 0 keeps spinning
+  final int   reelStopStaggerMs;   // extra ms per reel before it locks in
+  final int   winFlashDurationMs;  // post-spin flash window (0 = no flash)
+  final int   winOddsDenominator;  // ~1 in N spins is a forced 3-of-a-kind
 
   const SlotMachineLayer({
     required super.id, required super.name,
-    this.frameColor    = const Color(0xFFEFEFEF),
-    this.winFlashColor = const Color(0xFFFFC107),
-    this.showFrame     = true,
-    this.spinSpeedMs       = 80,
-    this.spinDurationMs    = 1200,
-    this.reelStopStaggerMs = 400,
-    this.idleMs            = 800,
-    this.resultHoldMs      = 1600,
+    this.frameColor         = const Color(0xFFEFEFEF),
+    this.winFlashColor      = const Color(0xFFFFC107),
+    this.showFrame          = true,
+    this.spinSpeedMs        = 80,
+    this.spinDurationMs     = 1200,
+    this.reelStopStaggerMs  = 400,
+    this.winFlashDurationMs = 2500,
     this.winOddsDenominator = 8,
     super.visible, super.zIndex, super.opacity, super.offset,
   });
@@ -546,18 +544,17 @@ class SlotMachineLayer extends Layer {
     String? id, String? name,
     Color? frameColor, Color? winFlashColor, bool? showFrame,
     int? spinSpeedMs, int? spinDurationMs, int? reelStopStaggerMs,
-    int? idleMs, int? resultHoldMs, int? winOddsDenominator,
+    int? winFlashDurationMs, int? winOddsDenominator,
     bool? visible, int? zIndex, double? opacity, Offset? offset,
   }) => SlotMachineLayer(
         id: id ?? this.id, name: name ?? this.name,
-        frameColor: frameColor ?? this.frameColor,
-        winFlashColor: winFlashColor ?? this.winFlashColor,
-        showFrame: showFrame ?? this.showFrame,
-        spinSpeedMs: spinSpeedMs ?? this.spinSpeedMs,
-        spinDurationMs: spinDurationMs ?? this.spinDurationMs,
-        reelStopStaggerMs: reelStopStaggerMs ?? this.reelStopStaggerMs,
-        idleMs: idleMs ?? this.idleMs,
-        resultHoldMs: resultHoldMs ?? this.resultHoldMs,
+        frameColor:         frameColor         ?? this.frameColor,
+        winFlashColor:      winFlashColor      ?? this.winFlashColor,
+        showFrame:          showFrame          ?? this.showFrame,
+        spinSpeedMs:        spinSpeedMs        ?? this.spinSpeedMs,
+        spinDurationMs:     spinDurationMs     ?? this.spinDurationMs,
+        reelStopStaggerMs:  reelStopStaggerMs  ?? this.reelStopStaggerMs,
+        winFlashDurationMs: winFlashDurationMs ?? this.winFlashDurationMs,
         winOddsDenominator: winOddsDenominator ?? this.winOddsDenominator,
         visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
         opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
@@ -572,8 +569,7 @@ class SlotMachineLayer extends Layer {
         'spinSpeedMs':        spinSpeedMs,
         'spinDurationMs':     spinDurationMs,
         'reelStopStaggerMs':  reelStopStaggerMs,
-        'idleMs':             idleMs,
-        'resultHoldMs':       resultHoldMs,
+        'winFlashDurationMs': winFlashDurationMs,
         'winOddsDenominator': winOddsDenominator,
         'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
         'offsetX': offset.dx, 'offsetY': offset.dy,
@@ -587,8 +583,7 @@ class SlotMachineLayer extends Layer {
         spinSpeedMs:        j['spinSpeedMs']        as int? ?? 80,
         spinDurationMs:     j['spinDurationMs']     as int? ?? 1200,
         reelStopStaggerMs:  j['reelStopStaggerMs']  as int? ?? 400,
-        idleMs:             j['idleMs']             as int? ?? 800,
-        resultHoldMs:       j['resultHoldMs']       as int? ?? 1600,
+        winFlashDurationMs: j['winFlashDurationMs'] as int? ?? 2500,
         winOddsDenominator: j['winOddsDenominator'] as int? ?? 8,
         visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
