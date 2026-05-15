@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
 import '../../../../engine/renderer/font_organizer.dart';
 import '../../../../engine/scene/layer.dart';
@@ -126,15 +127,6 @@ class FinanceToolboxRight extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
 
-        const TbLabel('Opacity'),
-        Slider(
-          value: layer.opacity,
-          min: 0,
-          max: 1,
-          onChanged: (v) => n.updateLayer(layer.copyWith(opacity: v)),
-        ),
-        const SizedBox(height: 8),
-
         // Manual refresh
         Center(
           child: TextButton.icon(
@@ -157,16 +149,50 @@ class FinanceToolboxRight extends ConsumerWidget {
 // Status pill
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _StatusPill extends StatelessWidget {
+class _StatusPill extends StatefulWidget {
   final FinanceData data;
   const _StatusPill({required this.data});
 
   @override
+  State<_StatusPill> createState() => _StatusPillState();
+}
+
+class _StatusPillState extends State<_StatusPill> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Tick once per second so the countdown updates in real time.
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  /// Seconds remaining until the next scheduled refresh attempt,
+  /// or null if we don't yet have a reference timestamp.
+  int? _countdownSeconds() {
+    final updatedAt = widget.data.updatedAt;
+    if (updatedAt == null) return null;
+    final intervalSec = FinanceServiceNotifier.pollInterval.inSeconds;
+    final elapsedSec  = DateTime.now().difference(updatedAt).inSeconds;
+    final remaining   = intervalSec - elapsedSec;
+    return remaining.clamp(0, intervalSec);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
     final (label, color) = switch (data.status) {
-      FinanceStatus.ok      => ('Live', const Color(0xFF21C32C)),
-      FinanceStatus.loading => ('Loading…', const Color(0xFFEF9F27)),
-      FinanceStatus.error   => ('Offline', const Color(0xFFE05656)),
+      FinanceStatus.ok      => ('Live',      const Color(0xFF21C32C)),
+      FinanceStatus.loading => ('Loading…',  const Color(0xFFEF9F27)),
+      FinanceStatus.error   => ('Offline',   const Color(0xFFE05656)),
     };
     final priceStr = data.price > 0
         ? data.price.toStringAsFixed(data.price >= 100 ? 2 : 4)
@@ -174,6 +200,8 @@ class _StatusPill extends StatelessWidget {
     final changeStr = data.hasData
         ? '${data.isUp ? '+' : ''}${data.change24hPct.toStringAsFixed(2)}%'
         : '';
+    final cd = _countdownSeconds();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -189,24 +217,45 @@ class _StatusPill extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
-          Text(label,
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          if (cd != null) ...[
+            const SizedBox(width: 6),
+            Text(
+              '· refreshed in ${cd}s',
               style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: color)),
+                fontSize: 9,
+                fontWeight: FontWeight.w500,
+                color: color.withOpacity(0.75),
+              ),
+            ),
+          ],
           const Spacer(),
-          Text('${data.vsCurrency.toUpperCase()} $priceStr',
-              style: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w600)),
+          Text(
+            '${data.vsCurrency.toUpperCase()} $priceStr',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           if (changeStr.isNotEmpty) ...[
             const SizedBox(width: 6),
-            Text(changeStr,
-                style: TextStyle(
-                    fontSize: 10,
-                    color: data.isUp
-                        ? const Color(0xFF21C32C)
-                        : const Color(0xFFE05656),
-                    fontWeight: FontWeight.w600)),
+            Text(
+              changeStr,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: data.isUp
+                    ? const Color(0xFF21C32C)
+                    : const Color(0xFFE05656),
+              ),
+            ),
           ],
         ],
       ),

@@ -76,27 +76,27 @@ class FinanceWidget extends MatrixWidget<FinanceLayer> {
     final priceStr  = _formatPrice(data.price, layer.decimals);
 
     // Row 0–6: header row.
-    int x = dxOff;
+    int x = dxOff+1;
     if (symbolStr.isNotEmpty) {
       font.draw(
         buffer:  buf,
         text:    symbolStr,
         color:   layer.symbolColor,
         x:       x,
-        y:       dyOff,
+        y:       dyOff+1,
         opacity: layer.opacity,
       );
       x += font.textWidth(symbolStr) + 2;
     }
     // Right-align price to the panel edge.
     final priceW = font.textWidth(priceStr);
-    final priceX = math.max(x, buf.width - priceW + dxOff);
+    final priceX = math.max(x, buf.width - priceW + dxOff-1);
     font.draw(
       buffer:  buf,
       text:    priceStr,
       color:   data.isUp ? layer.upColor : layer.downColor,
       x:       priceX,
-      y:       dyOff,
+      y:       dyOff+1,
       opacity: layer.opacity,
     );
 
