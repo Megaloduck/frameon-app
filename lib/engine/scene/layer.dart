@@ -9,7 +9,7 @@ import '../../engine/widgets/spotify_widget.dart';
 
 export '../../engine/renderer/font_organizer.dart' show LedFontId;
 
-enum LayerType { text, clock, gif, spotify, finance, pomodoro, slotMachine}
+enum LayerType { text, clock, gif, spotify, finance, pomodoro, slotMachine }
 enum AnimationEffect { none, blink, scrollLeft, scrollRight, pulse, fade, burst }
 enum TextAlignment { left, center, right }
 enum ClockFormat { h24, h12 }
@@ -17,8 +17,9 @@ enum MediaLayout { letterbox, fill, stretch }
 enum SpotifyLayout { artAndText, textOnly, artOnly }
 enum FinanceLayout { priceAndGraph, priceOnly, graphOnly }
 enum PomodoroState { focus, shortBreak, longBreak }
-enum PomodoroLayout { splitLayout, minimalist}
+enum PomodoroLayout { splitLayout, minimalist }
 
+// ── v1.6 — Clock layout styles ────────────────────────────────────────────
 enum ClockLayoutStyle {
   classic,        // HH:MM[:SS] centered, optional date below
   analog,         // circular face with hands, optional digital on right
@@ -28,6 +29,7 @@ enum ClockLayoutStyle {
   dualTimezone,   // two zones stacked vertically
 }
 
+// ── v1.6 — Analog face decoration ─────────────────────────────────────────
 enum AnalogFaceStyle {
   cardinalDots,   // 4 dots at 12/3/6/9
   allDots,        // 12 dots, one per hour
@@ -128,7 +130,7 @@ String _migrateFontId(String raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Clock Layer
 // ─────────────────────────────────────────────────────────────────────────────
- 
+
 class ClockLayer extends Layer {
   final Color color;
   final Color hoursColor;
@@ -142,15 +144,21 @@ class ClockLayer extends Layer {
   final bool showSeconds;
   final bool blinkColon;
   final String timezone;
-  final LedFontId fontId;  
+  final LedFontId fontId;
+
+  // ── v1.6 — layout style + per-style config ────────────────────────────
   final ClockLayoutStyle layoutStyle;
+
+  // dualTimezone
   final String secondTimezone;
   final String firstZoneLabel;    // empty → renderer derives from `timezone`
   final String secondZoneLabel;   // empty → renderer derives from `secondTimezone`
+
+  // analog
   final AnalogFaceStyle analogFaceStyle;
   final bool showSecondHand;
-  final bool analogShowDigital; // for analog layout: whether to show a digital time readout below the face
- 
+  final bool analogShowDigital;   // show HH:MM next to the face
+
   const ClockLayer({
     required super.id, required super.name,
     this.color = const Color(0xFF21C32C),
@@ -163,6 +171,7 @@ class ClockLayer extends Layer {
     this.format = ClockFormat.h24,
     this.showDate = false, this.showSeconds = false, this.blinkColon = true,
     this.timezone = 'local', this.fontId = LedFontId.polymorph,
+    // v1.6
     this.layoutStyle = ClockLayoutStyle.classic,
     this.secondTimezone = 'UTC',
     this.firstZoneLabel = '',
@@ -172,9 +181,9 @@ class ClockLayer extends Layer {
     this.analogShowDigital = true,
     super.visible, super.zIndex, super.opacity, super.offset,
   });
- 
+
   @override LayerType get type => LayerType.clock;
- 
+
   @override
   ClockLayer copyWith({String? id, String? name, Color? color,
       Color? hoursColor, Color? minutesColor, Color? secondsColor,
@@ -212,7 +221,7 @@ class ClockLayer extends Layer {
         zIndex: zIndex ?? this.zIndex, opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
       );
- 
+
   @override
   Map<String, dynamic> toJson() => {
         'type': 'clock', 'id': id, 'name': name, 'color': color.value,
@@ -233,7 +242,7 @@ class ClockLayer extends Layer {
         'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
         'offsetX': offset.dx, 'offsetY': offset.dy,
       };
- 
+
   factory ClockLayer.fromJson(Map<String, dynamic> j) => ClockLayer(
         id: j['id'] as String, name: j['name'] as String,
         color: Color(j['color'] as int? ?? 0xFF21C32C),
@@ -327,7 +336,7 @@ class GifLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify Layer  
+// Spotify Layer
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyLayer extends Layer {
@@ -343,13 +352,13 @@ class SpotifyLayer extends Layer {
   final ArtLayoutMode? artLayoutMode;
   final LedFontId fontId;
 
-  // ── Per-element scroll direction (base transport) ──────────────────────────
+  // ── Per-element scroll direction (base transport) ──────────────────────
   final AnimationEffect titleEffect;         // none | scrollLeft | scrollRight
   final int titleEffectSpeedMs;
   final AnimationEffect artistEffect;        // none | scrollLeft | scrollRight
   final int artistEffectSpeedMs;
 
-  // ── Per-element overlay effect (alpha modulation on top of scroll) ─────────
+  // ── Per-element overlay effect (alpha modulation on top of scroll) ─────
   final AnimationEffect titleOverlayEffect;  // none | blink | pulse | fade | burst
   final AnimationEffect artistOverlayEffect; // none | blink | pulse | fade | burst
 
@@ -658,7 +667,8 @@ class SlotMachineLayer extends Layer {
         winOddsDenominator: j['winOddsDenominator'] as int? ?? 8,
         visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,(j['offsetY'] as num?)?.toDouble() ?? 0),
+        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
+            (j['offsetY'] as num?)?.toDouble() ?? 0),
         showDecorations:    j['showDecorations']    as bool? ?? true,
         marqueeColor:       Color(j['marqueeColor'] as int? ?? 0xFFFFB300),
       );
@@ -682,7 +692,7 @@ class FinanceLayer extends Layer {
   final bool           showChangePercent;
   final int            decimals;
   final int            pollIntervalSec;
- 
+
   const FinanceLayer({
     required super.id,
     required super.name,
@@ -704,10 +714,10 @@ class FinanceLayer extends Layer {
     super.opacity,
     super.offset,
   });
- 
+
   @override
   LayerType get type => LayerType.finance;
- 
+
   @override
   FinanceLayer copyWith({
     String? id, String? name,
@@ -741,7 +751,7 @@ class FinanceLayer extends Layer {
         opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
       );
- 
+
   @override
   Map<String, dynamic> toJson() => {
         'type': 'finance', 'id': id, 'name': name,
@@ -760,7 +770,7 @@ class FinanceLayer extends Layer {
         'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
         'offsetX': offset.dx, 'offsetY': offset.dy,
       };
- 
+
   factory FinanceLayer.fromJson(Map<String, dynamic> j) => FinanceLayer(
         id: j['id'] as String,
         name: j['name'] as String,
@@ -798,9 +808,82 @@ Layer layerFromJson(Map<String, dynamic> j) {
     case 'clock':       return ClockLayer.fromJson(j);
     case 'gif':         return GifLayer.fromJson(j);
     case 'spotify':     return SpotifyLayer.fromJson(j);
-    case 'finance':  return FinanceLayer.fromJson(j);
+    case 'finance':     return FinanceLayer.fromJson(j);
     case 'pomodoro':    return PomodoroLayer.fromJson(j);
-    case 'slotMachine': return SlotMachineLayer.fromJson(j);   
+    case 'slotMachine': return SlotMachineLayer.fromJson(j);
     default: throw ArgumentError('Unknown layer type: ${j['type']}');
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timezone short labels — used by dualTimezone clock style. Loosely IATA
+// airport codes so they're easy to recognize at a glance.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Map<String, String> kTzShortLabels = {
+  'local':              'LCL',
+  'UTC':                'UTC',
+  'Europe/London':      'LON',
+  'Europe/Lisbon':      'LIS',
+  'Europe/Paris':       'PAR',
+  'Europe/Berlin':      'BER',
+  'Europe/Rome':        'ROM',
+  'Europe/Amsterdam':   'AMS',
+  'Europe/Madrid':      'MAD',
+  'Europe/Warsaw':      'WAR',
+  'Europe/Athens':      'ATH',
+  'Europe/Bucharest':   'BUC',
+  'Europe/Helsinki':    'HEL',
+  'Europe/Istanbul':    'IST',
+  'Europe/Moscow':      'MOW',
+  'Asia/Riyadh':        'RUH',
+  'Asia/Dubai':         'DXB',
+  'Asia/Baku':          'BAK',
+  'Asia/Kabul':         'KBL',
+  'Asia/Karachi':       'KHI',
+  'Asia/Tashkent':      'TAS',
+  'Asia/Kolkata':       'BOM',
+  'Asia/Colombo':       'CMB',
+  'Asia/Kathmandu':     'KTM',
+  'Asia/Dhaka':         'DAC',
+  'Asia/Almaty':        'ALA',
+  'Asia/Rangoon':       'RGN',
+  'Asia/Bangkok':       'BKK',
+  'Asia/Jakarta':       'JKT',
+  'Asia/Ho_Chi_Minh':   'SGN',
+  'Asia/Singapore':     'SIN',
+  'Asia/Shanghai':      'SHA',
+  'Asia/Taipei':        'TPE',
+  'Asia/Kuala_Lumpur':  'KUL',
+  'Asia/Manila':        'MNL',
+  'Asia/Seoul':         'ICN',
+  'Asia/Tokyo':         'TYO',
+  'Australia/Darwin':   'DRW',
+  'Australia/Brisbane': 'BNE',
+  'Australia/Adelaide': 'ADL',
+  'Australia/Sydney':   'SYD',
+  'Pacific/Auckland':   'AKL',
+  'Pacific/Fiji':       'NAN',
+  'Pacific/Honolulu':   'HNL',
+  'America/Anchorage':  'ANC',
+  'America/Los_Angeles':'LAX',
+  'America/Denver':     'DEN',
+  'America/Phoenix':    'PHX',
+  'America/Chicago':    'CHI',
+  'America/New_York':   'NYC',
+  'America/Toronto':    'YYZ',
+  'America/Halifax':    'HFX',
+  'America/Sao_Paulo':  'SAO',
+  'America/Buenos_Aires':'BUE',
+  'Atlantic/Azores':    'AZO',
+};
+
+/// Auto-derived 3-letter label for a timezone id. Falls back to the last
+/// path segment uppercased, truncated to 3 chars.
+String defaultZoneLabel(String tz) {
+  final mapped = kTzShortLabels[tz];
+  if (mapped != null) return mapped;
+  final segment = tz.contains('/') ? tz.split('/').last : tz;
+  final clean   = segment.replaceAll('_', '');
+  return clean.substring(0, clean.length < 3 ? clean.length : 3).toUpperCase();
 }
