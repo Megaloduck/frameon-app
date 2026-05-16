@@ -37,28 +37,32 @@ class SlotMachineToolboxLeft extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Status / stats card ──────────────────────────────────────────
-        _StatusCard(
-          headline: showWin
-              ? 'JACKPOT!'
-              : (spinning ? 'Spinning…' : 'Ready'),
-          subline: 'Spins ${state.spinsCount}  ·  Wins ${state.winsCount}',
-          accent: showWin ? layer.winFlashColor : null,
-        ),
-        const SizedBox(height: 10),
-
-        // ── Transport (RESET / SPIN) ─────────────────────────────────────
+        // ── Status / stats card + transport (RESET / SPIN) ───────────────
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            Expanded(
+              child: _StatusCard(
+                headline: showWin
+                    ? 'JACKPOT!'
+                    : (spinning ? 'Spinning…' : 'Ready'),
+                subline:
+                    'Spins ${state.spinsCount}  ·  Wins ${state.winsCount}',
+                accent: showWin ? layer.winFlashColor : null,
+              ),
+            ),
+            const SizedBox(width: 10),
             TbTransportBtn(
               icon: Icons.restart_alt_rounded,
               onTap: () => service.reset(),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 6),
             TbTransportBtn(
               icon: Icons.casino_rounded,
               filled: canSpin,
+              // service.spin() already no-ops while a spin is in flight,
+              // so the callback is safe to fire any time; `filled` carries
+              // the visual disabled cue.
               onTap: () => service.spin(layer),
             ),
           ],
@@ -83,6 +87,16 @@ class SlotMachineToolboxLeft extends ConsumerWidget {
           Text('Win flash color',
               style: TextStyle(fontSize: 11, color: context.tTextMuted)),
         ]),
+        const SizedBox(height: 8),
+
+        // ── Marquee / decoration colour ──────────────────────────────────
+        Row(children: [
+          tbColorBtn(context, layer.marqueeColor,
+              (c) => n.updateLayer(layer.copyWith(marqueeColor: c))),
+          const SizedBox(width: 8),
+          Text('Marquee color',
+              style: TextStyle(fontSize: 11, color: context.tTextMuted)),
+        ]),
         const SizedBox(height: 10),
 
         // ── Show-frame toggle ────────────────────────────────────────────
@@ -90,6 +104,15 @@ class SlotMachineToolboxLeft extends ConsumerWidget {
           label: 'Show frame',
           value: layer.showFrame,
           onChanged: (v) => n.updateLayer(layer.copyWith(showFrame: v)),
+        ),
+        const SizedBox(height: 4),
+
+        // ── Show-decorations toggle ──────────────────────────────────────
+        TbToggleRow(
+          label: 'Show decorations',
+          value: layer.showDecorations,
+          onChanged: (v) =>
+              n.updateLayer(layer.copyWith(showDecorations: v)),
         ),
         const SizedBox(height: 6),
 

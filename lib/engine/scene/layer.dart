@@ -524,6 +524,8 @@ class SlotMachineLayer extends Layer {
   final int   reelStopStaggerMs;   // extra ms per reel before it locks in
   final int   winFlashDurationMs;  // post-spin flash window (0 = no flash)
   final int   winOddsDenominator;  // ~1 in N spins is a forced 3-of-a-kind
+  final bool  showDecorations;
+  final Color marqueeColor;
 
   const SlotMachineLayer({
     required super.id, required super.name,
@@ -535,6 +537,8 @@ class SlotMachineLayer extends Layer {
     this.reelStopStaggerMs  = 400,
     this.winFlashDurationMs = 2500,
     this.winOddsDenominator = 8,
+    this.showDecorations    = true,
+    this.marqueeColor       = const Color(0xFFFFB300),
     super.visible, super.zIndex, super.opacity, super.offset,
   });
 
@@ -547,6 +551,7 @@ class SlotMachineLayer extends Layer {
     int? spinSpeedMs, int? spinDurationMs, int? reelStopStaggerMs,
     int? winFlashDurationMs, int? winOddsDenominator,
     bool? visible, int? zIndex, double? opacity, Offset? offset,
+    bool? showDecorations, Color? marqueeColor,
   }) => SlotMachineLayer(
         id: id ?? this.id, name: name ?? this.name,
         frameColor:         frameColor         ?? this.frameColor,
@@ -559,6 +564,8 @@ class SlotMachineLayer extends Layer {
         winOddsDenominator: winOddsDenominator ?? this.winOddsDenominator,
         visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
         opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
+        showDecorations:    showDecorations    ?? this.showDecorations,
+        marqueeColor:       marqueeColor       ?? this.marqueeColor,
       );
 
   @override
@@ -574,6 +581,8 @@ class SlotMachineLayer extends Layer {
         'winOddsDenominator': winOddsDenominator,
         'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
         'offsetX': offset.dx, 'offsetY': offset.dy,
+        'showDecorations':    showDecorations,
+        'marqueeColor':       marqueeColor.value,
       };
 
   factory SlotMachineLayer.fromJson(Map<String, dynamic> j) => SlotMachineLayer(
@@ -588,8 +597,9 @@ class SlotMachineLayer extends Layer {
         winOddsDenominator: j['winOddsDenominator'] as int? ?? 8,
         visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
-        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
-            (j['offsetY'] as num?)?.toDouble() ?? 0),
+        offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,(j['offsetY'] as num?)?.toDouble() ?? 0),
+        showDecorations:    j['showDecorations']    as bool? ?? true,
+        marqueeColor:       Color(j['marqueeColor'] as int? ?? 0xFFFFB300),
       );
 }
 

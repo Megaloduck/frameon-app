@@ -238,37 +238,59 @@ class SlotMachineWidget extends MatrixWidget<SlotMachineLayer> {
     final int x0 = ((buffer.width  - kTotalWidth)  ~/ 2) + ox;
     final int y0 = ((buffer.height - kTotalHeight) ~/ 2) + oy;
 
-    // Frame.
-    if (layer.showFrame) {
-      _drawFrame(buffer, x0, y0, layer.frameColor);
+    // Compute the win-flash pulse once so the frame and surrounding
+    // decoration pulse in lockstep.
+    final bool winFlashOn = _computeWinFlashOn(state, layer);
+
+    // ── Decoration (drawn first so the frame visually sits on top) ────────
+    if (layer.showDecorations) {
+      final Color decoColor =
+          winFlashOn ? layer.winFlashColor : layer.marqueeColor;
+
+      // Top marquee — chase right.
+      _drawMarquee(buffer,
+          x0: x0,
+          y: y0 - 2,
+          width: kTotalWidth,
+          color: decoColor,
+          elapsedMs: elapsedMs,
+          reverse: false,
+          forceAllOn: winFlashOn);
+
+      // Bottom marquee — chase left, so the pair counter-rotates.
+      _drawMarquee(buffer,
+          x0: x0,
+          y: y0 + kTotalHeight + 1,
+          width: kTotalWidth,
+          color: decoColor,
+          elapsedMs: elapsedMs,
+          reverse: true,
+          forceAllOn: winFlashOn);
+
+      // Side lamp pips — small '+' marks flanking the frame.
+      _drawSidePips(buffer,
+          x0: x0,
+          y0: y0,
+          color: decoColor,
+          elapsedMs: elapsedMs,
+          forceAllOn: winFlashOn);
     }
 
-    // Export and non-spinning phases share the same static-symbol render.
+    // ── Frame ─────────────────────────────────────────────────────────────
+    if (layer.showFrame) {
+      _drawFrame(buffer, x0, y0,
+          winFlashOn ? layer.winFlashColor : layer.frameColor);
+    }
+
+    // ── Reels ─────────────────────────────────────────────────────────────
     final bool spinning =
         !isExport && state.phase == SlotMachinePhase.spinning;
 
     if (!spinning) {
       _drawStaticResult(buffer, x0, y0, state.symbols);
-
-      // Win flash — only during `showing`, only inside the flash window.
-      if (state.phase == SlotMachinePhase.showing &&
-          state.isWin &&
-          layer.showFrame &&
-          state.resultRevealedAtEpochMs > 0) {
-        final int sinceReveal =
-            DateTime.now().millisecondsSinceEpoch -
-                state.resultRevealedAtEpochMs;
-        if (sinceReveal >= 0 && sinceReveal < layer.winFlashDurationMs) {
-          final bool flashOn = (sinceReveal ~/ 160) % 2 == 0;
-          if (flashOn) {
-            _drawFrame(buffer, x0, y0, layer.winFlashColor);
-          }
-        }
-      }
       return;
     }
 
-    // ── Spinning ──────────────────────────────────────────────────────────
     // Reel R locks in at `spinDurationMs + R * stagger` ms after the spin
     // started — first reel first, then a staggered cascade.
     final int sinceSpin =
@@ -289,6 +311,86 @@ class SlotMachineWidget extends MatrixWidget<SlotMachineLayer> {
           seed: r * 1009,
         );
       }
+    }
+  }
+
+  // ── Decoration helpers ──────────────────────────────────────────────────
+
+  /// True when the win-flash pulse is currently in its "on" half-cycle.
+  /// Hoisted out of [renderWithState] so the frame and the surrounding
+  /// decoration agree on a single source of truth for the pulse.
+  bool _computeWinFlashOn(
+    SlotMachineRuntimeState state,
+    SlotMachineLayer layer,
+  ) {
+    if (state.phase != SlotMachinePhase.showing) return false;
+    if (!state.isWin) return false;
+    if (state.resultRevealedAtEpochMs <= 0) return false;
+
+    final int sinceReveal = DateTime.now().millisecondsSinceEpoch -
+        state.resultRevealedAtEpochMs;
+    if (sinceReveal < 0 || sinceReveal >= layer.winFlashDurationMs) {
+      return false;
+    }
+    return (sinceReveal ~/ 160) % 2 == 0;
+  }
+
+  /// Horizontal row of chasing marquee lights. Every third pixel is lit and
+  /// the pattern shifts one px every [_kMarqueeShiftMs] — using opposite
+  /// directions on the top and bottom rows produces a counter-rotating
+  /// "stage marquee" effect. While [forceAllOn] the row goes solid for the
+  /// win-flash pulse.
+  void _drawMarquee(
+    PixelBuffer buf, {
+    required int x0,
+    required int y,
+    required int width,
+    required Color color,
+    required int elapsedMs,
+    required bool reverse,
+    bool forceAllOn = false,
+  }) {
+    const int period = 3;
+    final int dir   = reverse ? -1 : 1;
+    final int shift = (elapsedMs ~/ _kMarqueeShiftMs) * dir;
+    final int argb  = color.value;
+
+    for (int x = 0; x < width; x++) {
+      if (forceAllOn) {
+        buf.setPixel(x0 + x, y, argb);
+      } else {
+        final int v = ((x - shift) % period + period) % period;
+        if (v == 0) buf.setPixel(x0 + x, y, argb);
+      }
+    }
+  }
+
+  /// Small '+'-shaped lamp pips flanking the frame at its vertical midline,
+  /// pulsing on/off at ~1.5 Hz. Stay solid during a win flash.
+  void _drawSidePips(
+    PixelBuffer buf, {
+    required int x0,
+    required int y0,
+    required Color color,
+    required int elapsedMs,
+    bool forceAllOn = false,
+  }) {
+    final bool on = forceAllOn || (elapsedMs ~/ 350) % 2 == 0;
+    if (!on) return;
+
+    final int argb = color.value;
+    final int yc   = y0 + kTotalHeight ~/ 2;
+    final int xL   = x0 - 4;
+    final int xR   = x0 + kTotalWidth + 3;
+
+    for (final int xc in <int>[xL, xR]) {
+      // Horizontal arm.
+      buf.setPixel(xc - 1, yc, argb);
+      buf.setPixel(xc,     yc, argb);
+      buf.setPixel(xc + 1, yc, argb);
+      // Vertical arm.
+      buf.setPixel(xc, yc - 1, argb);
+      buf.setPixel(xc, yc + 1, argb);
     }
   }
 
@@ -381,6 +483,9 @@ class SlotMachineWidget extends MatrixWidget<SlotMachineLayer> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const int _kCharX = 0x58; // 'X'.codeUnitAt(0)
+
+/// Marquee chase advances one pixel every this many ms.
+const int _kMarqueeShiftMs = 150;
 
 class _Symbol {
   final String name;
