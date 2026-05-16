@@ -19,6 +19,22 @@ enum FinanceLayout { priceAndGraph, priceOnly, graphOnly }
 enum PomodoroState { focus, shortBreak, longBreak }
 enum PomodoroLayout { splitLayout, minimalist}
 
+enum ClockLayoutStyle {
+  classic,        // HH:MM[:SS] centered, optional date below
+  analog,         // circular face with hands, optional digital on right
+  weekdayPrefix,  // MON 14:30 — weekday + time, single row
+  stacked,        // HH on top, MM on bottom — compact 2-row block
+  secondsBar,     // HH:MM with a horizontal seconds progress bar
+  dualTimezone,   // two zones stacked vertically
+}
+
+enum AnalogFaceStyle {
+  cardinalDots,   // 4 dots at 12/3/6/9
+  allDots,        // 12 dots, one per hour
+  ticks,          // short lines at 12/3/6/9
+  none,           // bare rim, no markers
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Base Layer
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,7 +142,14 @@ class ClockLayer extends Layer {
   final bool showSeconds;
   final bool blinkColon;
   final String timezone;
-  final LedFontId fontId;
+  final LedFontId fontId;  
+  final ClockLayoutStyle layoutStyle;
+  final String secondTimezone;
+  final String firstZoneLabel;    // empty → renderer derives from `timezone`
+  final String secondZoneLabel;   // empty → renderer derives from `secondTimezone`
+  final AnalogFaceStyle analogFaceStyle;
+  final bool showSecondHand;
+  final bool analogShowDigital; // for analog layout: whether to show a digital time readout below the face
  
   const ClockLayer({
     required super.id, required super.name,
@@ -140,6 +163,13 @@ class ClockLayer extends Layer {
     this.format = ClockFormat.h24,
     this.showDate = false, this.showSeconds = false, this.blinkColon = true,
     this.timezone = 'local', this.fontId = LedFontId.polymorph,
+    this.layoutStyle = ClockLayoutStyle.classic,
+    this.secondTimezone = 'UTC',
+    this.firstZoneLabel = '',
+    this.secondZoneLabel = '',
+    this.analogFaceStyle = AnalogFaceStyle.cardinalDots,
+    this.showSecondHand = false,
+    this.analogShowDigital = true,
     super.visible, super.zIndex, super.opacity, super.offset,
   });
  
@@ -152,18 +182,33 @@ class ClockLayer extends Layer {
       ClockFormat? format,
       bool? showDate, bool? showSeconds,
       bool? blinkColon, String? timezone, LedFontId? fontId,
+      ClockLayoutStyle? layoutStyle,
+      String? secondTimezone, String? firstZoneLabel, String? secondZoneLabel,
+      AnalogFaceStyle? analogFaceStyle,
+      bool? showSecondHand, bool? analogShowDigital,
       bool? visible, int? zIndex, double? opacity, Offset? offset}) =>
       ClockLayer(
         id: id ?? this.id, name: name ?? this.name,
         color: color ?? this.color, hoursColor: hoursColor ?? this.hoursColor,
         minutesColor: minutesColor ?? this.minutesColor,
         secondsColor: secondsColor ?? this.secondsColor,
-        dateColor: dateColor ?? this.dateColor, colonColor: colonColor ?? this.colonColor,
+        dateColor: dateColor ?? this.dateColor,
+        colonColor: colonColor ?? this.colonColor,
         ampmColor: ampmColor ?? this.ampmColor,
         format: format ?? this.format,
-        showDate: showDate ?? this.showDate, showSeconds: showSeconds ?? this.showSeconds,
-        blinkColon: blinkColon ?? this.blinkColon, timezone: timezone ?? this.timezone,
-        fontId: fontId ?? this.fontId, visible: visible ?? this.visible,
+        showDate: showDate ?? this.showDate,
+        showSeconds: showSeconds ?? this.showSeconds,
+        blinkColon: blinkColon ?? this.blinkColon,
+        timezone: timezone ?? this.timezone,
+        fontId: fontId ?? this.fontId,
+        layoutStyle: layoutStyle ?? this.layoutStyle,
+        secondTimezone: secondTimezone ?? this.secondTimezone,
+        firstZoneLabel: firstZoneLabel ?? this.firstZoneLabel,
+        secondZoneLabel: secondZoneLabel ?? this.secondZoneLabel,
+        analogFaceStyle: analogFaceStyle ?? this.analogFaceStyle,
+        showSecondHand: showSecondHand ?? this.showSecondHand,
+        analogShowDigital: analogShowDigital ?? this.analogShowDigital,
+        visible: visible ?? this.visible,
         zIndex: zIndex ?? this.zIndex, opacity: opacity ?? this.opacity,
         offset: offset ?? this.offset,
       );
@@ -177,6 +222,14 @@ class ClockLayer extends Layer {
         'format': format.name,
         'showDate': showDate, 'showSeconds': showSeconds,
         'blinkColon': blinkColon, 'timezone': timezone, 'fontId': fontId.name,
+        // v1.6
+        'layoutStyle': layoutStyle.name,
+        'secondTimezone': secondTimezone,
+        'firstZoneLabel': firstZoneLabel,
+        'secondZoneLabel': secondZoneLabel,
+        'analogFaceStyle': analogFaceStyle.name,
+        'showSecondHand': showSecondHand,
+        'analogShowDigital': analogShowDigital,
         'visible': visible, 'zIndex': zIndex, 'opacity': opacity,
         'offsetX': offset.dx, 'offsetY': offset.dy,
       };
@@ -189,15 +242,23 @@ class ClockLayer extends Layer {
         secondsColor: Color(j['secondsColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         dateColor: Color(j['dateColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         colonColor: Color(j['colonColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
-        // Migrate old saves: fall back to minutesColor, then color
         ampmColor: Color(j['ampmColor'] as int? ?? j['minutesColor'] as int? ?? j['color'] as int? ?? 0xFF21C32C),
         format: ClockFormat.values.byName(j['format'] as String? ?? 'h24'),
-        // 'alignment' key is silently ignored for forward-compat with old saves
         showDate: j['showDate'] as bool? ?? false,
         showSeconds: j['showSeconds'] as bool? ?? false,
         blinkColon: j['blinkColon'] as bool? ?? true,
         timezone: j['timezone'] as String? ?? 'local',
         fontId: LedFontId.values.byName(_migrateFontId(j['fontId'] as String? ?? 'polymorph')),
+        // ── v1.6 — default to classic style so old saves render unchanged ──
+        layoutStyle: ClockLayoutStyle.values.byName(
+            j['layoutStyle'] as String? ?? 'classic'),
+        secondTimezone: j['secondTimezone'] as String? ?? 'UTC',
+        firstZoneLabel: j['firstZoneLabel'] as String? ?? '',
+        secondZoneLabel: j['secondZoneLabel'] as String? ?? '',
+        analogFaceStyle: AnalogFaceStyle.values.byName(
+            j['analogFaceStyle'] as String? ?? 'cardinalDots'),
+        showSecondHand: j['showSecondHand'] as bool? ?? false,
+        analogShowDigital: j['analogShowDigital'] as bool? ?? true,
         visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
         offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
@@ -266,7 +327,7 @@ class GifLayer extends Layer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spotify Layer  ← NOW WITH SEPARATE SCROLL + OVERLAY FIELDS
+// Spotify Layer  
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SpotifyLayer extends Layer {
