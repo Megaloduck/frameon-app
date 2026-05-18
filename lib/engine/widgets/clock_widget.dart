@@ -284,57 +284,59 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
         x: minX, y: startY + font.charHeight + 2, opacity: layer.opacity);
   }
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // SECONDS BAR — HH:MM with a 2-px progress bar below
-  // ═════════════════════════════════════════════════════════════════════════
+void _renderSecondsBar(
+    ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
 
-  void _renderSecondsBar(
-      ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
-    final font = LedFontLibrary.get(layer.fontId);
-    final DateTime now = _getTimeForZone(layer.timezone);
-    final String hoursStr   = _buildHoursStr(now, layer);
-    final String minutesStr = _pad(now.minute);
+  final font = LedFontLibrary.get(layer.fontId);
+  final DateTime now = _getTimeForZone(layer.timezone);
+  final String hoursStr   = _buildHoursStr(now, layer);
+  final String minutesStr = _pad(now.minute);
 
-    final bool   colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
-    final double colonAlpha = colonOn ? layer.opacity : 0.0;
+  final bool   colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
+  final double colonAlpha = colonOn ? layer.opacity : 0.0;
 
-    const int barH = 2;
-    const int gap  = 2;
-    final int totalH = font.charHeight + gap + barH;
-    final int startY =
-        (buffer.height - totalH) ~/ 2 + layer.offset.dy.round();
-    final int timeY  = startY;
-    final int barY   = startY + font.charHeight + gap;
+  const int barH = 2;
+  const int gap  = 2;
+  final int totalH = font.charHeight + gap + barH;
+  final int startY =
+      (buffer.height - totalH) ~/ 2 + layer.offset.dy.round();
+  final int timeY  = startY;
+  final int barY   = startY + font.charHeight + gap;
 
-    // Time row
-    final int timeW = font.textWidth(hoursStr)
-        + spacingBeforeColon + font.textWidth(':') + spacingAfterColon
-        + font.textWidth(minutesStr);
-    int cx = (buffer.width - timeW) ~/ 2 + layer.offset.dx.round();
-    font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
-        x: cx, y: timeY, opacity: layer.opacity);
-    cx += font.textWidth(hoursStr) + spacingBeforeColon;
-    font.draw(buffer: buffer, text: ':', color: layer.colonColor,
-        x: cx + colonVisualOffset, y: timeY, opacity: colonAlpha);
-    cx += font.textWidth(':') + spacingAfterColon;
-    font.draw(buffer: buffer, text: minutesStr, color: layer.minutesColor,
-        x: cx, y: timeY, opacity: layer.opacity);
+  // Time row
+  final int timeW = font.textWidth(hoursStr)
+      + spacingBeforeColon + font.textWidth(':') + spacingAfterColon
+      + font.textWidth(minutesStr);
+  int cx = (buffer.width - timeW) ~/ 2 + layer.offset.dx.round();
+  
+  font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
+      x: cx, y: timeY, opacity: layer.opacity);
+  cx += font.textWidth(hoursStr) + spacingBeforeColon;
+  font.draw(buffer: buffer, text: ':', color: layer.colonColor,
+      x: cx + colonVisualOffset, y: timeY, opacity: colonAlpha);
+  cx += font.textWidth(':') + spacingAfterColon;
+  font.draw(buffer: buffer, text: minutesStr, color: layer.minutesColor,
+      x: cx, y: timeY, opacity: layer.opacity);
 
-    // Bar — 50 px wide, centered. Track is dim (12 % of bar color), fill
-    // is solid in secondsColor.
-    const int barW = 50;
-    final int barX = (buffer.width - barW) ~/ 2 + layer.offset.dx.round();
-    final Color trackColor =
-        layer.secondsColor.withOpacity(layer.opacity * 0.12);
-    final Color fillColor =
-        layer.secondsColor.withOpacity(layer.opacity);
+  // Bar — 50 px wide, centered.
+  const int barW = 50;
+  final int barX = (buffer.width - barW) ~/ 2 + layer.offset.dx.round();
+  
+  // Track color: grey with 40% of layer opacity
+  // Fill color: secondsColor with full layer opacity
+  const Color greyTrack = Color(0xFFA0A0A0); // Lighter grey for better visibility
+  final Color trackColor = greyTrack.withOpacity(layer.opacity * 0.4);
+  final Color fillColor = layer.secondsColor.withOpacity(layer.opacity);
 
-    _fillRect(buffer, barX, barY, barW, barH, trackColor);
-    final int filled = (barW * now.second / 60).round();
-    if (filled > 0) {
-      _fillRect(buffer, barX, barY, filled, barH, fillColor);
-    }
+  // Draw grey background track
+  _fillRect(buffer, barX, barY, barW, barH, trackColor);
+  
+  // Draw colored fill over the track
+  final int filled = (barW * now.second / 60).round();
+  if (filled > 0) {
+    _fillRect(buffer, barX, barY, filled, barH, fillColor);
   }
+}
 
   // ═════════════════════════════════════════════════════════════════════════
   // DUAL TIMEZONE — two zones stacked vertically

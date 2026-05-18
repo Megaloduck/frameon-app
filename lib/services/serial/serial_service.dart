@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
+//import 'package:flutter_libserialport/flutter_libserialport.dart';
+import 'package:serial_port_win32/serial_port_win32.dart' as spw; 
+
+
 
 import 'port_info.dart';
 export 'port_info.dart';
