@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
+
 import 'serial_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,44 +118,45 @@ class LibSerialPortService implements SerialService {
 
   /// List available serial ports with OS metadata.
   ///
-  /// BUG 3 FIX: Each temporary SerialPort is wrapped in try/finally so its
-  /// native sp_port* struct is ALWAYS freed — even if reading metadata throws.
-  /// Without this, leaked native structs corrupt the heap and cause the
-  /// "Debug Assertion Failed / _CrtIsValidHeapPointer" crash on disconnect.
-  ///
   /// Exceptions from individual ports are caught and swallowed: that port
   /// returns a name-only [PortInfo] so a single bad port cannot abort the
   /// whole scan.
   @override
-  Future<List<PortInfo>> availablePorts() async {
-    final names = SerialPort.availablePorts;
-    final result = <PortInfo>[];
+Future<List<PortInfo>> availablePorts() async {
+  // BUG 4 FIX: never instantiate temporary SerialPort objects while a real
+  // port is open. The native sp_port* allocations for the temps can race
+  // with the connected port's overlapped I/O on Windows, producing the
+  // is_block_type_valid heap assertion documented at the top of this file.
+  //
+  // While connected, return just the connected port (without re-reading
+  // its metadata — we don't need to, it hasn't changed) plus name-only
+  // entries for every other port. The UI gets a fresh list and never
+  // touches the heap-sensitive metadata path.
+  final names = SerialPort.availablePorts;
 
-    for (final name in names) {
-      final sp = SerialPort(name);
-      try {
-        result.add(PortInfo(
-          name: name,
-          description:  sp.description,
-          manufacturer: sp.manufacturer,
-        ));
-      } catch (_) {
-        // Metadata read failed for this port — still include it by name
-        // so the user can attempt to connect to it.
-        result.add(PortInfo(name: name));
-      } finally {
-        // CRITICAL: always dispose the temporary native struct.
-        // Skipping this is what caused the heap corruption crash.
-        try {
-          sp.dispose();
-        } catch (_) {
-          // Ignore dispose errors — struct may already be freed by the OS.
-        }
-      }
-    }
-
-    return result;
+  if (_port != null && _port!.isOpen) {
+    return names.map((n) => PortInfo(name: n)).toList(growable: false);
   }
+
+  // No active connection — safe to do the full metadata scan with the
+  // existing try/finally dispose pattern.
+  final result = <PortInfo>[];
+  for (final name in names) {
+    final sp = SerialPort(name);
+    try {
+      result.add(PortInfo(
+        name: name,
+        description:  sp.description,
+        manufacturer: sp.manufacturer,
+      ));
+    } catch (_) {
+      result.add(PortInfo(name: name));
+    } finally {
+      try { sp.dispose(); } catch (_) {}
+    }
+  }
+  return result;
+}
 
   @override
   Future<void> connect(String portName, {int baudRate = 115200}) async {

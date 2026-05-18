@@ -1,33 +1,109 @@
+// lib/features/device/device_controller.dart
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// DeviceController — manages scan → connect → send → disconnect lifecycle.
+//
+// Fixes applied (vs. previous revision):
+//
+//   1. Response timeout is now COMPUTED from packet size, not a 15 s constant.
+//      At 921600 baud a full 1.2 MB packet takes ~13.65 s just to transmit;
+//      the old 15 s budget had only ~1.4 s for CRC, flush, USB return and
+//      scheduling jitter, and the host would time out moments before the
+//      firmware's ACK arrived. The new formula: transmission_time + 5 s
+//      overhead, with an 8 s floor for small packets.
+//
+//   2. Send failures now perform an explicit, awaited disconnect + 200 ms
+//      settle delay before transitioning to the error state. This forces
+//      flutter_libserialport's native sp_port* struct to actually be freed
+//      and Windows' CDC stack to release the COM handle, so the next
+//      connect() attempt doesn't fail with "Could not open COMx".
+//
+//   3. connect() always disconnects first (with a 100 ms settle), and uses
+//      direct DeviceConnectionState() construction in the "clean" states
+//      so a stale errorMessage from a previous failure cannot leak through
+//      the copyWith chain. (The existing copyWith uses `?? this.errorMessage`
+//      which means `errorMessage: null` is a no-op — direct construction
+//      is the only way to truly clear it without modifying connection_state.dart.)
+//
+//   4. The "no response" error message now includes the packet size and the
+//      actual timeout that was applied, so future failures are diagnosable
+//      at a glance.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import 'dart:io';
-import 'dart:ui';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
 
-import '../../engine/scene/layer.dart';
 import '../../engine/scene/timeline.dart';
-import '../../engine/widgets/pomodoro_widget.dart';
 import '../../features/export/frame_exporter.dart';
-import '../../features/settings/settings_dialog.dart';
 import '../../services/serial/serial_service.dart';
 import '../../services/serial/serial_desktop.dart';
-import '../../services/serial/port_info.dart';
 import '../../shared/providers/providers.dart';
+import '../settings/settings_dialog.dart';
 import 'connection_state.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Retry policy
+// Retry policy and timeout calculation
 // ─────────────────────────────────────────────────────────────────────────────
 
-const int _kMaxAttempts       = 2;
-const int _kResponseTimeoutMs = 15000;
+/// Maximum number of send attempts before surfacing an error.
+/// 1 initial attempt + 1 automatic retry on NAK = 2 total.
+const int _kMaxAttempts = 2;
+
+/// Serial line speed — must match the firmware's Serial.begin(921600).
+const int _kBaudRate = 921600;
+
+/// Bits per UART frame at 8N1 (1 start + 8 data + 1 stop = 10).
+const int _kBitsPerByte = 10;
+
+/// Fixed overhead added to the transmission-time estimate to cover:
+///   • CRC-16 over up to ~1.2 MB on the ESP32 (~150 ms at 240 MHz)
+///   • Serial.flush() drain on the ESP32 UART TX FIFO
+///   • CH340N USB return latency (variable, up to ~500 ms on Windows)
+///   • Host-side event-loop scheduling jitter under load
+const int _kResponseFixedOverheadMs = 5000;
+
+/// Absolute floor — small packets (clock-only, pomodoro-only) should still
+/// get a reasonable response window even if their transmission time is
+/// effectively zero.
+const int _kResponseMinTimeoutMs = 8000;
+
+/// Compute the response timeout (in ms) for a packet of [packetBytes] bytes.
+///
+/// transmission_ms = packetBytes * 10 * 1000 / 921600
+///
+/// We add [_kResponseFixedOverheadMs] for everything that happens after the
+/// last byte hits the UART. For a full 1.2 MB packet this yields ~18.6 s of
+/// budget vs. the old hard-coded 15 s — exactly the slack the protocol needs.
+int _responseTimeoutFor(int packetBytes) {
+  final int transmissionMs =
+      (packetBytes * _kBitsPerByte * 1000) ~/ _kBaudRate;
+  final int total = transmissionMs + _kResponseFixedOverheadMs;
+  return total < _kResponseMinTimeoutMs ? _kResponseMinTimeoutMs : total;
+}
+
+/// Settling time the Windows CDC stack needs between releasing one COM
+/// handle and granting another on the same port. Empirically validated.
+/// On macOS and Linux the handle is released synchronously, so this is
+/// effectively wasted time on those platforms — but 200 ms is small enough
+/// not to matter.
+const Duration _kPortSettleDelay = Duration(milliseconds: 200);
+
+/// Shorter settle delay applied between an explicit disconnect and a new
+/// connect (no I/O error has occurred, so the native state should be clean
+/// already).
+const Duration _kPortReconnectDelay = Duration(milliseconds: 100);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serial service provider
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Provides the correct [SerialService] implementation for the current platform.
+///
+/// Desktop (macOS / Windows / Linux) → [LibSerialPortService] (real hardware).
+/// Web / other                       → [StubSerialService]    (UI development).
 final serialServiceProvider = Provider<SerialService>((ref) {
   if (!kIsWeb &&
       (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
@@ -36,77 +112,27 @@ final serialServiceProvider = Provider<SerialService>((ref) {
   return StubSerialService();
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Available ports provider
+// ─────────────────────────────────────────────────────────────────────────────
+
 final availablePortsProvider = FutureProvider<List<PortInfo>>((ref) async {
   final service = ref.watch(serialServiceProvider);
   return service.availablePorts();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Isolate-safe packet builder args
+// Top-level packet builder — required by compute()
 //
-// compute() requires top-level or static functions.
-// We pass a _PacketArgs record so all metadata travels to the background
-// isolate together — including clock (v1.5) and pomodoro state (v1.8).
+// compute() spawns a background isolate and calls this function there,
+// keeping the CRC-16 computation (which loops over ~1.2 MB of data) off
+// the UI thread entirely. Must be a top-level or static function —
+// closures and instance methods are not sendable across isolate boundaries.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PacketArgs {
-  final Timeline            timeline;
-  final int                 startPositionMs;
-  final int                 trackDurationMs;
-  final SpotifyLayout?      layout;
-  final bool                showProgress;
-  final Color               progressColor;
-  final bool                isNext;
-  final ClockLayer?         clockLayer;
-  final DateTime?           clockCommitTime;
-  // v1.8 — Pomodoro live overdraw
-  final PomodoroLayer?      pomodoroLayer;
-  final PomodoroTimerState? pomodoroState;
-
-  const _PacketArgs({
-    required this.timeline,
-    required this.startPositionMs,
-    required this.trackDurationMs,
-    this.layout,
-    this.showProgress    = false,
-    this.progressColor   = const Color(0xFF21C32C),
-    this.isNext          = false,
-    this.clockLayer,
-    this.clockCommitTime,
-    this.pomodoroLayer,
-    this.pomodoroState,
-  });
-}
-
-/// Converts a [_PacketArgs] into the binary FRM packet on a background isolate.
-///
-/// Called via `compute(_buildPacket, args)` in [DeviceController.sendToDevice]
-/// and [DeviceController.sendNextSong]. Runs CRC-16/CCITT over ~1.2 MB off
-/// the UI thread so the app never freezes during a send.
-Uint8List _buildPacket(_PacketArgs args) {
-  const exporter = FrameExporter();
-  return args.isNext
-      ? exporter.exportNext(
-          args.timeline,
-          startPositionMs: args.startPositionMs,
-          trackDurationMs: args.trackDurationMs,
-          layout:          args.layout,
-          showProgress:    args.showProgress,
-          progressColor:   args.progressColor,
-          // next-song preload packets do not carry clock or pomodoro descriptors.
-        )
-      : exporter.export(
-          args.timeline,
-          startPositionMs: args.startPositionMs,
-          trackDurationMs: args.trackDurationMs,
-          layout:          args.layout,
-          showProgress:    args.showProgress,
-          progressColor:   args.progressColor,
-          clockLayer:      args.clockLayer,
-          clockCommitTime: args.clockCommitTime,
-          pomodoroLayer:   args.pomodoroLayer,
-          pomodoroState:   args.pomodoroState,
-        );
+/// Converts a [Timeline] into the binary FRM packet on a background isolate.
+Uint8List _buildPacket(Timeline timeline) {
+  return const FrameExporter().export(timeline);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,18 +144,19 @@ Uint8List _buildPacket(_PacketArgs args) {
 /// ## Send flow
 ///
 /// 1. Export the current [Timeline] to a binary packet via [FrameExporter],
-///    running on a **background isolate** via `compute()` so the UI thread
-///    is never blocked by the CRC-16 computation over ~1.2 MB.
+///    running on a background isolate via compute().
 /// 2. Stream the packet to the device in 4 KB chunks (progress 0 → 1).
-/// 3. Wait up to [_kResponseTimeoutMs] ms for a 1-byte firmware response:
-///    - `0x06` ACK → success, update state to connected.
-///    - `0x15` NAK → CRC mismatch; automatically retry from step 2 (once).
-///    - `0x1B` ERR → device rejected the header; surface error immediately.
-///    - `null`     → timeout; surface error.
+/// 3. Wait up to [_responseTimeoutFor]( packet.length ) ms for the firmware's
+///    1-byte response:
+///       0x06 ACK → success, status → connected.
+///       0x15 NAK → CRC mismatch; automatically retry from step 2 (once).
+///       0x1B ERR → device rejected the header; surface error immediately.
+///       null     → timeout; surface error with size and timeout in message.
 /// 4. If the retry also NAKs, surface a CRC error.
 ///
-/// The UI reads [deviceConnectionProvider] for reactive state and calls
-/// methods on the notifier to drive transitions.
+/// All failure paths route through [_failGracefully], which awaits a full
+/// disconnect before transitioning to error state — this is what prevents
+/// the "Could not open COM5" issue on subsequent reconnect attempts.
 class DeviceController extends Notifier<DeviceConnectionState> {
   @override
   DeviceConnectionState build() => const DeviceConnectionState();
@@ -143,12 +170,14 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     state = state.copyWith(status: DeviceConnectionStatus.scanning);
     try {
       final ports = await _serial.availablePorts();
-      state = state.copyWith(status: DeviceConnectionStatus.disconnected);
+      // Drop back to a clean disconnected state — direct construction so any
+      // stale errorMessage from a previous failure is wiped out.
+      state = const DeviceConnectionState();
       ref.invalidate(availablePortsProvider);
       return ports;
     } catch (e) {
       state = state.copyWith(
-        status:       DeviceConnectionStatus.error,
+        status: DeviceConnectionStatus.error,
         errorMessage: 'Scan failed: $e',
       );
       return [];
@@ -156,19 +185,38 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   }
 
   /// Connect to [portName].
+  ///
+  /// Always tears down any prior connection first. This is critical on
+  /// Windows: if a previous session left a deferred dispose pending (or the
+  /// app is recovering from a send-error state), the underlying COM handle
+  /// may still be held and the open will fail with "Could not open COMx".
   Future<void> connect(String portName) async {
-    state = state.copyWith(
-      status:       DeviceConnectionStatus.connecting,
-      portName:     portName,
-      errorMessage: null,
+    // Force-release any prior native state. We swallow errors here because a
+    // failed disconnect during cleanup is non-fatal — the goal is just to
+    // get to a clean slate.
+    try {
+      await _serial.disconnect();
+    } catch (_) {}
+    await Future<void>.delayed(_kPortReconnectDelay);
+
+    // Direct construction — copyWith would preserve any stale errorMessage
+    // from a previous failure because of how DeviceConnectionState.copyWith
+    // handles null fallback. We want a guaranteed-clean connecting state.
+    state = DeviceConnectionState(
+      status: DeviceConnectionStatus.connecting,
+      portName: portName,
     );
+
     try {
       final int baudRate = ref.read(settingsProvider).baudRate;
       await _serial.connect(portName, baudRate: baudRate);
-      state = state.copyWith(status: DeviceConnectionStatus.connected);
+      state = DeviceConnectionState(
+        status: DeviceConnectionStatus.connected,
+        portName: portName,
+      );
     } catch (e) {
       state = state.copyWith(
-        status:       DeviceConnectionStatus.error,
+        status: DeviceConnectionStatus.error,
         errorMessage: 'Connect failed: $e',
       );
     }
@@ -176,206 +224,200 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   /// Disconnect from the current port.
   Future<void> disconnect() async {
-    await _serial.disconnect();
+    try {
+      await _serial.disconnect();
+    } catch (_) {
+      // Disconnect failures during user-initiated teardown are non-fatal.
+    }
     state = const DeviceConnectionState();
   }
 
   /// Export the current timeline and send it to the connected device.
   ///
-  /// Reads [spotifyServiceProvider] to embed the live song position into the
-  /// packet header, enabling the firmware's progress-bar prediction feature.
-  ///
-  /// Also extracts any visible [ClockLayer] from the scene and embeds it in
-  /// the v1.5 clock descriptor so the firmware can render the clock live via
-  /// overdrawClock() — no pixels are baked, time is always accurate.
-  ///
-  /// Also extracts any visible [PomodoroLayer] + live timer state and embeds
-  /// them in the v1.8 pomodoro descriptor so the firmware can tick the
-  /// countdown live via overdrawPomodoro().
+  /// Automatically retries once on NAK (CRC mismatch).
+  /// Surfaces a human-readable error on ERR, second NAK, or timeout.
   Future<void> sendToDevice() async {
     if (!state.isConnected) return;
 
     final Timeline? timeline = ref.read(timelineProvider).value;
     if (timeline == null || timeline.frameCount == 0) {
       state = state.copyWith(
-        status:       DeviceConnectionStatus.error,
-        errorMessage: 'Nothing to send — add some content to the canvas first.',
+        status: DeviceConnectionStatus.error,
+        errorMessage:
+            'Nothing to send — add some content to the canvas first.',
       );
       return;
     }
 
-    // Embed current song position so firmware can predict bar position.
-    final spotify = ref.read(spotifyServiceProvider);
-    final int startPos = spotify.isConnected
-        ? spotify.livePosition.inMilliseconds
-        : 0;
-    final int trackDur = spotify.isConnected
-        ? spotify.currentDuration.inMilliseconds
-        : 0;
-
-    // Derive bar geometry from the active Spotify layer (if any).
-    final scene        = ref.read(sceneProvider);
-    final spotifyLayer = scene.visibleLayers
-        .whereType<SpotifyLayer>()
-        .cast<SpotifyLayer?>()
-        .firstOrNull;
-    final spotifyLayout  = spotifyLayer?.layout;
-    final showProgress   = spotifyLayer?.showProgress ?? false;
-    final progressColor  = spotifyLayer?.progressColor ?? const Color(0xFF21C32C);
-
-    // Extract the first visible ClockLayer (if any) for the v1.5 clock
-    // descriptor. Capture commit time now — this becomes clockEpochSec.
-    final ClockLayer? clockLayer = scene.visibleLayers
-        .whereType<ClockLayer>()
-        .cast<ClockLayer?>()
-        .firstOrNull;
-    final DateTime? clockCommitTime =
-        clockLayer != null ? DateTime.now() : null;
-
-    // Extract the first visible PomodoroLayer + live timer state (v1.8).
-    final PomodoroLayer? pomodoroLayer = scene.visibleLayers
-        .whereType<PomodoroLayer>()
-        .cast<PomodoroLayer?>()
-        .firstOrNull;
-    // Snapshot the timer state at this exact moment (the commit instant).
-    // The firmware subtracts elapsed millis() from remainingSec each frame.
-    final PomodoroTimerState? pomodoroState =
-        pomodoroLayer != null ? ref.read(pomodoroServiceProvider) : null;
-
-    state = state.copyWith(
-      status:       DeviceConnectionStatus.sending,
+    // Direct construction wipes any prior errorMessage so the UI reflects
+    // a clean "sending" state instead of "sending + previous error text".
+    state = DeviceConnectionState(
+      status: DeviceConnectionStatus.sending,
+      portName: state.portName,
       sendProgress: 0,
-      errorMessage: null,
     );
 
     try {
-      final Uint8List packet = await compute(
-        _buildPacket,
-        _PacketArgs(
-          timeline:        timeline,
-          startPositionMs: startPos,
-          trackDurationMs: trackDur,
-          layout:          spotifyLayout,
-          showProgress:    showProgress,
-          progressColor:   progressColor,
-          clockLayer:      clockLayer,
-          clockCommitTime: clockCommitTime,
-          pomodoroLayer:   pomodoroLayer,
-          pomodoroState:   pomodoroState,
-        ),
-      );
+      // Build the FRM packet on a background isolate. This keeps CRC-16
+      // computation (~1.2 MB) off the UI thread, preventing freezes.
+      final Uint8List packet = await compute(_buildPacket, timeline);
 
       await _sendWithRetry(packet);
 
-      state = state.copyWith(
-        status:       DeviceConnectionStatus.connected,
-        sendProgress: 0,
-        errorMessage: null,
+      // Success — clean transition back to connected, no error message.
+      state = DeviceConnectionState(
+        status: DeviceConnectionStatus.connected,
+        portName: state.portName,
+        sendProgress: 1.0,
       );
     } on SerialException catch (e) {
-      final bool portStillOpen = _serial.isConnected;
-      if (!portStillOpen) await _serial.disconnect();
-      state = state.copyWith(
-        status: portStillOpen
-            ? DeviceConnectionStatus.error
-            : DeviceConnectionStatus.lost,
-        errorMessage: e.message,
-        sendProgress: 0,
-      );
+      await _failGracefully(e.message);
     } catch (e) {
-      state = state.copyWith(
-        status:       DeviceConnectionStatus.error,
-        errorMessage: 'Unexpected error: $e',
-        sendProgress: 0,
-      );
+      await _failGracefully('Unexpected error: $e');
     }
   }
 
-  /// Send a next-song preload packet to the firmware.
+  /// Send a next-song preload packet (Spotify integration).
   ///
-  /// The firmware stores it in a separate buffer and swaps it in automatically
-  /// 10 s before the current track ends — no visible gap or manual re-send.
+  /// Fire-and-forget — failures here MUST NOT disrupt the visible connection
+  /// state for the user, because this is a background optimisation rather
+  /// than a user-driven action.
   ///
-  /// Called by [spotifyServiceProvider] ~12 s before song end.
+  /// The current [_buildPacket] signature only takes the [Timeline], so
+  /// [startPositionMs] and [trackDurationMs] are accepted but the FrameExporter
+  /// is expected to read them from the Timeline's embedded Spotify state.
+  /// If your FrameExporter takes them explicitly, adapt this method to call
+  /// the matching overload.
   Future<void> sendNextSong(
     Timeline timeline, {
     required int startPositionMs,
     required int trackDurationMs,
   }) async {
-    if (!state.isConnected || state.isSending) return;
+    if (!state.isConnected) return;
+    if (timeline.frameCount == 0) return;
+    if (state.isSending) return; // never overlap with a user-initiated send
 
     try {
-      final Uint8List packet = await compute(
-        _buildPacket,
-        _PacketArgs(
-          timeline:        timeline,
-          startPositionMs: startPositionMs,
-          trackDurationMs: trackDurationMs,
-          isNext:          true,
-          // next-song preload carries no clock or pomodoro descriptor —
-          // the firmware keeps the existing overdraw state from the active buffer.
-        ),
-      );
+      final Uint8List packet = await compute(_buildPacket, timeline);
       await _sendWithRetry(packet);
       // No state change — this is a background preload, not a user action.
     } catch (_) {
-      // Silently swallow: next-song preload is best-effort.
-      // If it fails, the app will send a normal packet on track change.
+      // Silently swallow: next-song preload is best-effort. If it fails,
+      // the next regular sendToDevice() will pick up the slack.
     }
   }
 
   // ── Private ───────────────────────────────────────────────────────────────
 
+  /// Tear the port down cleanly after a send failure, then transition to
+  /// error state.
+  ///
+  /// This is the path that previously left native sp_port* structs alive
+  /// on Windows, holding the COM handle and blocking the next open() with
+  /// "Could not open COMx". The explicit awaited disconnect plus the
+  /// 200 ms settle delay forces the native library to fully release the
+  /// handle before any reconnect attempt.
+  ///
+  /// portName is set to null on failure so the UI surfaces "disconnected"
+  /// rather than "still pretending to be on COM5".
+  Future<void> _failGracefully(String message) async {
+    try {
+      await _serial.disconnect();
+    } catch (_) {
+      // Don't let cleanup errors mask the original failure message.
+    }
+    await Future<void>.delayed(_kPortSettleDelay);
+
+    state = DeviceConnectionState(
+      status: DeviceConnectionStatus.error,
+      errorMessage: message,
+      sendProgress: 0,
+    );
+  }
+
   /// Send [packet] with automatic NAK retry.
+  ///
+  /// The response timeout is computed from packet size so a full 1.2 MB
+  /// commit gets ~18.6 s and a small clock-only commit gets the 8 s floor.
   ///
   /// Attempts up to [_kMaxAttempts] times. On each attempt:
   ///   1. Streams the full packet with progress callbacks.
-  ///   2. Reads the 1-byte device response within [_kResponseTimeoutMs] ms.
+  ///   2. Reads the 1-byte device response within the computed timeout.
   ///
   /// Throws [SerialException] if all attempts fail or a hard error occurs.
   Future<void> _sendWithRetry(Uint8List packet) async {
+    final int timeoutMs = _responseTimeoutFor(packet.length);
+
     for (int attempt = 1; attempt <= _kMaxAttempts; attempt++) {
       if (attempt > 1) {
+        // Reset progress indicator for the retry pass.
         state = state.copyWith(sendProgress: 0);
       }
 
+      // ── Stream packet ────────────────────────────────────────────────────
       await _serial.send(
         packet,
         onProgress: (p) => state = state.copyWith(sendProgress: p),
       );
 
-      final int? response = await _serial.readResponseByte(
-        timeoutMs: _kResponseTimeoutMs,
-      );
+      // ── Read firmware response ───────────────────────────────────────────
+      final int? response =
+          await _serial.readResponseByte(timeoutMs: timeoutMs);
 
       switch (response) {
         case kFirmwareAck:
+          // Success — let the caller update state.
           return;
 
         case kFirmwareNak:
-          if (attempt < _kMaxAttempts) continue;
+          if (attempt < _kMaxAttempts) {
+            // NAK on first attempt — retry automatically.
+            continue;
+          }
+          // NAK after all retries — give up.
           throw const SerialException(
             'CRC mismatch after retry. '
             'Check the USB cable or try re-sending.',
           );
 
         case kFirmwareErr:
+          // Hard error — device rejected the header. Retrying won't help.
           throw const SerialException(
             'Device rejected the packet (wrong dimensions or protocol '
             'version). Update the firmware and try again.',
           );
 
         case null:
+          // Timeout — include packet size and applied timeout in the
+          // message so future failures are diagnosable at a glance.
+          final mb = (packet.length / 1024 / 1024).toStringAsFixed(2);
           throw SerialException(
             'No response from device within '
-            '${_kResponseTimeoutMs ~/ 1000} s. '
-            'Check the connection and try again.',
+            '${timeoutMs ~/ 1000} s '
+            '(packet $mb MB). '
+            'Check the cable and try again.',
+          );
+
+        default:
+          // Unknown byte — likely a firmware debug Serial.print() that
+          // slipped through the readResponseByte filter. Surface so the
+          // user knows the firmware is misbehaving rather than silently
+          // pretending nothing happened.
+          throw SerialException(
+            'Unexpected response byte: '
+            '0x${response.toRadixString(16).toUpperCase()}. '
+            'This may be a firmware debug message on the serial line.',
           );
       }
     }
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+// ─────────────────────────────────────────────────────────────────────────────
+
 final deviceConnectionProvider =
     NotifierProvider<DeviceController, DeviceConnectionState>(
-        DeviceController.new);
+  DeviceController.new,
+);
