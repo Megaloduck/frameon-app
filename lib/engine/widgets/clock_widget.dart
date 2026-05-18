@@ -23,8 +23,10 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
   // Radius 14 fits a 32-row matrix with 1-px breathing room. The left-side
   // face center sits at x=15 so the rim occupies cols 1..29, leaving the
   // right half (cols 32..63) for the digital readout.
-  static const int _analogFaceRadius = 14;
-  static const int _analogFaceLeftCx = 15;
+  // Half-pixel centre (15.5, 15.5) + radius 13.5 gives symmetric 2 px margins
+  // on all four sides of a 32-px panel: round(15.5 ± 13.5) = 2 and 29.
+  static const double _analogFaceRadius = 13.5;
+  static const double _analogFaceLeftCx = 15.5;
 
   // ── Weekday short names — DateTime.weekday is 1-7 with Mon=1 ──────────────
   static const List<String> _kWeekdayShort = [
@@ -144,20 +146,20 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
     final DateTime now = _getTimeForZone(layer.timezone);
     final bool showDigital = layer.analogShowDigital;
 
-    // Face position — left half when digital is enabled, centered otherwise.
-    final int faceCx = (showDigital
+    // Face centre at half-pixel (15.5, 15.5) → 2 px margin all sides.
+    final double faceCx = (showDigital
             ? _analogFaceLeftCx
-            : buffer.width ~/ 2 - 1) +
+            : (buffer.width - 1) / 2.0) +
         layer.offset.dx.round();
-    final int faceCy =
-        (buffer.height ~/ 2 - 1) + layer.offset.dy.round();
-    final int radius = _analogFaceRadius;
+    final double faceCy =
+        (buffer.height - 1) / 2.0 + layer.offset.dy.round();
+    const double radius = _analogFaceRadius;
 
-    // Rim
+    // Rim — uses ampmColor (repurposed as face-ring colour in analog mode)
     _drawCircleOutline(
-        buffer, faceCx, faceCy, radius, layer.dateColor, layer.opacity);
+        buffer, faceCx, faceCy, radius, layer.ampmColor, layer.opacity);
 
-    // Hour markers
+    // Hour markers — uses dateColor (independently configurable from rim)
     _drawFaceMarkers(buffer, faceCx, faceCy, radius,
         layer.analogFaceStyle, layer.dateColor, layer.opacity);
 
@@ -181,7 +183,7 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
 
     // Center pivot in hour-hand color
     buffer.setPixelColor(
-        faceCx, faceCy, layer.hoursColor.withOpacity(layer.opacity));
+        faceCx.round(), faceCy.round(), layer.hoursColor.withOpacity(layer.opacity));
 
     // Digital readout on the right half
     if (showDigital) {
@@ -284,59 +286,57 @@ class ClockWidget extends MatrixWidget<ClockLayer> {
         x: minX, y: startY + font.charHeight + 2, opacity: layer.opacity);
   }
 
-void _renderSecondsBar(
-    ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
+  // ═════════════════════════════════════════════════════════════════════════
+  // SECONDS BAR — HH:MM with a 2-px progress bar below
+  // ═════════════════════════════════════════════════════════════════════════
 
-  final font = LedFontLibrary.get(layer.fontId);
-  final DateTime now = _getTimeForZone(layer.timezone);
-  final String hoursStr   = _buildHoursStr(now, layer);
-  final String minutesStr = _pad(now.minute);
+  void _renderSecondsBar(
+      ClockLayer layer, PixelBuffer buffer, int elapsedMs) {
+    final font = LedFontLibrary.get(layer.fontId);
+    final DateTime now = _getTimeForZone(layer.timezone);
+    final String hoursStr   = _buildHoursStr(now, layer);
+    final String minutesStr = _pad(now.minute);
 
-  final bool   colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
-  final double colonAlpha = colonOn ? layer.opacity : 0.0;
+    final bool   colonOn    = !layer.blinkColon || (elapsedMs % 1000) < 500;
+    final double colonAlpha = colonOn ? layer.opacity : 0.0;
 
-  const int barH = 2;
-  const int gap  = 2;
-  final int totalH = font.charHeight + gap + barH;
-  final int startY =
-      (buffer.height - totalH) ~/ 2 + layer.offset.dy.round();
-  final int timeY  = startY;
-  final int barY   = startY + font.charHeight + gap;
+    const int barH = 2;
+    const int gap  = 2;
+    final int totalH = font.charHeight + gap + barH;
+    final int startY =
+        (buffer.height - totalH) ~/ 2 + layer.offset.dy.round();
+    final int timeY  = startY;
+    final int barY   = startY + font.charHeight + gap;
 
-  // Time row
-  final int timeW = font.textWidth(hoursStr)
-      + spacingBeforeColon + font.textWidth(':') + spacingAfterColon
-      + font.textWidth(minutesStr);
-  int cx = (buffer.width - timeW) ~/ 2 + layer.offset.dx.round();
-  
-  font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
-      x: cx, y: timeY, opacity: layer.opacity);
-  cx += font.textWidth(hoursStr) + spacingBeforeColon;
-  font.draw(buffer: buffer, text: ':', color: layer.colonColor,
-      x: cx + colonVisualOffset, y: timeY, opacity: colonAlpha);
-  cx += font.textWidth(':') + spacingAfterColon;
-  font.draw(buffer: buffer, text: minutesStr, color: layer.minutesColor,
-      x: cx, y: timeY, opacity: layer.opacity);
+    // Time row
+    final int timeW = font.textWidth(hoursStr)
+        + spacingBeforeColon + font.textWidth(':') + spacingAfterColon
+        + font.textWidth(minutesStr);
+    int cx = (buffer.width - timeW) ~/ 2 + layer.offset.dx.round();
+    font.draw(buffer: buffer, text: hoursStr, color: layer.hoursColor,
+        x: cx, y: timeY, opacity: layer.opacity);
+    cx += font.textWidth(hoursStr) + spacingBeforeColon;
+    font.draw(buffer: buffer, text: ':', color: layer.colonColor,
+        x: cx + colonVisualOffset, y: timeY, opacity: colonAlpha);
+    cx += font.textWidth(':') + spacingAfterColon;
+    font.draw(buffer: buffer, text: minutesStr, color: layer.minutesColor,
+        x: cx, y: timeY, opacity: layer.opacity);
 
-  // Bar — 50 px wide, centered.
-  const int barW = 50;
-  final int barX = (buffer.width - barW) ~/ 2 + layer.offset.dx.round();
-  
-  // Track color: grey with 40% of layer opacity
-  // Fill color: secondsColor with full layer opacity
-  const Color greyTrack = Color(0xFFA0A0A0); // Lighter grey for better visibility
-  final Color trackColor = greyTrack.withOpacity(layer.opacity * 0.4);
-  final Color fillColor = layer.secondsColor.withOpacity(layer.opacity);
+    // Bar — 50 px wide, centered. Track is dim (12 % of bar color), fill
+    // is solid in secondsColor.
+    const int barW = 50;
+    final int barX = (buffer.width - barW) ~/ 2 + layer.offset.dx.round();
+    final Color trackColor =
+        const Color(0xFF444444).withOpacity(layer.opacity);
+    final Color fillColor =
+        layer.secondsColor.withOpacity(layer.opacity);
 
-  // Draw grey background track
-  _fillRect(buffer, barX, barY, barW, barH, trackColor);
-  
-  // Draw colored fill over the track
-  final int filled = (barW * now.second / 60).round();
-  if (filled > 0) {
-    _fillRect(buffer, barX, barY, filled, barH, fillColor);
+    _fillRect(buffer, barX, barY, barW, barH, trackColor);
+    final int filled = (barW * now.second / 60).round();
+    if (filled > 0) {
+      _fillRect(buffer, barX, barY, filled, barH, fillColor);
+    }
   }
-}
 
   // ═════════════════════════════════════════════════════════════════════════
   // DUAL TIMEZONE — two zones stacked vertically
@@ -419,54 +419,50 @@ void _renderSecondsBar(
   }
 
   /// Midpoint circle algorithm — single-pixel rim, no fill.
-  void _drawCircleOutline(PixelBuffer buf, int cx, int cy, int r,
+  /// Parametric circle — supports fractional centre and radius so the face
+  /// can be centred at (15.5, 15.5) r=13.5 for symmetric 2-px margins.
+  void _drawCircleOutline(PixelBuffer buf, double cx, double cy, double r,
       Color color, double opacity) {
-    final int argb = color.withOpacity(opacity).value;
-    int x = r;
-    int y = 0;
-    int err = 0;
-    while (x >= y) {
-      buf.setPixel(cx + x, cy + y, argb);
-      buf.setPixel(cx + y, cy + x, argb);
-      buf.setPixel(cx - y, cy + x, argb);
-      buf.setPixel(cx - x, cy + y, argb);
-      buf.setPixel(cx - x, cy - y, argb);
-      buf.setPixel(cx - y, cy - x, argb);
-      buf.setPixel(cx + y, cy - x, argb);
-      buf.setPixel(cx + x, cy - y, argb);
-      y += 1;
-      if (err <= 0) {
-        err += 2 * y + 1;
-      } else {
-        x -= 1;
-        err += 2 * (y - x) + 1;
+    final int argb  = color.withOpacity(opacity).value;
+    final int steps = (2 * pi * r * 2).ceil().clamp(64, 512);
+    for (int i = 0; i < steps; i++) {
+      final double angle = 2 * pi * i / steps;
+      final int px = (cx + r * cos(angle)).round();
+      final int py = (cy - r * sin(angle)).round();
+      if (px >= 0 && px < buf.width && py >= 0 && py < buf.height) {
+        buf.setPixel(px, py, argb);
       }
     }
   }
 
   /// Draws a hand from the face center to a point on a circle of radius
   /// [length] at clockwise angle [angleDeg] (0° = 12 o'clock).
-  void _drawHandFromAngle(PixelBuffer buf, int cx, int cy, double angleDeg,
-      int length, Color color, double opacity) {
+  void _drawHandFromAngle(PixelBuffer buf, double cx, double cy, double angleDeg,
+      double length, Color color, double opacity) {
     final double rad = angleDeg * pi / 180.0;
-    final int xEnd = cx + (length * sin(rad)).round();
-    final int yEnd = cy - (length * cos(rad)).round();
-    _drawLine(buf, cx, cy, xEnd, yEnd, color, opacity);
+    final int xEnd = (cx + length * sin(rad)).round();
+    final int yEnd = (cy - length * cos(rad)).round();
+    _drawLine(buf, cx.round(), cy.round(), xEnd, yEnd, color, opacity);
   }
 
   /// Draws hour markers around the rim according to the configured style.
-  void _drawFaceMarkers(PixelBuffer buf, int cx, int cy, int r,
+  void _drawFaceMarkers(PixelBuffer buf, double cx, double cy, double r,
       AnalogFaceStyle style, Color color, double opacity) {
     switch (style) {
       case AnalogFaceStyle.none:
         return;
       case AnalogFaceStyle.cardinalDots:
         for (final h in const [0, 3, 6, 9]) {
-          _drawHourDot(buf, cx, cy, r, h, color, opacity);
+          _drawCardinalDot(buf, cx, cy, r, h, color, opacity);
         }
       case AnalogFaceStyle.allDots:
         for (int h = 0; h < 12; h++) {
-          _drawHourDot(buf, cx, cy, r, h, color, opacity);
+          // Cardinal hours get shaped markers; the other 8 stay single-pixel.
+          if (h == 0 || h == 3 || h == 6 || h == 9) {
+            _drawCardinalDot(buf, cx, cy, r, h, color, opacity);
+          } else {
+            _drawHourDot(buf, cx, cy, r, h, color, opacity);
+          }
         }
       case AnalogFaceStyle.ticks:
         for (final h in const [0, 3, 6, 9]) {
@@ -475,25 +471,54 @@ void _renderSecondsBar(
     }
   }
 
-  /// Single-pixel dot one step inside the rim at hour position [hour].
-  void _drawHourDot(PixelBuffer buf, int cx, int cy, int r, int hour,
+  /// Single-pixel dot one step inside the rim (used for non-cardinal hours).
+  void _drawHourDot(PixelBuffer buf, double cx, double cy, double r, int hour,
       Color color, double opacity) {
-    final double rad = hour * 30.0 * pi / 180.0;
-    final int innerR = r - 2;
-    final int x = cx + (innerR * sin(rad)).round();
-    final int y = cy - (innerR * cos(rad)).round();
+    final double rad    = hour * 30.0 * pi / 180.0;
+    final double innerR = r - 2;
+    final int x = (cx + innerR * sin(rad)).round();
+    final int y = (cy - innerR * cos(rad)).round();
     buf.setPixel(x, y, color.withOpacity(opacity).value);
   }
 
-  /// Short 2-pixel tick from the rim inward at hour position [hour].
-  void _drawHourTick(PixelBuffer buf, int cx, int cy, int r, int hour,
+  /// Shaped cardinal dot — oriented perpendicular to the radius so it reads
+  /// as a natural tick against the rim:
+  ///   12 & 6 → 2×1 horizontal   (two pixels side-by-side, same Y)
+  ///    3 & 9 → 1×2 vertical     (two pixels stacked,     same X)
+  void _drawCardinalDot(PixelBuffer buf, double cx, double cy, double r,
+      int hour, Color color, double opacity) {
+    final double rad    = hour * 30.0 * pi / 180.0;
+    final double innerR = r - 2;
+    final double fx     = cx + innerR * sin(rad);
+    final double fy     = cy - innerR * cos(rad);
+    final int    argb   = color.withOpacity(opacity).value;
+
+    if (hour == 0 || hour == 6) {
+      // 2×1 horizontal — two adjacent X pixels at the same Y
+      final int y = fy.round();
+      buf.setPixel(fx.floor(), y, argb);
+      buf.setPixel(fx.ceil(),  y, argb);
+    } else {
+      // 1×2 vertical — two adjacent Y pixels at the same X  (hour 3 or 9)
+      final int x = fx.round();
+      buf.setPixel(x, fy.floor(), argb);
+      buf.setPixel(x, fy.ceil(),  argb);
+    }
+  }
+
+  /// 2x2-pixel tick: 2 px deep from rim, 2 px wide (perpendicular to radius).
+  void _drawHourTick(PixelBuffer buf, double cx, double cy, double r, int hour,
       Color color, double opacity) {
-    final double rad = hour * 30.0 * pi / 180.0;
-    final int x0 = cx + (r * sin(rad)).round();
-    final int y0 = cy - (r * cos(rad)).round();
-    final int x1 = cx + ((r - 2) * sin(rad)).round();
-    final int y1 = cy - ((r - 2) * cos(rad)).round();
-    _drawLine(buf, x0, y0, x1, y1, color, opacity);
+    final double rad  = hour * 30.0 * pi / 180.0;
+    final int    argb = color.withOpacity(opacity).value;
+    final int dx = cos(rad).round();
+    final int dy = sin(rad).round();
+    for (int depth = 0; depth <= 1; depth++) {
+      final int x = (cx + (r - depth) * sin(rad)).round();
+      final int y = (cy - (r - depth) * cos(rad)).round();
+      buf.setPixel(x,      y,      argb);
+      buf.setPixel(x + dx, y + dy, argb);
+    }
   }
 
   /// Solid-fill rectangle. Out-of-bounds pixels are silently skipped.

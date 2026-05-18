@@ -85,7 +85,12 @@ class ClockToolboxLeft extends StatelessWidget {
           _row('Second hand', layer.secondsColor, (c) => layer.copyWith(secondsColor: c)),
           _gap(),
         ],
-        _row('Face / rim',  layer.dateColor, (c) => layer.copyWith(dateColor: c)),
+        // ampmColor drives the face rim; dateColor drives the hour markers.
+        _row('Face / rim',  layer.ampmColor,  (c) => layer.copyWith(ampmColor: c)),
+        if (layer.analogFaceStyle != AnalogFaceStyle.none) ...[
+          _gap(),
+          _row('Hour ticks', layer.dateColor, (c) => layer.copyWith(dateColor: c)),
+        ],
         if (layer.analogShowDigital) ...[
           _gap(),
           _row('Digital colon', layer.colonColor, (c) => layer.copyWith(colonColor: c)),
