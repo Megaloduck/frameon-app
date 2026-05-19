@@ -40,118 +40,175 @@ class PomodoroToolboxLeft extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+
+        // ── Status + transport ────────────────────────────────────────────
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           decoration: BoxDecoration(
             color: phaseColor.withOpacity(0.08),
             borderRadius: const BorderRadius.all(kRadiusMd),
-            border: Border.all(color: phaseColor.withOpacity(0.3)),
+            border: Border.all(color: phaseColor.withOpacity(0.25)),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: timerState.isRunning
-                      ? phaseColor
-                      : context.tTextDim,
-                  shape: BoxShape.circle,
+
+              // Left — phase label + timer stacked
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: timerState.isRunning
+                                ? phaseColor
+                                : phaseColor.withOpacity(0.3),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          phaseLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: phaseColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$mins:$secs',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: phaseColor,
+                        fontFamily: 'monospace',
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(phaseLabel,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: phaseColor)),
-              const Spacer(),
-              Text('$mins:$secs',
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: phaseColor,
-                      fontFamily: 'monospace')),
+
+              const SizedBox(width: 10),
+
+              // Right — transport buttons
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TbTransportBtn(
+                    icon: Icons.restart_alt_rounded,
+                    onTap: () => service.reset(layer),
+                  ),
+                  const SizedBox(width: 6),
+                  TbTransportBtn(
+                    icon: timerState.isRunning
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    filled: true,
+                    onTap: () => service.togglePlayPause(layer),
+                  ),
+                  const SizedBox(width: 6),
+                  TbTransportBtn(
+                    icon: Icons.skip_next_rounded,
+                    onTap: () => service.skip(layer),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
+
+        const SizedBox(height: 14),
+
+        // ── Timer durations ───────────────────────────────────────────────
+        const TbLabel('Timer durations'),
+        const SizedBox(height: 6),
+        _DurationRow(
+          color: layer.focusColor,
+          label: 'Focus',
+          value: layer.focusDurationMinutes,
+          onColorChanged: (c) => n.updateLayer(layer.copyWith(focusColor: c)),
+          onValueChanged: (v) => n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
+          context: context,
+        ),
+        const SizedBox(height: 6),
+        _DurationRow(
+          color: layer.breakColor,
+          label: 'Short break',
+          value: layer.shortBreakMinutes,
+          onColorChanged: (c) => n.updateLayer(layer.copyWith(breakColor: c)),
+          onValueChanged: (v) => n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
+          context: context,
+        ),
+        const SizedBox(height: 6),
+        _DurationRow(
+          color: layer.longBreakColor,
+          label: 'Long break',
+          value: layer.longBreakMinutes,
+          onColorChanged: (c) => n.updateLayer(layer.copyWith(longBreakColor: c)),
+          onValueChanged: (v) => n.updateLayer(layer.copyWith(longBreakMinutes: v)),
+          context: context,
+        ),
+
         const SizedBox(height: 10),
-        Row(children: [
-          tbColorBtn(context, layer.focusColor,
-              (c) => n.updateLayer(layer.copyWith(focusColor: c))),
-          const SizedBox(width: 8),
-          Text('Focus Session',
-              style:
-                  TextStyle(fontSize: 11, color: context.tTextMuted)),
-          const Spacer(),
-          TbDurationStepper(
-            value: layer.focusDurationMinutes,
-            unit: 'min',
-            onChanged: (v) =>
-                n.updateLayer(layer.copyWith(focusDurationMinutes: v)),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          tbColorBtn(context, layer.breakColor,
-              (c) => n.updateLayer(layer.copyWith(breakColor: c))),
-          const SizedBox(width: 8),
-          Text('Short break',
-              style:
-                  TextStyle(fontSize: 11, color: context.tTextMuted)),
-          const Spacer(),
-          TbDurationStepper(
-            value: layer.shortBreakMinutes,
-            unit: 'min',
-            onChanged: (v) =>
-                n.updateLayer(layer.copyWith(shortBreakMinutes: v)),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          tbColorBtn(context, layer.longBreakColor,
-              (c) => n.updateLayer(layer.copyWith(longBreakColor: c))),
-          const SizedBox(width: 8),
-          Text('Long break',
-              style:
-                  TextStyle(fontSize: 11, color: context.tTextMuted)),
-          const Spacer(),
-          TbDurationStepper(
-            value: layer.longBreakMinutes,
-            unit: 'min',
-            onChanged: (v) =>
-                n.updateLayer(layer.copyWith(longBreakMinutes: v)),
-          ),
-        ]),
-        const SizedBox(height: 8),
+
+        // ── Sessions ──────────────────────────────────────────────────────
         TbStepper(
           label: 'Sessions before long break',
           value: layer.sessionsBeforeLongBreak,
           onChanged: (v) =>
               n.updateLayer(layer.copyWith(sessionsBeforeLongBreak: v)),
         ),
-        const SizedBox(height: 10),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          TbTransportBtn(
-              icon: Icons.restart_alt_rounded,
-              onTap: () => service.reset(layer)),
-          const SizedBox(width: 8),
-          TbTransportBtn(
-            icon: timerState.isRunning
-                ? Icons.pause_rounded
-                : Icons.play_arrow_rounded,
-            filled: true,
-            onTap: () => service.togglePlayPause(layer),
-          ),
-          const SizedBox(width: 8),
-          TbTransportBtn(
-              icon: Icons.skip_next_rounded,
-              onTap: () => service.skip(layer)),
-        ]),
       ],
     );
   }
+}
+
+// ── Private helper — one duration row ────────────────────────────────────────
+
+class _DurationRow extends StatelessWidget {
+  final Color color;
+  final String label;
+  final int value;
+  final ValueChanged<Color> onColorChanged;
+  final ValueChanged<int> onValueChanged;
+  final BuildContext context;
+
+  const _DurationRow({
+    required this.color,
+    required this.label,
+    required this.value,
+    required this.onColorChanged,
+    required this.onValueChanged,
+    required this.context,
+  });
+
+  @override
+  Widget build(BuildContext ctx) => Row(
+        children: [
+          tbColorBtn(context, color, onColorChanged),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 11, color: context.tTextMuted),
+            ),
+          ),
+          TbDurationStepper(
+            value: value,
+            unit: 'min',
+            onChanged: onValueChanged,
+          ),
+        ],
+      );
 }
 
 class PomodoroToolboxRight extends ConsumerWidget {
@@ -186,12 +243,6 @@ class PomodoroToolboxRight extends ConsumerWidget {
             value: layer.blinkColor,
             onChanged: (v) =>
                 n.updateLayer(layer.copyWith(blinkColor: v))),
-        const SizedBox(height: 8),
-        const TbLabel('Custom FPS'),
-        TbSpeedSlider(
-            value: (1000 / layer.fps).clamp(10, 500),
-            onChanged: (v) =>
-                n.updateLayer(layer.copyWith(fps: 1000 / v))),
       ],
     );
   }
@@ -213,7 +264,6 @@ class _PomodoroLayoutDropdown extends StatelessWidget {
   static String _label(PomodoroLayout v) => switch (v) {
         PomodoroLayout.splitLayout  => 'Split Layout',
         PomodoroLayout.minimalist   => 'Minimalist',
-
       };
 
   @override
