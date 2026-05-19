@@ -188,6 +188,52 @@ class LedFont {
       }
     }
   }
+  /// Draw [text] into [buffer] with each source pixel expanded to a
+  /// [scale]×[scale] block, starting at ([x], [y]).
+  ///
+  /// Used by the Double Pixel rendering mode (scale = 2).
+  /// Glyph advance = (glyph.width + charGap) * scale, keeping proportions
+  /// identical to [draw] but at double (or any integer) resolution.
+  void drawScaled({
+    required PixelBuffer buffer,
+    required String text,
+    required Color color,
+    required int x,
+    required int y,
+    required int scale,
+    double opacity = 1.0,
+  }) {
+    assert(scale >= 1, 'scale must be ≥ 1');
+    if (scale == 1) {
+      draw(buffer: buffer, text: text, color: color, x: x, y: y, opacity: opacity);
+      return;
+    }
+    final int argb = _applyOpacity(color, opacity);
+    int cx = x;
+    for (int ci = 0; ci < text.length; ci++) {
+      final glyph = glyphFor(text[ci]);
+      _drawGlyphScaled(buffer, glyph, cx, y, argb, scale);
+      cx += (glyph.width + charGap) * scale;
+    }
+  }
+
+  void _drawGlyphScaled(
+      PixelBuffer buffer, _GlyphData glyph, int x, int y, int argb, int scale) {
+    final int w = glyph.width;
+    for (int row = 0; row < glyph.rows.length; row++) {
+      final int bits = glyph.rows[row];
+      for (int col = 0; col < w; col++) {
+        if ((bits >> (w - 1 - col)) & 1 == 1) {
+          // Expand each source pixel to a scale×scale block.
+          for (int sy = 0; sy < scale; sy++) {
+            for (int sx = 0; sx < scale; sx++) {
+              buffer.setPixel(x + col * scale + sx, y + row * scale + sy, argb);
+            }
+          }
+        }
+      }
+    }
+  }
 
   static int _applyOpacity(Color color, double opacity) {
     if (opacity >= 1.0) return color.value;

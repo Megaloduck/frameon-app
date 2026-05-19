@@ -68,12 +68,20 @@ class TextLayer extends Layer {
   final TextAlignment alignment;
   final AnimationEffect effect;
   final int effectSpeedMs;
+  final bool keyboardInteractive;
+  final bool speedReading;
+  final Color speedReadingColor;
+  final bool doublePixel;
 
   const TextLayer({
     required super.id, required super.name, required this.text,
     this.color = const Color(0xFF21C32C), this.fontId = LedFontId.polymorph,
     this.fontSize = 8, this.alignment = TextAlignment.center,
     this.effect = AnimationEffect.none, this.effectSpeedMs = 100,
+    this.keyboardInteractive = false,
+    this.speedReading = false,
+    this.speedReadingColor = const Color(0xFFFFFFFF),
+    this.doublePixel = false,
     super.visible, super.zIndex, super.opacity, super.offset,
   });
 
@@ -82,13 +90,19 @@ class TextLayer extends Layer {
   @override
   TextLayer copyWith({String? id, String? name, String? text, Color? color,
       LedFontId? fontId, double? fontSize, TextAlignment? alignment,
-      AnimationEffect? effect, int? effectSpeedMs, bool? visible, int? zIndex,
-      double? opacity, Offset? offset}) =>
+      AnimationEffect? effect, int? effectSpeedMs,
+      bool? keyboardInteractive, bool? speedReading, Color? speedReadingColor,
+      bool? doublePixel,
+      bool? visible, int? zIndex, double? opacity, Offset? offset}) =>
       TextLayer(
         id: id ?? this.id, name: name ?? this.name, text: text ?? this.text,
         color: color ?? this.color, fontId: fontId ?? this.fontId,
         fontSize: fontSize ?? this.fontSize, alignment: alignment ?? this.alignment,
         effect: effect ?? this.effect, effectSpeedMs: effectSpeedMs ?? this.effectSpeedMs,
+        keyboardInteractive: keyboardInteractive ?? this.keyboardInteractive,
+        speedReading: speedReading ?? this.speedReading,
+        speedReadingColor: speedReadingColor ?? this.speedReadingColor,
+        doublePixel: doublePixel ?? this.doublePixel,
         visible: visible ?? this.visible, zIndex: zIndex ?? this.zIndex,
         opacity: opacity ?? this.opacity, offset: offset ?? this.offset,
       );
@@ -98,7 +112,12 @@ class TextLayer extends Layer {
         'type': 'text', 'id': id, 'name': name, 'text': text,
         'color': color.value, 'fontId': fontId.name, 'fontSize': fontSize,
         'alignment': alignment.name, 'effect': effect.name,
-        'effectSpeedMs': effectSpeedMs, 'visible': visible, 'zIndex': zIndex,
+        'effectSpeedMs': effectSpeedMs,
+        'keyboardInteractive': keyboardInteractive,
+        'speedReading': speedReading,
+        'speedReadingColor': speedReadingColor.value,
+        'doublePixel': doublePixel, 
+        'visible': visible, 'zIndex': zIndex,
         'opacity': opacity, 'offsetX': offset.dx, 'offsetY': offset.dy,
       };
 
@@ -111,6 +130,10 @@ class TextLayer extends Layer {
         alignment: TextAlignment.values.byName(j['alignment'] as String? ?? 'center'),
         effect: AnimationEffect.values.byName(j['effect'] as String? ?? 'none'),
         effectSpeedMs: j['effectSpeedMs'] as int? ?? 100,
+        keyboardInteractive: j['keyboardInteractive'] as bool? ?? false,
+        speedReading: j['speedReading'] as bool? ?? false,
+        speedReadingColor: Color(j['speedReadingColor'] as int? ?? 0xFFFFFFFF),
+        doublePixel: j['doublePixel'] as bool? ?? false,
         visible: j['visible'] as bool? ?? true, zIndex: j['zIndex'] as int? ?? 0,
         opacity: (j['opacity'] as num?)?.toDouble() ?? 1.0,
         offset: Offset((j['offsetX'] as num?)?.toDouble() ?? 0,
