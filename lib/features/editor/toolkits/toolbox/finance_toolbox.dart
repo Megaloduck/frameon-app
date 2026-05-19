@@ -40,8 +40,6 @@ class FinanceToolboxLeft extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
 
-        
-
         const TbLabel('Vs Currency'),
         const SizedBox(height: 4),
         _VsCurrencyDropdown(
@@ -82,7 +80,7 @@ class FinanceToolboxLeft extends ConsumerWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FinanceToolboxRight — layout, toggles, opacity, refresh.
+// FinanceToolboxRight — layout, toggles, decimals, refresh.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class FinanceToolboxRight extends ConsumerWidget {
@@ -175,8 +173,8 @@ class _StatusPillState extends State<_StatusPill> {
     super.dispose();
   }
 
-  /// Seconds remaining until the next scheduled refresh attempt,
-  /// or null if we don't yet have a reference timestamp.
+  /// Seconds remaining until the next scheduled refresh, or null if we don't
+  /// yet have a reference timestamp.
   int? _countdownSeconds() {
     final updatedAt = widget.data.updatedAt;
     if (updatedAt == null) return null;
@@ -184,6 +182,16 @@ class _StatusPillState extends State<_StatusPill> {
     final elapsedSec  = DateTime.now().difference(updatedAt).inSeconds;
     final remaining   = intervalSec - elapsedSec;
     return remaining.clamp(0, intervalSec);
+  }
+
+  /// Format seconds as m:ss for intervals >= 60 s, plain Xs otherwise.
+  static String _formatCountdown(int seconds) {
+    if (seconds >= 60) {
+      final m = seconds ~/ 60;
+      final s = seconds % 60;
+      return '$m:${s.toString().padLeft(2, '0')}';
+    }
+    return '${seconds}s';
   }
 
   @override
@@ -228,7 +236,8 @@ class _StatusPillState extends State<_StatusPill> {
           if (cd != null) ...[
             const SizedBox(width: 6),
             Text(
-              '· refreshed in ${cd}s',
+              // e.g. "· syncs in 4:32" or "· syncs in 8s"
+              '· syncs in ${_formatCountdown(cd)}',
               style: TextStyle(
                 fontSize: 9,
                 fontWeight: FontWeight.w500,

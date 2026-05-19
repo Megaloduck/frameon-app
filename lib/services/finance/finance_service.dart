@@ -5,6 +5,9 @@ import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/device/device_controller.dart';
+import '../../shared/providers/providers.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Finance service — live currency / crypto tracker
 //
@@ -17,6 +20,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 //
 // The ticker (e.g. "BTC", "ETH") is taken directly from the API response and
 // stored in FinanceData.ticker — the UI never has to ask the user for it.
+//
+// After every successful price refresh the service automatically syncs the
+// updated data to the connected device (same pattern as SpotifyServiceNotifier).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Public state ────────────────────────────────────────────────────────────
@@ -178,7 +184,9 @@ class FinanceServiceNotifier extends Notifier<FinanceData> {
   Timer? _pollTimer;
   bool   _disposed = false;
 
-  static const Duration pollInterval   = Duration(seconds: 10);
+  // Poll every 5 minutes — respects CoinGecko free-tier rate limits and
+  // keeps the device display always up to date on a regular cycle.
+  static const Duration pollInterval    = Duration(minutes: 5);
   static const Duration _connectTimeout = Duration(seconds: 8);
 
   @override
@@ -202,6 +210,20 @@ class FinanceServiceNotifier extends Notifier<FinanceData> {
 
     return FinanceData.mock(key.symbol, key.vsCurrency);
   }
+
+  // ── Auto-sync ─────────────────────────────────────────────────────────────
+
+  /// Pushes the freshly rendered timeline to the device after a successful
+  /// price update — mirrors SpotifyServiceNotifier._autoSyncToDevice().
+  void _autoSyncToDevice() {
+    ref.invalidate(timelineProvider);
+    final device = ref.read(deviceConnectionProvider);
+    if (device.isConnected && !device.isSending) {
+      ref.read(deviceConnectionProvider.notifier).sendToDevice();
+    }
+  }
+
+  // ── Refresh ───────────────────────────────────────────────────────────────
 
   Future<void> refresh() async {
     if (_disposed) return;
@@ -251,34 +273,18 @@ class FinanceServiceNotifier extends Notifier<FinanceData> {
       if (decoded is! List || decoded.isEmpty) {
         state = state.copyWith(
           status:       FinanceStatus.error,
-          errorMessage: 'No market data for "$symbol"',
+          errorMessage: 'Coin not found: $symbol',
           updatedAt:    DateTime.now(),
         );
         return;
       }
 
-      final entry = decoded.first;
-      if (entry is! Map) {
-        state = state.copyWith(
-          status:       FinanceStatus.error,
-          errorMessage: 'Unexpected response shape',
-          updatedAt:    DateTime.now(),
-        );
-        return;
-      }
-
+      final entry    = decoded.first as Map<String, dynamic>;
       final priceRaw = entry['current_price'];
-      if (priceRaw is! num) {
-        state = state.copyWith(
-          status:       FinanceStatus.error,
-          errorMessage: 'Missing current_price',
-          updatedAt:    DateTime.now(),
-        );
-        return;
-      }
-      final double newPrice = priceRaw.toDouble();
+      final double newPrice =
+          priceRaw is num ? priceRaw.toDouble() : state.price;
 
-      // Ticker comes back lowercase from CoinGecko (e.g. "btc"); uppercase it.
+      // CoinGecko returns the ticker as "symbol", e.g. "btc"); uppercase it.
       final tickerRaw = entry['symbol'];
       final String newTicker = tickerRaw is String && tickerRaw.isNotEmpty
           ? tickerRaw.toUpperCase()
@@ -313,6 +319,10 @@ class FinanceServiceNotifier extends Notifier<FinanceData> {
         updatedAt:    DateTime.now(),
         clearError:   true,
       );
+
+      // Push the updated price data to the device automatically.
+      _autoSyncToDevice();
+
     } on SocketException catch (e) {
       state = state.copyWith(
         status:       FinanceStatus.error,
