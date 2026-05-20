@@ -17,6 +17,12 @@ dependencies:
   # Unique IDs for layers
   uuid: ^4.3.3
 
+  # FFI for native Windows API calls (HID communication, file dialogs, etc.)
+  ffi: ^2.1.0
+
+  # Windows API bindings for HID communication and other system interactions
+  win32: ^5.5.0
+
   # Image / GIF decoding
   image: ^4.1.7
 
@@ -51,6 +57,7 @@ dependencies:
 
   # App version / bundle info — required by launch_at_startup setup()
   package_info_plus: ^8.0.0
+
 
 dev_dependencies:
   flutter_test:

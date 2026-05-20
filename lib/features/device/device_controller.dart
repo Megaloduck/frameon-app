@@ -51,6 +51,8 @@ import '../../shared/providers/providers.dart';
 import '../settings/settings_dialog.dart';
 import 'connection_state.dart';
 import 'device_event.dart';
+import '../../services/hid/hid_service.dart';
+import '../../services/hid/hid_report.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Policy constants
@@ -158,10 +160,22 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   /// so no controller action is silently dropped.
   bool _pendingSend = false;
 
+  /// HID service — receives controller reports at USB interrupt speed (~4 ms)
+  /// without going through the CDC serial parsing pipeline.
+  final FrameonHidService _hid = FrameonHidService();
+  StreamSubscription<FrameonHidReport>? _hidSub;
+
+  // Joystick centre values learned from first idle reports (raw ADC 0-4095).
+  int _joyCentreX = 2047;
+  int _joyCentreY = 2047;
+  int _joyCentreCalibCount = 0;   // number of idle samples averaged so far
+
   @override
   DeviceConnectionState build() {
     ref.onDispose(() {
       _cancelEventSub();
+      _hidSub?.cancel();
+      _hid.close();
       _presetSendTimer?.cancel();
       _joySendTimer?.cancel();
     });
@@ -209,6 +223,14 @@ class DeviceController extends Notifier<DeviceConnectionState> {
         onError: (_) {},
         cancelOnError: false,
       );
+
+      // Open HID service in parallel — provides sub-5ms controller latency.
+      // Falls back gracefully if HID is not available (old firmware).
+      await _hidSub?.cancel();
+      final hidOk = await _hid.open();
+      if (hidOk) {
+        _hidSub = _hid.reports.listen(_onHidReport, cancelOnError: false);
+      }
     } catch (e) {
       state = state.copyWith(
         status:       DeviceConnectionStatus.error,
@@ -221,6 +243,9 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     _presetSendTimer?.cancel();
     _joySendTimer?.cancel();
     await _cancelEventSub();
+    await _hidSub?.cancel();
+    _hidSub = null;
+    await _hid.close();
     try { await _serial.disconnect(); } catch (_) {}
     state = state.copyWith(
       status:       DeviceConnectionStatus.disconnected,
@@ -477,6 +502,62 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   void _armJoySend() {
     _joySendTimer?.cancel();
     _joySendTimer = Timer(_kJoySendDebounce, sendToDevice);
+  }
+
+  // ── HID report handler ─────────────────────────────────────────────────────
+
+  /// Translates a raw HID report into the same actions as _onDeviceEvent.
+  ///
+  /// Called at USB interrupt rate (~4 ms latency from physical input).
+  /// Joystick calibration is auto-learned from the first 30 idle reports.
+  void _onHidReport(FrameonHidReport r) {
+    // ── Auto-calibrate joystick centre from idle samples ──────────────────
+    if (_joyCentreCalibCount < 30 && r.encDelta == 0 && r.buttons == 0) {
+      _joyCentreX = ((_joyCentreX * _joyCentreCalibCount + r.joyX) /
+              (_joyCentreCalibCount + 1))
+          .round();
+      _joyCentreY = ((_joyCentreY * _joyCentreCalibCount + r.joyY) /
+              (_joyCentreCalibCount + 1))
+          .round();
+      _joyCentreCalibCount++;
+      _hid.setJoyCentre(_joyCentreX, _joyCentreY);
+    }
+
+    // ── Encoder: preset navigation with debounced send ────────────────────
+    if (r.encDelta != 0) _switchPresetBy(r.encDelta > 0 ? 1 : -1);
+
+    // ── Encoder long: display lock toggle ─────────────────────────────────
+    if (r.encLong) state = state.copyWith(deviceLocked: !state.deviceLocked);
+
+    // ── Joystick: layer z-order + opacity ─────────────────────────────────
+    final normY = r.normJoyY(_joyCentreY);
+    if (normY < -0.5)      _applyLayerZOrder(forward: true);   // joystick UP
+    else if (normY > 0.5)  _applyLayerZOrder(forward: false);  // joystick DOWN
+
+    final normX = r.normJoyX(_joyCentreX);
+    if (normX > 0.5)       _applyLayerOpacity(_kOpacityStep);
+    else if (normX < -0.5) _applyLayerOpacity(-_kOpacityStep);
+
+    // ── Joystick button ───────────────────────────────────────────────────
+    if (r.joyLong) _applyLayerToggleVisibility();
+
+    // ── BTN1: Sync / Reset ────────────────────────────────────────────────
+    if (r.btn1Pressed && !r.btn1Long) sendToDevice();
+    if (r.btn1Long) {
+      ref.read(sceneProvider.notifier).newScene();
+      sendToDevice();
+    }
+
+    // ── BTN2: Disconnect / Reconnect ──────────────────────────────────────
+    if (r.btn2Long) {
+      final port = state.portName;
+      if (port != null) connect(port);
+    } else if (r.btn2Pressed) {
+      disconnect();
+    }
+
+    // ── BTN3-5 ephemeral: consumed by feature widgets on the stream ───────
+    // The deviceEvents stream still carries these for Pomodoro / Spotify.
   }
 
   Future<void> _cancelEventSub() async {
