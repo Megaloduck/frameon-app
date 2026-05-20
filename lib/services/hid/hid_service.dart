@@ -41,7 +41,7 @@ import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 
-import 'frameon_hid_report.dart';
+import 'hid_report.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
