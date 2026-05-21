@@ -1,3 +1,4 @@
+// lib/services/spotify/spotify_service.dart
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -36,45 +37,44 @@ class SpotifyState {
 
   /// Wall-clock time when [currentPosition] was last set from the Spotify API.
   /// Used to compensate for render + transfer latency in [toTrack()].
-  final DateTime?   positionCapturedAt;
+  final DateTime? positionCapturedAt;
 
   SpotifyState({
-    this.status            = SpotifyConnectionStatus.disconnected,
+    this.status             = SpotifyConnectionStatus.disconnected,
     this.currentTrackTitle,
     this.currentArtist,
     this.currentAlbum,
     this.albumArtUrl,
     this.albumArtPixels,
-    this.albumArtSize      = 32,
-    this.progress          = 0,
-    this.isPlaying         = false,
+    this.albumArtSize       = 32,
+    this.progress           = 0,
+    this.isPlaying          = false,
     this.errorMessage,
     this.trackId,
-    this.currentPosition   = Duration.zero,
-    this.currentDuration   = Duration.zero,
-    this.isShuffling       = false,
+    this.currentPosition    = Duration.zero,
+    this.currentDuration    = Duration.zero,
+    this.isShuffling        = false,
     this.positionCapturedAt,
   });
 
   bool get isConnected  => status == SpotifyConnectionStatus.connected;
   bool get isConnecting => status == SpotifyConnectionStatus.connecting;
 
-  /// Returns [currentPosition] compensated for however much real time has
-  /// elapsed since the API told us that position.
+  /// [currentPosition] compensated for time elapsed since the API reported it.
   ///
-  /// Every millisecond between the API call and the moment the ESP32 shows
-  /// frame 0 is latency the progress bar must account for. This includes:
-  ///   - Debounce delay (120 ms in TimelineNotifier)
-  ///   - Frame render loop (one await per frame × N frames)
-  ///   - CRC computation on background isolate
-  ///   - USB serial transfer (~1.2 MB at 921600 baud ≈ 10–13 s)
+  /// Every millisecond between the API call and when the ESP32 shows frame 0
+  /// is latency the progress bar must account for:
+  ///   • Debounce delay        (~120 ms in TimelineNotifier)
+  ///   • Frame render loop     (one await per frame × N frames)
+  ///   • CRC computation       (background isolate)
+  ///   • USB serial transfer   (~1.2 MB at 921600 baud ≈ 10–13 s)
   ///
-  /// By reading DateTime.now() at export time (inside toTrack()), we bake in
-  /// the real elapsed time so frame 0's progress bar pixel is correct.
+  /// Reading DateTime.now() at export time (inside toTrack()) bakes in the
+  /// real elapsed time so frame 0's progress bar is accurate.
   Duration get livePosition {
     if (!isPlaying || positionCapturedAt == null) return currentPosition;
     final elapsed = DateTime.now().difference(positionCapturedAt!);
-    final live = currentPosition + elapsed;
+    final live    = currentPosition + elapsed;
     return live > currentDuration ? currentDuration : live;
   }
 
@@ -84,17 +84,13 @@ class SpotifyState {
         artPixels: albumArtPixels,
         artWidth:  albumArtPixels != null ? albumArtSize : 0,
         artHeight: albumArtPixels != null ? albumArtSize : 0,
-        // Preview uses the ever-growing ticker elapsedMs, not wall-clock.
-        // durationMs omitted so progressAt() falls back to scalar progress.
         progress:  progress,
         isPlaying: isPlaying,
       );
 
-  /// toTrack() is called inside TimelineNotifier.build() at render time.
-  /// At that point, livePosition already includes the debounce delay.
-  /// elapsedMs then adds per-frame render time on top, so by the time the
-  /// ESP32 receives and displays frame N, progressAt(N * frameDurationMs)
-  /// closely matches the real playback position.
+  /// Called inside TimelineNotifier.build() at render time.
+  /// elapsedMs adds per-frame render time so frame N's progress bar matches
+  /// the real playback position when the ESP32 displays it.
   SpotifyTrack toTrack() => SpotifyTrack(
         title:           currentTrackTitle ?? '',
         artist:          currentArtist ?? '',
@@ -157,6 +153,11 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
 
   static const _pollInterval = Duration(seconds: 3);
 
+  /// Last known volume (0–100%).  Initialised at 50% until adjusted by a
+  /// BTN3/BTN5 long press.  Updated after every volumeUp / volumeDown call.
+  /// NOTE: also requires adding to SpotifyApiClient — see setVolume() below.
+  int _lastKnownVolume = 50;
+
   @override
   SpotifyState build() => SpotifyState();
 
@@ -164,14 +165,14 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
 
   Future<void> connect() async {
     state = state.copyWith(
-      status: SpotifyConnectionStatus.connecting,
+      status:     SpotifyConnectionStatus.connecting,
       clearError: true,
     );
     try {
       final ok = await _auth.authorize();
       if (!ok) {
         state = state.copyWith(
-          status: SpotifyConnectionStatus.error,
+          status:       SpotifyConnectionStatus.error,
           errorMessage: 'Authorization was cancelled or failed. Please try again.',
         );
         return;
@@ -181,7 +182,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
       _startPolling();
     } catch (e) {
       state = state.copyWith(
-        status: SpotifyConnectionStatus.error,
+        status:       SpotifyConnectionStatus.error,
         errorMessage: e.toString(),
       );
     }
@@ -199,7 +200,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
 
-    // Advance progress locally every second — no network call.
+    // Advance progress locally every second — no network call needed.
     _progressTimer?.cancel();
     _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!state.isPlaying) return;
@@ -207,8 +208,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
       final newPos = state.currentPosition + const Duration(seconds: 1);
       if (newPos > state.currentDuration) return;
       state = state.copyWith(
-        currentPosition: newPos,
-        // Keep positionCapturedAt in sync so livePosition stays accurate.
+        currentPosition:    newPos,
         positionCapturedAt: DateTime.now(),
         progress: (newPos.inMilliseconds / state.currentDuration.inMilliseconds)
             .clamp(0.0, 1.0),
@@ -225,12 +225,17 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
 
   // ── Now playing ───────────────────────────────────────────────────────────
 
+  /// Refresh Spotify playback state from the API.
+  ///
+  /// Called by the 3-second poll timer, by album-art resync, by each
+  /// transport action, and by the joystick short tap (Spotify context)
+  /// — "Refresh now playing" in the controller spec.
   Future<void> refresh() async {
     final token = await _auth.validAccessToken;
     if (token == null) return;
 
-    // Snapshot the time immediately before the API call so positionCapturedAt
-    // reflects when this position was valid, not when we processed the response.
+    // Snapshot the time before the API call so positionCapturedAt reflects
+    // when the position was valid, not when we processed the response.
     final capturedAt = DateTime.now();
 
     // Fire both calls in parallel.
@@ -264,7 +269,6 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
       currentPosition:    np.currentPosition,
       currentDuration:    np.currentDuration,
       isShuffling:        shuffleState ?? state.isShuffling,
-      // Record exactly when the API told us the position.
       positionCapturedAt: capturedAt,
       clearArt:           trackChanged,
     );
@@ -278,13 +282,13 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
         _fetchAlbumArtAndResync(np.albumArtUrl!);
       }
     } else if (np.isPlaying) {
-      // Re-sync every poll so the device loop re-anchors to real playback.
+      // Re-sync every poll so the device re-anchors to real playback position.
       _autoSyncToDevice();
 
-      // ── Next-song preload ───────────────────────────────────────────────
+      // ── Next-song preload ─────────────────────────────────────────────
       // Send a next-song packet when ~12 s remain (10 s firmware swap
-      // threshold + ~1.8 s transfer time). The firmware swaps it in
-      // seamlessly at the 10 s mark — no gap, no manual re-send needed.
+      // threshold + ~1.8 s transfer time).  The firmware swaps it seamlessly
+      // at the 10 s mark — no gap, no manual re-send needed.
       final int remainingMs = np.currentDuration.inMilliseconds
                             - np.currentPosition.inMilliseconds;
       if (remainingMs > 0 && remainingMs <= 12000 && !_nextSongSent) {
@@ -316,16 +320,13 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
       albumArtSize:   result.width,
     );
 
-    // BUG FIX: the first sync (text-only) is still sending when art arrives —
-    // _autoSyncToDevice() silently drops the art sync because isSending == true.
-    //
-    // Fix: wait for the in-flight send to finish, then sync with art.
-    // Poll up to 20 × 500 ms = 10 s. If the device is still busy after that,
-    // the next regular poll (5 s) will pick up the art anyway.
+    // The first sync (text-only) may still be sending when art arrives.
+    // Poll up to 20 × 500 ms = 10 s.  If still busy, the next regular
+    // poll (3 s) will pick up the art.
     for (int i = 0; i < 20; i++) {
       final device = ref.read(deviceConnectionProvider);
-      if (!device.isConnected) return;     // disconnected — give up
-      if (!device.isSending) break;        // ready — proceed
+      if (!device.isConnected) return;
+      if (!device.isSending)   break;
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
 
@@ -334,6 +335,7 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
 
   // ── Transport ─────────────────────────────────────────────────────────────
 
+  /// BTN4 short — Play / Pause (all contexts)
   Future<void> togglePlayPause() async {
     if (state.isPlaying) {
       await _doAction((t) => _client.pause(t));
@@ -342,22 +344,47 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     }
   }
 
+  /// BTN5 short (Spotify context) — Next song
   Future<void> skipNext() => _doAction(
         (t) => _client.skipNext(t),
         delay: const Duration(milliseconds: 600),
       );
 
+  /// BTN3 short (Spotify context) — Previous song
   Future<void> skipPrevious() => _doAction(
         (t) => _client.skipPrevious(t),
         delay: const Duration(milliseconds: 600),
       );
 
+  /// Joystick long hold (Spotify context) — Shuffle / Unshuffle
   Future<void> toggleShuffle() async {
     final token = await _auth.validAccessToken;
     if (token == null) return;
     await _client.toggleShuffle(token, !state.isShuffling);
     await refresh();
   }
+
+  // ── Volume (BTN3/BTN5 long in Spotify context) ────────────────────────────
+  //
+  // NOTE: also add to SpotifyApiClient (spotify_api_client.dart):
+  //
+  //   Future<bool> setVolume(String token, int percent) =>
+  //       _put(token, 'volume?volume_percent=$percent');
+  //
+
+  /// BTN5 long (Spotify context) — Volume +10%
+  Future<void> volumeUp() => _adjustVolume(10);
+
+  /// BTN3 long (Spotify context) — Volume −10%
+  Future<void> volumeDown() => _adjustVolume(-10);
+
+  Future<void> _adjustVolume(int delta) async {
+    final newVol = (_lastKnownVolume + delta).clamp(0, 100);
+    await _doAction((t) => _client.setVolume(t, newVol));
+    _lastKnownVolume = newVol;
+  }
+
+  // ── Shared action helper ──────────────────────────────────────────────────
 
   Future<void> _doAction(
     Future<bool> Function(String token) action, {
@@ -370,34 +397,34 @@ class SpotifyServiceNotifier extends Notifier<SpotifyState> {
     await refresh();
   }
 
+  // ── Next-song preload ─────────────────────────────────────────────────────
+
   bool _nextSongSent = false;
 
-  /// Build and send a next-song preload packet.
+  /// Build and send a next-song preload packet to the firmware.
   ///
-  /// Uses the current scene and a zeroed SpotifyTrack (startPositionMs=0,
-  /// trackDurationMs=0) because we don't know the next song yet — Spotify
-  /// doesn't expose the queue via its public API.  The packet carries the
-  /// same visual frames as the current track but with the bar reset to 0,
-  /// which looks natural for a new song starting.  When Spotify actually
-  /// changes tracks, the next normal poll will send a fresh packet with the
-  /// real track data anyway.
+  /// Uses a zeroed SpotifyTrack (startPositionMs=0, trackDurationMs=0) because
+  /// Spotify's public API doesn't expose the upcoming queue.  The packet
+  /// carries the same visual frames as the current track but with the bar
+  /// reset to 0, which looks natural for a new song starting.  When Spotify
+  /// actually changes tracks the next normal poll sends a fresh packet with
+  /// the real track data.
   ///
-  /// This is fire-and-forget — failures are swallowed in sendNextSong().
+  /// Fire-and-forget — failures are swallowed in sendNextSong().
   Future<void> _sendNextSongPreload() async {
     final device = ref.read(deviceConnectionProvider);
     if (!device.isConnected || device.isSending) return;
 
-    // Build a timeline with the current scene but bar at position 0.
     ref.invalidate(timelineProvider);
-    // Wait for timeline to be available (it's async).
     await Future<void>.delayed(const Duration(milliseconds: 200));
+
     final timeline = ref.read(timelineProvider).value;
     if (timeline == null || timeline.frameCount == 0) return;
 
     await ref.read(deviceConnectionProvider.notifier).sendNextSong(
       timeline,
       startPositionMs: 0,
-      trackDurationMs: 0, // unknown — firmware will skip bar overdraw
+      trackDurationMs: 0, // unknown — firmware skips bar overdraw
     );
   }
 

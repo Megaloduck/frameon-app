@@ -1,35 +1,43 @@
 // lib/features/device/device_controller.dart
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// DeviceController — v3
+// DeviceController — spec-correct controller action routing.
 //
-// Encoder (preset switcher)
-// ─────────────────────────
-//   Each encoder step fires _switchPresetBy(±1) which updates the preset
-//   state immediately for instant UI feedback, then arms a 400 ms debounce
-//   timer.  Only when the timer fires (user stops turning) is sendToDevice()
-//   called.  This prevents the "two presets overlapping" bug caused by
-//   mechanical bounce firing 2–3 events per click and sending multiple
-//   partially-overlapping FRM packets to the device.
-//
-// Joystick (display modifier — layer z-order + opacity)
+// Controller actions per Frameon_Controller_actions.xlsx
 // ──────────────────────────────────────────────────────
-//   joyLayerPrev → bringForward(selectedLayer) → debouncedSend (100 ms)
-//   joyLayerNext → sendBackward(selectedLayer) → debouncedSend (100 ms)
-//   opacityUp    → opacity + 0.1 on selected layer → debouncedSend
-//   opacityDown  → opacity − 0.1 on selected layer → debouncedSend
-//   joyPress     → toggleVisibility(selectedLayer)  → debouncedSend
 //
-//   A short 100 ms send-debounce on the joystick prevents a flood of FRM
-//   packets when the user holds the joystick — only one packet per gesture.
+//  Encoder  CW          → Preset switch +         (_switchPresetBy)
+//  Encoder  CCW         → Preset switch −          (_switchPresetBy)
+//  Encoder  short tap   → Check preset number     (no-op — UI already shows it)
+//  Encoder  long hold   → Lock / Unlock display    (deviceLocked toggle)
 //
-// Push buttons (fixed controls)
-// ─────────────────────────────
-//   btn1Sync       → sendToDevice() immediately
-//   btn1Reset      → newScene() + send
-//   btn2Disconnect → disconnect()
-//   btn2Reconnect  → connect(lastPort)
-//   btn3-5         → ephemeral; Pomodoro / Spotify feature widgets subscribe
+//  BTN1  short tap      → Sync display             (sendToDevice)
+//  BTN1  long hold      → Reset to default         (newScene + sendToDevice)
+//  BTN2  short tap      → Disconnect
+//  BTN2  long hold      → Reconnect
+//
+//  Joy X right/left     → Opacity +/−              (all layers, app-side)
+//  Joy Y up/down        → Brightness +/−           (ALL layers, FIRMWARE-side)
+//                         brightness field in HID report mirrors the value
+//  Joy short tap        → context-sensitive:
+//                           Spotify     → Refresh now playing
+//                           Slot machine→ Spin roulette
+//                           Others      → no-op (spec: NaN)
+//  Joy long hold        → context-sensitive:
+//                           Spotify     → Shuffle / Unshuffle
+//                           Others      → Edit / Save layer (select for editing)
+//
+//  BTN3-5 (Pomodoro context)
+//    BTN3 short → Reset timer
+//    BTN4 short → Start / Pause
+//    BTN5 short → Next session
+//
+//  BTN3-5 (Spotify context)
+//    BTN3 short → Previous song
+//    BTN3 long  → Volume −
+//    BTN4 short → Play / Pause
+//    BTN5 short → Next song
+//    BTN5 long  → Volume +
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -44,15 +52,14 @@ import '../../engine/scene/layer.dart';
 import '../../engine/scene/timeline.dart';
 import '../../engine/widgets/pomodoro_widget.dart';
 import '../../features/export/frame_exporter.dart';
+import '../../services/hid/hid_service.dart';
+import '../../services/hid/hid_report.dart';
 import '../../services/serial/serial_service.dart';
 import '../../services/serial/serial_desktop.dart';
 import '../../shared/providers/preset_provider.dart';
 import '../../shared/providers/providers.dart';
 import '../settings/settings_dialog.dart';
 import 'connection_state.dart';
-import 'device_event.dart';
-import '../../services/hid/hid_service.dart';
-import '../../services/hid/hid_report.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Policy constants
@@ -65,24 +72,16 @@ const int _kResponseFixedOverheadMs = 5000;
 const int _kResponseMinTimeoutMs    = 8000;
 
 int _responseTimeoutFor(int packetBytes) {
-  final int txMs = (packetBytes * _kBitsPerByte * 1000) ~/ _kBaudRate;
-  final int total = txMs + _kResponseFixedOverheadMs;
+  final int tx    = (packetBytes * _kBitsPerByte * 1000) ~/ _kBaudRate;
+  final int total = tx + _kResponseFixedOverheadMs;
   return total < _kResponseMinTimeoutMs ? _kResponseMinTimeoutMs : total;
 }
 
 const Duration _kPortSettleDelay    = Duration(milliseconds: 200);
 const Duration _kPortReconnectDelay = Duration(milliseconds: 100);
-
-/// How long after the last encoder step before sending the packet.
-/// Prevents mechanical bounce from triggering multiple sends per click.
 const Duration _kPresetSendDebounce = Duration(milliseconds: 400);
-
-/// How long after the last joystick movement before sending the packet.
-/// Prevents a flood of FRM packets while the joystick is held.
 const Duration _kJoySendDebounce    = Duration(milliseconds: 100);
-
-/// Opacity step applied per joystick X tick.
-const double _kOpacityStep = 0.1;
+const double   _kOpacityStep        = 0.05; // per HID report (20 ms → 0→1 in ~1 s)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Providers
@@ -116,28 +115,28 @@ typedef _PacketBuildInput = ({
   PomodoroTimerState? pomodoroState,
 });
 
-Uint8List _buildPacketFull(_PacketBuildInput input) =>
+Uint8List _buildPacketFull(_PacketBuildInput i) =>
     const FrameExporter().export(
-      input.timeline,
-      startPositionMs: input.startPositionMs,
-      trackDurationMs: input.trackDurationMs,
-      layout:          input.spotifyLayout,
-      showProgress:    input.showProgress,
-      progressColor:   input.progressColor,
-      clockLayer:      input.clockLayer,
-      clockCommitTime: input.clockCommitTime,
-      pomodoroLayer:   input.pomodoroLayer,
-      pomodoroState:   input.pomodoroState,
+      i.timeline,
+      startPositionMs: i.startPositionMs,
+      trackDurationMs: i.trackDurationMs,
+      layout:          i.spotifyLayout,
+      showProgress:    i.showProgress,
+      progressColor:   i.progressColor,
+      clockLayer:      i.clockLayer,
+      clockCommitTime: i.clockCommitTime,
+      pomodoroLayer:   i.pomodoroLayer,
+      pomodoroState:   i.pomodoroState,
     );
 
-Uint8List _buildNextSongPacket(_PacketBuildInput input) =>
+Uint8List _buildNextSongPacket(_PacketBuildInput i) =>
     const FrameExporter().exportNext(
-      input.timeline,
-      startPositionMs: input.startPositionMs,
-      trackDurationMs: input.trackDurationMs,
-      layout:          input.spotifyLayout,
-      showProgress:    input.showProgress,
-      progressColor:   input.progressColor,
+      i.timeline,
+      startPositionMs: i.startPositionMs,
+      trackDurationMs: i.trackDurationMs,
+      layout:          i.spotifyLayout,
+      showProgress:    i.showProgress,
+      progressColor:   i.progressColor,
     );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,35 +144,22 @@ Uint8List _buildNextSongPacket(_PacketBuildInput input) =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DeviceController extends Notifier<DeviceConnectionState> {
-  StreamSubscription<DeviceEvent>? _eventSub;
 
-  /// Debounce timer for encoder preset switching.
-  /// Arms on each step; fires sendToDevice() when user stops turning.
-  Timer? _presetSendTimer;
-
-  /// Debounce timer for joystick layer / opacity changes.
-  /// Arms on each joystick movement; fires sendToDevice() when joystick rests.
-  Timer? _joySendTimer;
-
-  /// Set to true when sendToDevice() is called while a send is already in
-  /// progress.  The running send checks this flag on completion and re-triggers
-  /// so no controller action is silently dropped.
-  bool _pendingSend = false;
-
-  /// HID service — receives controller reports at USB interrupt speed (~4 ms)
-  /// without going through the CDC serial parsing pipeline.
   final FrameonHidService _hid = FrameonHidService();
   StreamSubscription<FrameonHidReport>? _hidSub;
 
-  // Joystick centre values learned from first idle reports (raw ADC 0-4095).
+  Timer? _presetSendTimer;
+  Timer? _joySendTimer;
+  bool   _pendingSend = false;
+
+  // Joystick X centre — auto-calibrated from first idle reports.
+  // Joystick Y is handled entirely by firmware (brightness).
   int _joyCentreX = 2047;
-  int _joyCentreY = 2047;
-  int _joyCentreCalibCount = 0;   // number of idle samples averaged so far
+  int _calibN     = 0;
 
   @override
   DeviceConnectionState build() {
     ref.onDispose(() {
-      _cancelEventSub();
       _hidSub?.cancel();
       _hid.close();
       _presetSendTimer?.cancel();
@@ -195,7 +181,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       return ports;
     } catch (e) {
       state = state.copyWith(
-        status:       DeviceConnectionStatus.error,
+        status: DeviceConnectionStatus.error,
         errorMessage: 'Scan failed: $e',
       );
       return [];
@@ -205,27 +191,16 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   Future<void> connect(String portName) async {
     try { await _serial.disconnect(); } catch (_) {}
     await Future<void>.delayed(_kPortReconnectDelay);
-
     state = state.copyWith(
       status:       DeviceConnectionStatus.connecting,
       portName:     portName,
       errorMessage: null,
     );
-
     try {
       final int baudRate = ref.read(settingsProvider).baudRate;
       await _serial.connect(portName, baudRate: baudRate);
       state = state.copyWith(status: DeviceConnectionStatus.connected);
 
-      await _cancelEventSub();
-      _eventSub = _serial.deviceEvents.listen(
-        _onDeviceEvent,
-        onError: (_) {},
-        cancelOnError: false,
-      );
-
-      // Open HID service in parallel — provides sub-5ms controller latency.
-      // Falls back gracefully if HID is not available (old firmware).
       await _hidSub?.cancel();
       final hidOk = await _hid.open();
       if (hidOk) {
@@ -242,7 +217,6 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   Future<void> disconnect() async {
     _presetSendTimer?.cancel();
     _joySendTimer?.cancel();
-    await _cancelEventSub();
     await _hidSub?.cancel();
     _hidSub = null;
     await _hid.close();
@@ -258,10 +232,6 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   Future<void> sendToDevice() async {
     if (state.deviceLocked) return;
 
-    // ── Guard: if a send is already running, mark as pending and return.
-    // The running send will re-trigger when it finishes (see below).
-    // This ensures no controller action is silently dropped — the LAST
-    // requested state always makes it to the device.
     if (state.isSending) {
       _pendingSend = true;
       return;
@@ -273,7 +243,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     if (timeline == null || timeline.frameCount == 0) {
       state = state.copyWith(
         status:       DeviceConnectionStatus.error,
-        errorMessage: 'Nothing to send — add some content to the canvas first.',
+        errorMessage: 'Nothing to send — add content to the canvas first.',
       );
       return;
     }
@@ -293,8 +263,6 @@ class DeviceController extends Notifier<DeviceConnectionState> {
         sendProgress: 1.0,
         errorMessage: null,
       );
-
-      // ── Re-trigger if a controller action arrived while we were sending.
       if (_pendingSend) {
         _pendingSend = false;
         sendToDevice();
@@ -316,7 +284,6 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     if (!state.isConnected)       return;
     if (timeline.frameCount == 0) return;
     if (state.isSending)          return;
-
     try {
       final base = _gatherPacketState(timeline);
       final _PacketBuildInput input = (
@@ -336,84 +303,120 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     } catch (_) {}
   }
 
-  // ── EVT event handler ──────────────────────────────────────────────────────
+  // ── HID report handler ─────────────────────────────────────────────────────
 
-  void _onDeviceEvent(DeviceEvent event) {
-    switch (event.kind) {
+  void _onHidReport(FrameonHidReport r) {
+    // Auto-calibrate joystick X centre from the first 30 idle samples.
+    // (Y is handled by firmware — no calibration needed on app side.)
+    if (_calibN < 30 && r.encDelta == 0 && r.buttons == 0 && r.taps == 0) {
+      _joyCentreX = ((_joyCentreX * _calibN + r.joyX) / (_calibN + 1)).round();
+      _calibN++;
+    }
 
-      // ── Encoder: preset navigation ────────────────────────────────────────
-      case DeviceEventKind.presetNext:
-        _switchPresetBy(1);
+    // ── Encoder: preset navigation ─────────────────────────────────────────
+    if (r.encDelta != 0)  _switchPresetBy(r.encDelta > 0 ? 1 : -1);
+    // Encoder long: toggle display lock (firmware already applied it;
+    // we mirror it here so the app respects the lock).
+    if (r.encLong) state = state.copyWith(deviceLocked: !state.deviceLocked);
 
-      case DeviceEventKind.presetPrev:
-        _switchPresetBy(-1);
+    // ── Brightness: mirror firmware-applied value into connection state ────
+    // Firmware owns brightness; we just reflect it so the UI indicator stays
+    // in sync with what the matrix is actually showing.
+    if (r.brightness != state.deviceBrightness) {
+      state = state.copyWith(deviceBrightness: r.brightness);
+    }
 
-      case DeviceEventKind.presetCheck:
-        break; // preset name already visible in UI
+    // ── Joystick X → opacity (all layers) ─────────────────────────────────
+    final normX = r.normJoyX(_joyCentreX);
+    if (normX > 0.5)       _applyLayerOpacity(_kOpacityStep);
+    else if (normX < -0.5) _applyLayerOpacity(-_kOpacityStep);
 
-      case DeviceEventKind.lockToggle:
-        state = state.copyWith(deviceLocked: event.value == 1);
+    // ── Joystick tap → context-sensitive (spec: NaN / Spotify / SlotMachine)
+    if (r.joyTap)  _handleJoyTap();
 
-      // ── Joystick Y-axis: layer z-order ────────────────────────────────────
-      case DeviceEventKind.joyLayerPrev:
-        // Joystick UP → bringForward the selected layer (moves it toward front)
-        _applyLayerZOrder(forward: true);
+    // ── Joystick long hold → context-sensitive (Edit/Save or Spotify shuffle)
+    if (r.joyLong) _handleJoyHold();
 
-      case DeviceEventKind.joyLayerNext:
-        // Joystick DOWN → sendBackward the selected layer (moves it toward back)
-        _applyLayerZOrder(forward: false);
+    // ── BTN1: Sync display (short) / Reset to default (long) ──────────────
+    if (r.btn1Tap)  sendToDevice();
+    if (r.btn1Long) {
+      ref.read(sceneProvider.notifier).newScene();
+      sendToDevice();
+    }
 
-      // ── Joystick X-axis: selected layer opacity ────────────────────────────
-      case DeviceEventKind.opacityUp:
-        _applyLayerOpacity(_kOpacityStep);
+    // ── BTN2: Disconnect (short) / Reconnect (long) ────────────────────────
+    if (r.btn2Tap)  disconnect();
+    if (r.btn2Long) { final p = state.portName; if (p != null) connect(p); }
 
-      case DeviceEventKind.opacityDown:
-        _applyLayerOpacity(-_kOpacityStep);
+    // ── BTN3-5: Pomodoro or Spotify context ───────────────────────────────
+    _handleContextButtons(r);
+  }
 
-      // ── Joystick button ───────────────────────────────────────────────────
-      case DeviceEventKind.joyPress:
-        // Toggle visibility of the selected (or topmost) layer
-        _applyLayerToggleVisibility();
+  // ── Context-sensitive joystick tap ─────────────────────────────────────────
+  void _handleJoyTap() {
+    final scene = ref.read(sceneProvider);
 
-      case DeviceEventKind.joyHold:
-        // Save/confirm — treat as an immediate sync
-        sendToDevice();
+    final spotifyLayers    = scene.visibleLayers.whereType<SpotifyLayer>();
+    final slotLayers       = scene.visibleLayers.whereType<SlotMachineLayer>();
 
-      case DeviceEventKind.joyCenter:
-        break; // no action; joystick returned to rest
+    if (spotifyLayers.isNotEmpty) {
+      // Spotify: Refresh now playing
+      ref.read(spotifyServiceProvider.notifier).refresh();
+    } else if (slotLayers.isNotEmpty) {
+      // Slot machine: Spin roulette
+      ref.read(slotMachineServiceProvider.notifier).spin(slotLayers.first);
+    }
+    // Other layers: spec says NaN — no action.
+  }
 
-      // ── BTN1 / BTN2 — Global ─────────────────────────────────────────────
-      case DeviceEventKind.btn1Sync:
-        sendToDevice();
+  // ── Context-sensitive joystick long hold ───────────────────────────────────
+  void _handleJoyHold() {
+    final scene      = ref.read(sceneProvider);
+    final hasSpotify = scene.visibleLayers.whereType<SpotifyLayer>().isNotEmpty;
 
-      case DeviceEventKind.btn1Reset:
-        ref.read(sceneProvider.notifier).newScene();
-        sendToDevice();
-
-      case DeviceEventKind.btn2Disconnect:
-        disconnect();
-
-      case DeviceEventKind.btn2Reconnect:
-        final port = state.portName;
-        if (port != null) connect(port);
-
-      // ── BTN3-5 — Ephemeral; feature widgets subscribe to deviceEvents ─────
-      case DeviceEventKind.btn3Short:
-      case DeviceEventKind.btn3Long:
-      case DeviceEventKind.btn4Short:
-      case DeviceEventKind.btn4Long:
-      case DeviceEventKind.btn5Short:
-      case DeviceEventKind.btn5Long:
-        break;
+    if (hasSpotify) {
+      // Spotify: Shuffle / Unshuffle
+      ref.read(spotifyServiceProvider.notifier).toggleShuffle();
+    } else {
+      // All other layers: Edit / Save layer
+      // — selects the joystick-target layer in the editor panel.
+      final targetId = _joystickTargetLayerId();
+      if (targetId != null) {
+        ref.read(sceneProvider.notifier).selectLayer(targetId);
+      }
     }
   }
 
-  // ── Encoder helpers ────────────────────────────────────────────────────────
+  // ── Context-sensitive BTN3-5 ───────────────────────────────────────────────
+  void _handleContextButtons(FrameonHidReport r) {
+    final scene = ref.read(sceneProvider);
 
-  /// Update the preset selection immediately (instant UI feedback), then arm
-  /// the debounce timer.  The actual send happens only after the user stops
-  /// turning the encoder for [_kPresetSendDebounce].  This prevents the
-  /// "two presets overlapping" bug from mechanical bounce.
+    // Pomodoro takes priority when a Pomodoro layer is visible.
+    final pomodoroLayers = scene.visibleLayers.whereType<PomodoroLayer>();
+    if (pomodoroLayers.isNotEmpty) {
+      final layer = pomodoroLayers.first;
+      final pomo  = ref.read(pomodoroServiceProvider.notifier);
+      if (r.btn3Tap) pomo.reset(layer);           // Reset timer
+      if (r.btn4Tap) pomo.togglePlayPause(layer); // Start / Pause
+      if (r.btn5Tap) pomo.skip(layer);            // Next session
+      return;
+    }
+
+    // Spotify context.
+    final hasSpotify = scene.visibleLayers.whereType<SpotifyLayer>().isNotEmpty;
+    if (hasSpotify) {
+      final spotify = ref.read(spotifyServiceProvider.notifier);
+      if (r.btn3Tap)  spotify.skipPrevious();    // Previous song
+      if (r.btn3Long) spotify.volumeDown();      // Volume −
+      if (r.btn4Tap)  spotify.togglePlayPause(); // Play / Pause
+      if (r.btn5Tap)  spotify.skipNext();        // Next song
+      if (r.btn5Long) spotify.volumeUp();        // Volume +
+    }
+    // Other layers: BTN3-5 unassigned (spec has no entry).
+  }
+
+  // ── Encoder debounce ───────────────────────────────────────────────────────
+
   void _switchPresetBy(int delta) {
     final preset     = ref.read(presetProvider);
     final slots      = preset.slots;
@@ -429,54 +432,19 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       ref.read(sceneProvider.notifier).loadScene(scene);
     }
 
-    // Arm (or restart) the send-debounce timer.
     _presetSendTimer?.cancel();
     _presetSendTimer = Timer(_kPresetSendDebounce, sendToDevice);
   }
 
-  // ── Joystick helpers ───────────────────────────────────────────────────────
+  // ── Joystick opacity helpers ───────────────────────────────────────────────
 
-  /// Returns the ID of the joystick target layer:
-  ///   1. The layer selected in the layer panel  (selectedLayerIdProvider)
-  ///   2. Fallback: the topmost visible layer in the scene
   String? _joystickTargetLayerId() {
-    // selectedLayerIdProvider is a separate provider — SceneNotifier does not
-    // expose selectedLayerId directly.
     final selectedId = ref.read(selectedLayerIdProvider);
     if (selectedId != null) return selectedId;
-
-    // Fall back to the topmost visible layer.
     final visible = ref.read(sceneProvider).visibleLayers;
     return visible.isNotEmpty ? visible.last.id : null;
   }
 
-  /// Move the joystick-targeted layer forward or backward in z-order.
-  ///
-  /// SceneNotifier only exposes reorderLayer(from, to) which applies
-  /// Flutter's ReorderableListView off-by-one adjustment internally.
-  /// To avoid that ambiguity we work directly on the immutable Scene model
-  /// (scene.bringForward / scene.sendBackward) and then push the new scene
-  /// via loadScene + re-select — two synchronous state writes that Riverpod
-  /// batches into a single frame.
-  void _applyLayerZOrder({required bool forward}) {
-    final targetId = _joystickTargetLayerId();
-    if (targetId == null) return;
-
-    final scene    = ref.read(sceneProvider);
-    final newScene = forward ? scene.bringForward(targetId) : scene.sendBackward(targetId);
-
-    // identical() is true when the layer was already at the boundary —
-    // skip the write and the send in that case.
-    if (identical(newScene, scene)) return;
-
-    final notifier = ref.read(sceneProvider.notifier);
-    notifier.loadScene(newScene);       // applies the reordered layer list
-    notifier.selectLayer(targetId);     // restore selection (loadScene clears it)
-    _armJoySend();
-  }
-
-  /// Adjust the opacity of the joystick-targeted layer by [delta] (±0.1),
-  /// clamped to [0.0, 1.0], then arm the send debounce.
   void _applyLayerOpacity(double delta) {
     final targetId = _joystickTargetLayerId();
     if (targetId == null) return;
@@ -490,82 +458,12 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     _armJoySend();
   }
 
-  /// Toggle visibility of the joystick-targeted layer, then send immediately.
-  void _applyLayerToggleVisibility() {
-    final targetId = _joystickTargetLayerId();
-    if (targetId == null) return;
-    ref.read(sceneProvider.notifier).toggleVisibility(targetId);
-    sendToDevice();
-  }
-
-  /// Arms (or restarts) the 100 ms joystick send-debounce timer.
   void _armJoySend() {
     _joySendTimer?.cancel();
     _joySendTimer = Timer(_kJoySendDebounce, sendToDevice);
   }
 
-  // ── HID report handler ─────────────────────────────────────────────────────
-
-  /// Translates a raw HID report into the same actions as _onDeviceEvent.
-  ///
-  /// Called at USB interrupt rate (~4 ms latency from physical input).
-  /// Joystick calibration is auto-learned from the first 30 idle reports.
-  void _onHidReport(FrameonHidReport r) {
-    // ── Auto-calibrate joystick centre from idle samples ──────────────────
-    if (_joyCentreCalibCount < 30 && r.encDelta == 0 && r.buttons == 0) {
-      _joyCentreX = ((_joyCentreX * _joyCentreCalibCount + r.joyX) /
-              (_joyCentreCalibCount + 1))
-          .round();
-      _joyCentreY = ((_joyCentreY * _joyCentreCalibCount + r.joyY) /
-              (_joyCentreCalibCount + 1))
-          .round();
-      _joyCentreCalibCount++;
-      _hid.setJoyCentre(_joyCentreX, _joyCentreY);
-    }
-
-    // ── Encoder: preset navigation with debounced send ────────────────────
-    if (r.encDelta != 0) _switchPresetBy(r.encDelta > 0 ? 1 : -1);
-
-    // ── Encoder long: display lock toggle ─────────────────────────────────
-    if (r.encLong) state = state.copyWith(deviceLocked: !state.deviceLocked);
-
-    // ── Joystick: layer z-order + opacity ─────────────────────────────────
-    final normY = r.normJoyY(_joyCentreY);
-    if (normY < -0.5)      _applyLayerZOrder(forward: true);   // joystick UP
-    else if (normY > 0.5)  _applyLayerZOrder(forward: false);  // joystick DOWN
-
-    final normX = r.normJoyX(_joyCentreX);
-    if (normX > 0.5)       _applyLayerOpacity(_kOpacityStep);
-    else if (normX < -0.5) _applyLayerOpacity(-_kOpacityStep);
-
-    // ── Joystick button ───────────────────────────────────────────────────
-    if (r.joyLong) _applyLayerToggleVisibility();
-
-    // ── BTN1: Sync / Reset ────────────────────────────────────────────────
-    if (r.btn1Pressed && !r.btn1Long) sendToDevice();
-    if (r.btn1Long) {
-      ref.read(sceneProvider.notifier).newScene();
-      sendToDevice();
-    }
-
-    // ── BTN2: Disconnect / Reconnect ──────────────────────────────────────
-    if (r.btn2Long) {
-      final port = state.portName;
-      if (port != null) connect(port);
-    } else if (r.btn2Pressed) {
-      disconnect();
-    }
-
-    // ── BTN3-5 ephemeral: consumed by feature widgets on the stream ───────
-    // The deviceEvents stream still carries these for Pomodoro / Spotify.
-  }
-
-  Future<void> _cancelEventSub() async {
-    await _eventSub?.cancel();
-    _eventSub = null;
-  }
-
-  // ── Packet state ──────────────────────────────────────────────────────────
+  // ── Packet state gathering ─────────────────────────────────────────────────
 
   _PacketBuildInput _gatherPacketState(Timeline timeline) {
     final scene   = ref.read(sceneProvider);
@@ -573,11 +471,9 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
     final SpotifyLayer? spotifyLayer = scene.visibleLayers
         .whereType<SpotifyLayer>().cast<SpotifyLayer?>().firstOrNull;
-
     final ClockLayer? clockLayer = scene.visibleLayers
         .whereType<ClockLayer>().cast<ClockLayer?>().firstOrNull;
     final DateTime? clockCommitTime = clockLayer != null ? DateTime.now() : null;
-
     final PomodoroLayer? pomodoroLayer = scene.visibleLayers
         .whereType<PomodoroLayer>().cast<PomodoroLayer?>().firstOrNull;
     final PomodoroTimerState? pomodoroState =
@@ -599,7 +495,6 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   Future<void> _failGracefully(String message) async {
     try { await _serial.disconnect(); } catch (_) {}
-    await _cancelEventSub();
     await Future<void>.delayed(_kPortSettleDelay);
     state = state.copyWith(
       status:       DeviceConnectionStatus.error,
@@ -612,28 +507,24 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     final int timeoutMs = _responseTimeoutFor(packet.length);
     for (int attempt = 1; attempt <= _kMaxAttempts; attempt++) {
       if (attempt > 1) state = state.copyWith(sendProgress: 0);
-
       await _serial.send(
         packet,
         onProgress: (p) => state = state.copyWith(sendProgress: p),
       );
-
-      final int? response =
-          await _serial.readResponseByte(timeoutMs: timeoutMs);
-
+      final int? response = await _serial.readResponseByte(timeoutMs: timeoutMs);
       switch (response) {
         case kFirmwareAck:
           return;
         case kFirmwareNak:
           if (attempt < _kMaxAttempts) continue;
-          throw const SerialException('CRC mismatch after retry. Check the USB cable or try re-sending.');
+          throw const SerialException('CRC mismatch after retry. Check the USB cable.');
         case kFirmwareErr:
-          throw const SerialException('Device rejected the packet (wrong dimensions or protocol version). Update the firmware and try again.');
+          throw const SerialException('Device rejected the packet. Update firmware.');
         case null:
-          final mb = (packet.length / 1024 / 1024).toStringAsFixed(2);
-          throw SerialException('No response within ${timeoutMs ~/ 1000} s (packet $mb MB). Check the cable and try again.');
+          throw SerialException('No response within ${timeoutMs ~/ 1000} s.');
         default:
-          throw SerialException('Unexpected response byte: 0x${response.toRadixString(16).toUpperCase()}.');
+          throw SerialException(
+            'Unexpected response: 0x${response.toRadixString(16).toUpperCase()}.');
       }
     }
   }

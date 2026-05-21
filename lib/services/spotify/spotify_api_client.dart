@@ -138,6 +138,7 @@ class SpotifyApiClient {
   Future<bool> pause(String token)        => _put(token, 'pause');
   Future<bool> skipNext(String token)     => _post(token, 'next');
   Future<bool> skipPrevious(String token) => _post(token, 'previous');
+  Future<bool> setVolume(String token, int percent) =>_put(token, 'volume?volume_percent=$percent');
   Future<bool> toggleShuffle(String token, bool shuffleState) async {
   try {
     final resp = await http.put(

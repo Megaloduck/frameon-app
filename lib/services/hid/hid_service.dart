@@ -1,4 +1,4 @@
-// lib/services/hid/hid_service.dart
+// lib/services/hid/frameon_hid_service.dart
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // FrameonHidService — reads USB HID reports from the Frameon controller on
@@ -107,11 +107,13 @@ class FrameonHidService {
     final report = FrameonHidReport.tryParse(msg);
     if (report == null || _ctrl.isClosed) return;
 
-    // Auto-calibrate joystick centre from the first 30 idle samples
-    // (no encoder movement, no buttons held).
-    if (_calibN < 30 && report.encDelta == 0 && report.buttons == 0) {
+    // Auto-calibrate joystick X centre from the first 30 idle samples.
+    // Y-axis calibration is handled entirely by the firmware during inputInit()
+    // (joystick Y now controls brightness directly on the ESP32 — it no longer
+    // appears in the HID report as a raw ADC value).
+    if (_calibN < 30 && report.encDelta == 0 &&
+        report.buttons == 0 && report.taps == 0) {
       _centreX = ((_centreX * _calibN + report.joyX) / (_calibN + 1)).round();
-      _centreY = ((_centreY * _calibN + report.joyY) / (_calibN + 1)).round();
       _calibN++;
     }
 
@@ -127,16 +129,31 @@ class FrameonHidService {
   ///
   /// We match on `vid_303a` and `pid_4001` instead of calling
   /// HidD_GetAttributes (which requires hid.lib and isn't in the win32 package).
+  // ── setupapi.dll direct binding for SetupDiGetDeviceInterfaceDetailW ───────
+  // We load this function directly instead of using the win32 package wrapper
+  // because SP_DEVICE_INTERFACE_DETAIL_DATA_W is not exported as a Dart type
+  // in all win32 package versions. Using Pointer<Uint8> sidesteps this entirely.
+  static final _setupapi = DynamicLibrary.open('setupapi.dll');
+  static late final _getDetail = _setupapi.lookupFunction<
+    Int32 Function(IntPtr, Pointer<SP_DEVICE_INTERFACE_DATA>,
+                   Pointer<Uint8>, Uint32, Pointer<Uint32>, Pointer<Void>),
+    int Function(int, Pointer<SP_DEVICE_INTERFACE_DATA>,
+                 Pointer<Uint8>, int, Pointer<Uint32>, Pointer<Void>)
+  >('SetupDiGetDeviceInterfaceDetailW');
+
   static String? _findDevicePath() {
     // ── Fill HID class GUID: {4D1E55B2-F16F-11CF-88CB-001111000030} ─────────
-    // This is the well-known Windows HID class GUID and never changes.
+    // Well-known Windows HID class GUID — never changes.
+    //
+    // In this win32 package version GUID.Data4 is @Uint64() int, not Array<Uint8>.
+    // Bytes we need in memory order: 88 CB 00 11 11 00 00 30
+    // On little-endian x86-64, the uint64 value that produces those bytes is:
+    //   byte[0]=LSB=0x88 ... byte[7]=MSB=0x30  →  0x300000111100CB88
     final guid = calloc<GUID>();
     guid.ref.Data1 = 0x4D1E55B2;
     guid.ref.Data2 = 0xF16F;
     guid.ref.Data3 = 0x11CF;
-    // Data4 is an Array<Uint8> in the win32 package
-    const d4 = [0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30];
-    for (int i = 0; i < 8; i++) guid.ref.Data4[i] = d4[i];
+    guid.ref.Data4 = 0x300000111100CB88; // packed little-endian: 88 CB 00 11 11 00 00 30
 
     final infoSet = SetupDiGetClassDevs(
       guid, nullptr, NULL,
@@ -155,27 +172,21 @@ class FrameonHidService {
 
     while (SetupDiEnumDeviceInterfaces(
           infoSet, nullptr, guid, index++, iface) != 0) {
-      // ── Query required buffer size ────────────────────────────────────────
+      // ── Query required buffer size (pass null detail buffer) ──────────────
       final pSize = calloc<Uint32>();
-      SetupDiGetDeviceInterfaceDetail(
-        infoSet, iface, nullptr, 0, pSize, nullptr,
-      );
+      _getDetail(infoSet, iface, nullptr, 0, pSize, nullptr);
       final int bufSize = pSize.value;
       calloc.free(pSize);
       if (bufSize == 0) continue;
 
       // ── Allocate detail buffer and set cbSize ─────────────────────────────
       // SP_DEVICE_INTERFACE_DETAIL_DATA_W layout:
-      //   DWORD  cbSize;           // bytes 0-3
-      //   WCHAR  DevicePath[1];    // bytes 4+
-      // cbSize must be: 8 on 64-bit Windows, 6 on 32-bit Windows.
+      //   DWORD  cbSize;        bytes 0–3   (6 on 32-bit, 8 on 64-bit)
+      //   WCHAR  DevicePath[];  bytes 4+    (null-terminated wide string)
       final buf = calloc<Uint8>(bufSize);
       buf.cast<Uint32>().value = sizeOf<IntPtr>() == 8 ? 8 : 6;
 
-      if (SetupDiGetDeviceInterfaceDetail(
-            infoSet, iface,
-            buf.cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W>(),
-            bufSize, nullptr, nullptr) != 0) {
+      if (_getDetail(infoSet, iface, buf, bufSize, nullptr, nullptr) != 0) {
         // DevicePath starts at byte offset 4 (after the DWORD cbSize).
         final pathPtr = Pointer<Utf16>.fromAddress(buf.address + 4);
         final path    = pathPtr.toDartString();
