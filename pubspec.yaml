@@ -42,7 +42,7 @@ dependencies:
   crypto: ^3.0.3
 
   # Serial communication (Windows / macOS / Linux)
-  #flutter_libserialport: ^0.6.0
+  flutter_libserialport: ^0.6.0
   serial_port_win32: ^2.3.0
 
   # Window management — close interception, hide to tray (Run in Background)

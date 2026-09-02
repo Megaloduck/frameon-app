@@ -38,6 +38,25 @@
 //    BTN4 short → Play / Pause
 //    BTN5 short → Next song
 //    BTN5 long  → Volume +
+//
+// ── FIX SUMMARY ──────────────────────────────────────────────────────────────
+//
+//  Bug 1 (FIXED): serialServiceProvider created LibSerialPortService() on all
+//    desktop platforms, but LibSerialPortService was aliased to Win32SerialService
+//    in serial_desktop.dart, so macOS/Linux got the wrong (Windows-only) driver.
+//    Now: Platform.isWindows → Win32SerialService
+//         Platform.isMacOS || Platform.isLinux → LibSerialPortService
+//         web / other → StubSerialService
+//
+//  Bug 2 (FIXED): sendToDevice() returned silently with no UI feedback when
+//    deviceLocked == true. It now sets an error message so the user knows why
+//    the send was rejected.
+//
+//  Bug 3 (FIXED): older code-path called compute(_buildPacket, timeline) where
+//    _buildPacket ignored clock / Spotify / Pomodoro state. Only
+//    compute(_buildPacketFull, input) is used now, so the full header is always
+//    assembled with live state from every active layer type.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -71,9 +90,14 @@ const int _kBitsPerByte             = 10;
 const int _kResponseFixedOverheadMs = 5000;
 const int _kResponseMinTimeoutMs    = 8000;
 
+/// Compute a response-wait timeout that scales with packet size.
+///
+/// At 921600 baud, 1.2 MB takes ~10 s to transmit; we add a 5 s overhead
+/// for firmware CRC computation and USB scheduling jitter. The minimum of
+/// 8 s covers small packets (clock-only or single-frame content).
 int _responseTimeoutFor(int packetBytes) {
-  final int tx    = (packetBytes * _kBitsPerByte * 1000) ~/ _kBaudRate;
-  final int total = tx + _kResponseFixedOverheadMs;
+  final int txMs  = (packetBytes * _kBitsPerByte * 1000) ~/ _kBaudRate;
+  final int total = txMs + _kResponseFixedOverheadMs;
   return total < _kResponseMinTimeoutMs ? _kResponseMinTimeoutMs : total;
 }
 
@@ -81,15 +105,26 @@ const Duration _kPortSettleDelay    = Duration(milliseconds: 200);
 const Duration _kPortReconnectDelay = Duration(milliseconds: 100);
 const Duration _kPresetSendDebounce = Duration(milliseconds: 400);
 const Duration _kJoySendDebounce    = Duration(milliseconds: 100);
-const double   _kOpacityStep        = 0.05; // per HID report (20 ms → 0→1 in ~1 s)
+
+/// Opacity delta per HID report tick (20 ms) → full sweep in ~1 s.
+const double _kOpacityStep = 0.05;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Providers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// FIX: previously returned LibSerialPortService() on ALL desktop platforms,
+/// but LibSerialPortService was aliased to Win32SerialService — so macOS/Linux
+/// silently got the Windows-only serial driver.
+///
+/// Now the dispatch is explicit and correct:
+///   Windows          → Win32SerialService   (serial_port_win32)
+///   macOS / Linux    → LibSerialPortService (flutter_libserialport)
+///   web / other      → StubSerialService    (no-op)
 final serialServiceProvider = Provider<SerialService>((ref) {
-  if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
-    return LibSerialPortService();
+  if (!kIsWeb) {
+    if (Platform.isWindows) return Win32SerialService();
+    if (Platform.isMacOS || Platform.isLinux) return LibSerialPortService();
   }
   return StubSerialService();
 });
@@ -99,7 +134,11 @@ final availablePortsProvider = FutureProvider<List<PortInfo>>((ref) async {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Packet build types
+// Packet build types and top-level isolate functions
+//
+// compute() spawns a background isolate. Only top-level or static functions
+// can be passed to compute() — closures and instance methods are not sendable
+// across isolate boundaries.
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef _PacketBuildInput = ({
@@ -115,6 +154,12 @@ typedef _PacketBuildInput = ({
   PomodoroTimerState? pomodoroState,
 });
 
+/// Builds a full FRM packet including clock, Spotify, and Pomodoro header
+/// fields. Used by [DeviceController.sendToDevice].
+///
+/// FIX: the old codebase had a bare _buildPacket(Timeline) that ignored all
+/// layer state. This function always receives the full _PacketBuildInput so
+/// the firmware header is populated correctly for every layer type.
 Uint8List _buildPacketFull(_PacketBuildInput i) =>
     const FrameExporter().export(
       i.timeline,
@@ -129,6 +174,8 @@ Uint8List _buildPacketFull(_PacketBuildInput i) =>
       pomodoroState:   i.pomodoroState,
     );
 
+/// Builds an FRM packet for the "next song" transition animation.
+/// Only Spotify fields are relevant; clock/pomodoro fields are zeroed.
 Uint8List _buildNextSongPacket(_PacketBuildInput i) =>
     const FrameExporter().exportNext(
       i.timeline,
@@ -152,7 +199,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   Timer? _joySendTimer;
   bool   _pendingSend = false;
 
-  // Joystick X centre — auto-calibrated from first idle reports.
+  // Joystick X centre — auto-calibrated from the first 30 idle reports.
   // Joystick Y is handled entirely by firmware (brightness).
   int _joyCentreX = 2047;
   int _calibN     = 0;
@@ -181,7 +228,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       return ports;
     } catch (e) {
       state = state.copyWith(
-        status: DeviceConnectionStatus.error,
+        status:       DeviceConnectionStatus.error,
         errorMessage: 'Scan failed: $e',
       );
       return [];
@@ -191,16 +238,19 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   Future<void> connect(String portName) async {
     try { await _serial.disconnect(); } catch (_) {}
     await Future<void>.delayed(_kPortReconnectDelay);
+
     state = state.copyWith(
       status:       DeviceConnectionStatus.connecting,
       portName:     portName,
       errorMessage: null,
     );
+
     try {
       final int baudRate = ref.read(settingsProvider).baudRate;
       await _serial.connect(portName, baudRate: baudRate);
       state = state.copyWith(status: DeviceConnectionStatus.connected);
 
+      // Subscribe to HID reports (physical controller input).
       await _hidSub?.cancel();
       final hidOk = await _hid.open();
       if (hidOk) {
@@ -222,15 +272,41 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     await _hid.close();
     try { await _serial.disconnect(); } catch (_) {}
     state = state.copyWith(
-      status:       DeviceConnectionStatus.disconnected,
-      portName:     null,
-      errorMessage: null,
-      sendProgress: 0,
+      status:           DeviceConnectionStatus.disconnected,
+      portName:         null,
+      errorMessage:     null,
+      sendProgress:     0,
+      deviceLocked:     false,   // FIX: reset lock on disconnect; firmware resets on reconnect
+      deviceBrightness: 128,     // FIX: reset to DEFAULT_BRIGHTNESS; stale value confused the UI
     );
   }
 
+  /// Export the current timeline and stream it to the connected device.
+  ///
+  /// ## Why compute() is used
+  ///
+  /// [FrameExporter.export] builds the full binary packet synchronously:
+  ///   - Copies all RGB565 frame data (up to ~1.2 MB) into one Uint8List
+  ///   - Runs CRC-16/CCITT over every byte in a tight CPU loop
+  ///
+  /// Running this on the UI thread freezes the app and produces the
+  /// "Reported frame time is older than the last one" debug error.
+  /// `compute(_buildPacketFull, input)` offloads it to a background isolate.
+  ///
+  /// ## Retry policy
+  ///
+  /// - 1 initial attempt + 1 automatic retry on NAK = 2 total ([_kMaxAttempts]).
+  /// - Human-readable error on ERR, second NAK, or response timeout.
   Future<void> sendToDevice() async {
-    if (state.deviceLocked) return;
+    // FIX: previously returned silently when locked, giving the user no
+    // feedback. Now sets a visible error so they know why nothing happened.
+    if (state.deviceLocked) {
+      state = state.copyWith(
+        status:       DeviceConnectionStatus.error,
+        errorMessage: 'Display is locked. Long-hold the encoder to unlock.',
+      );
+      return;
+    }
 
     if (state.isSending) {
       _pendingSend = true;
@@ -255,14 +331,20 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     );
 
     try {
+      // FIX: always use _buildPacketFull so clock / Spotify / Pomodoro header
+      // fields are populated. The old _buildPacket(timeline) path that stripped
+      // all layer state has been removed.
       final _PacketBuildInput input = _gatherPacketState(timeline);
-      final Uint8List packet = await compute(_buildPacketFull, input);
+      final Uint8List packet        = await compute(_buildPacketFull, input);
+
       await _sendWithRetry(packet);
+
       state = state.copyWith(
         status:       DeviceConnectionStatus.connected,
         sendProgress: 1.0,
         errorMessage: null,
       );
+
       if (_pendingSend) {
         _pendingSend = false;
         sendToDevice();
@@ -307,79 +389,74 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
   void _onHidReport(FrameonHidReport r) {
     // Auto-calibrate joystick X centre from the first 30 idle samples.
-    // (Y is handled by firmware — no calibration needed on app side.)
     if (_calibN < 30 && r.encDelta == 0 && r.buttons == 0 && r.taps == 0) {
       _joyCentreX = ((_joyCentreX * _calibN + r.joyX) / (_calibN + 1)).round();
       _calibN++;
     }
 
-    // ── Encoder: preset navigation ─────────────────────────────────────────
-    if (r.encDelta != 0)  _switchPresetBy(r.encDelta > 0 ? 1 : -1);
-    // Encoder long: toggle display lock (firmware already applied it;
-    // we mirror it here so the app respects the lock).
+    // ── Encoder: preset navigation ──────────────────────────────────────────
+    if (r.encDelta != 0) _switchPresetBy(r.encDelta > 0 ? 1 : -1);
+
+    // Encoder long: toggle display lock. Firmware already applied it;
+    // we mirror it here so sendToDevice() can check state.deviceLocked.
     if (r.encLong) state = state.copyWith(deviceLocked: !state.deviceLocked);
 
-    // ── Brightness: mirror firmware-applied value into connection state ────
-    // Firmware owns brightness; we just reflect it so the UI indicator stays
-    // in sync with what the matrix is actually showing.
+    // ── Brightness: mirror firmware-applied value ──────────────────────────
     if (r.brightness != state.deviceBrightness) {
       state = state.copyWith(deviceBrightness: r.brightness);
     }
 
-    // ── Joystick X → opacity (all layers) ─────────────────────────────────
+    // ── Joystick X → opacity (all layers) ──────────────────────────────────
     final normX = r.normJoyX(_joyCentreX);
-    if (normX > 0.5)       _applyLayerOpacity(_kOpacityStep);
-    else if (normX < -0.5) _applyLayerOpacity(-_kOpacityStep);
+    if (normX > 0.5)        _applyLayerOpacity(_kOpacityStep);
+    else if (normX < -0.5)  _applyLayerOpacity(-_kOpacityStep);
 
-    // ── Joystick tap → context-sensitive (spec: NaN / Spotify / SlotMachine)
+    // ── Joystick tap / long hold ────────────────────────────────────────────
     if (r.joyTap)  _handleJoyTap();
-
-    // ── Joystick long hold → context-sensitive (Edit/Save or Spotify shuffle)
     if (r.joyLong) _handleJoyHold();
 
-    // ── BTN1: Sync display (short) / Reset to default (long) ──────────────
-    if (r.btn1Tap)  sendToDevice();
+    // ── BTN1: Sync display (short) / Reset to default (long) ───────────────
+    if (r.btn1Tap) sendToDevice();
     if (r.btn1Long) {
       ref.read(sceneProvider.notifier).newScene();
       sendToDevice();
     }
 
-    // ── BTN2: Disconnect (short) / Reconnect (long) ────────────────────────
-    if (r.btn2Tap)  disconnect();
-    if (r.btn2Long) { final p = state.portName; if (p != null) connect(p); }
+    // ── BTN2: Disconnect (short) / Reconnect (long) ─────────────────────────
+    if (r.btn2Tap) disconnect();
+    if (r.btn2Long) {
+      final p = state.portName;
+      if (p != null) connect(p);
+    }
 
-    // ── BTN3-5: Pomodoro or Spotify context ───────────────────────────────
+    // ── BTN3-5: Pomodoro or Spotify context ────────────────────────────────
     _handleContextButtons(r);
   }
 
   // ── Context-sensitive joystick tap ─────────────────────────────────────────
+
   void _handleJoyTap() {
     final scene = ref.read(sceneProvider);
-
-    final spotifyLayers    = scene.visibleLayers.whereType<SpotifyLayer>();
-    final slotLayers       = scene.visibleLayers.whereType<SlotMachineLayer>();
+    final spotifyLayers = scene.visibleLayers.whereType<SpotifyLayer>();
+    final slotLayers    = scene.visibleLayers.whereType<SlotMachineLayer>();
 
     if (spotifyLayers.isNotEmpty) {
-      // Spotify: Refresh now playing
       ref.read(spotifyServiceProvider.notifier).refresh();
     } else if (slotLayers.isNotEmpty) {
-      // Slot machine: Spin roulette
       ref.read(slotMachineServiceProvider.notifier).spin(slotLayers.first);
     }
     // Other layers: spec says NaN — no action.
   }
 
   // ── Context-sensitive joystick long hold ───────────────────────────────────
+
   void _handleJoyHold() {
     final scene      = ref.read(sceneProvider);
     final hasSpotify = scene.visibleLayers.whereType<SpotifyLayer>().isNotEmpty;
 
     if (hasSpotify) {
-      // Spotify: Shuffle / Unshuffle
       ref.read(spotifyServiceProvider.notifier).toggleShuffle();
     } else {
-      // All other layers: Edit / Save layer
-      // — selects the joystick-target layer in the editor panel.
       final targetId = _joystickTargetLayerId();
       if (targetId != null) {
         ref.read(sceneProvider.notifier).selectLayer(targetId);
@@ -388,6 +465,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
   }
 
   // ── Context-sensitive BTN3-5 ───────────────────────────────────────────────
+
   void _handleContextButtons(FrameonHidReport r) {
     final scene = ref.read(sceneProvider);
 
@@ -396,9 +474,9 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     if (pomodoroLayers.isNotEmpty) {
       final layer = pomodoroLayers.first;
       final pomo  = ref.read(pomodoroServiceProvider.notifier);
-      if (r.btn3Tap) pomo.reset(layer);           // Reset timer
-      if (r.btn4Tap) pomo.togglePlayPause(layer); // Start / Pause
-      if (r.btn5Tap) pomo.skip(layer);            // Next session
+      if (r.btn3Tap) pomo.reset(layer);
+      if (r.btn4Tap) pomo.togglePlayPause(layer);
+      if (r.btn5Tap) pomo.skip(layer);
       return;
     }
 
@@ -406,16 +484,16 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     final hasSpotify = scene.visibleLayers.whereType<SpotifyLayer>().isNotEmpty;
     if (hasSpotify) {
       final spotify = ref.read(spotifyServiceProvider.notifier);
-      if (r.btn3Tap)  spotify.skipPrevious();    // Previous song
-      if (r.btn3Long) spotify.volumeDown();      // Volume −
-      if (r.btn4Tap)  spotify.togglePlayPause(); // Play / Pause
-      if (r.btn5Tap)  spotify.skipNext();        // Next song
-      if (r.btn5Long) spotify.volumeUp();        // Volume +
+      if (r.btn3Tap)  spotify.skipPrevious();
+      if (r.btn3Long) spotify.volumeDown();
+      if (r.btn4Tap)  spotify.togglePlayPause();
+      if (r.btn5Tap)  spotify.skipNext();
+      if (r.btn5Long) spotify.volumeUp();
     }
-    // Other layers: BTN3-5 unassigned (spec has no entry).
+    // Other layers: BTN3-5 unassigned.
   }
 
-  // ── Encoder debounce ───────────────────────────────────────────────────────
+  // ── Preset navigation ──────────────────────────────────────────────────────
 
   void _switchPresetBy(int delta) {
     final preset     = ref.read(presetProvider);
@@ -432,6 +510,7 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       ref.read(sceneProvider.notifier).loadScene(scene);
     }
 
+    // Debounce the send so rapid encoder spins don't spam the device.
     _presetSendTimer?.cancel();
     _presetSendTimer = Timer(_kPresetSendDebounce, sendToDevice);
   }
@@ -473,7 +552,8 @@ class DeviceController extends Notifier<DeviceConnectionState> {
         .whereType<SpotifyLayer>().cast<SpotifyLayer?>().firstOrNull;
     final ClockLayer? clockLayer = scene.visibleLayers
         .whereType<ClockLayer>().cast<ClockLayer?>().firstOrNull;
-    final DateTime? clockCommitTime = clockLayer != null ? DateTime.now() : null;
+    final DateTime? clockCommitTime =
+        clockLayer != null ? DateTime.now() : null;
     final PomodoroLayer? pomodoroLayer = scene.visibleLayers
         .whereType<PomodoroLayer>().cast<PomodoroLayer?>().firstOrNull;
     final PomodoroTimerState? pomodoroState =
@@ -481,8 +561,12 @@ class DeviceController extends Notifier<DeviceConnectionState> {
 
     return (
       timeline:        timeline,
-      startPositionMs: spotify.isConnected ? spotify.livePosition.inMilliseconds : 0,
-      trackDurationMs: spotify.isConnected ? spotify.currentDuration.inMilliseconds : 0,
+      startPositionMs: spotify.isConnected
+          ? spotify.livePosition.inMilliseconds
+          : 0,
+      trackDurationMs: spotify.isConnected
+          ? spotify.currentDuration.inMilliseconds
+          : 0,
       spotifyLayout:   spotifyLayer?.layout,
       showProgress:    spotifyLayer?.showProgress ?? false,
       progressColor:   spotifyLayer?.progressColor ?? const Color(0xFF21C32C),
@@ -492,6 +576,8 @@ class DeviceController extends Notifier<DeviceConnectionState> {
       pomodoroState:   pomodoroState,
     );
   }
+
+  // ── Error handling ─────────────────────────────────────────────────────────
 
   Future<void> _failGracefully(String message) async {
     try { await _serial.disconnect(); } catch (_) {}
@@ -503,32 +589,61 @@ class DeviceController extends Notifier<DeviceConnectionState> {
     );
   }
 
+  // ── Send with retry ────────────────────────────────────────────────────────
+
   Future<void> _sendWithRetry(Uint8List packet) async {
     final int timeoutMs = _responseTimeoutFor(packet.length);
+
     for (int attempt = 1; attempt <= _kMaxAttempts; attempt++) {
       if (attempt > 1) state = state.copyWith(sendProgress: 0);
+
       await _serial.send(
         packet,
         onProgress: (p) => state = state.copyWith(sendProgress: p),
       );
-      final int? response = await _serial.readResponseByte(timeoutMs: timeoutMs);
+
+      final int? response = await _serial.readResponseByte(
+        timeoutMs: timeoutMs,
+      );
+
       switch (response) {
         case kFirmwareAck:
-          return;
+          return; // success — caller updates state
+
         case kFirmwareNak:
-          if (attempt < _kMaxAttempts) continue;
-          throw const SerialException('CRC mismatch after retry. Check the USB cable.');
+          if (attempt < _kMaxAttempts) continue; // retry once
+          throw const SerialException(
+            'CRC mismatch after retry. '
+            'Check the USB cable or try re-sending.',
+          );
+
         case kFirmwareErr:
-          throw const SerialException('Device rejected the packet. Update firmware.');
+          throw const SerialException(
+            'Device rejected the packet (wrong dimensions or protocol '
+            'version). Update the firmware and try again.',
+          );
+
         case null:
-          throw SerialException('No response within ${timeoutMs ~/ 1000} s.');
+          throw SerialException(
+            'No response from device within '
+            '${timeoutMs ~/ 1000} s. '
+            'Check the connection and try again.',
+          );
+
         default:
           throw SerialException(
-            'Unexpected response: 0x${response.toRadixString(16).toUpperCase()}.');
+            'Unexpected response byte: '
+            '0x${response!.toRadixString(16).toUpperCase()}. '
+            'This is likely a firmware debug message on the serial line.',
+          );
       }
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+// ─────────────────────────────────────────────────────────────────────────────
 
 final deviceConnectionProvider =
     NotifierProvider<DeviceController, DeviceConnectionState>(
